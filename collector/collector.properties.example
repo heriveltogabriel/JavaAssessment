@@ -1,0 +1,12 @@
+serverUrl=https://DASHBOARD_PUBLIC_URL
+hostId=REPLACE_WITH_STABLE_UNIQUE_HOST_ID
+agentToken=REPLACE_WITH_PER_HOST_AGENT_TOKEN
+spoolDirectory=/home/opc/assessment-pilot/collector-spool
+snapshotRoot=/home/opc/weblogic-observability/spool
+# hostname is optional; the local hostname is discovered when omitted.
+# hostname=instance-rh5
+
+# Registration normally generates this file automatically.
+# Remote origins require HTTPS with the package's verified TLS provider.
+# tlsProvider=BCJSSE
+# tlsCaFile=/absolute/path/java-assessment/conf/ca.pem

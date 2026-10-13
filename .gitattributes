@@ -1,0 +1,7 @@
+# Keep source scripts usable on Linux.
+* text=auto eol=lf
+
+# Preserve upstream bytes: dependency verification uses pinned SHA-256.
+lib/** -text -whitespace
+*.jar binary
+*.zip binary

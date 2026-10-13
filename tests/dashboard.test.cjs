@@ -1,0 +1,120 @@
+const assert=require('node:assert/strict');
+const dash=require('../web/dashboard.js');
+const d={hosts:[{id:'a',hostname:'alpha'},{id:'b',hostname:'<img src=x onerror=alert(1)>'}],runtimes:[{id:'r1',hostId:'a',version:'1.6.0_45'},{id:'r2',hostId:'b',version:'1.6.0_31'},{id:'r3',hostId:'b',version:'21.0.12'},{id:'r4',hostId:'b',version:null}],servers:[{id:'s1',hostId:'a',state:'RUNNING'},{id:'s2',hostId:'a',path:'/weblogic.jar',state:null}],jobs:[],coverage:{status:'partial'},serverTime:'2026-10-09T18:00:00Z'};
+assert.equal(dash.groups(d).find(g=>g.name==='Java 6').hostCount,2);
+assert.equal(dash.groups(d).find(g=>g.name==='Java 6').rows.length,2);
+assert.equal(dash.groups(d).find(g=>g.name==='Java 21').rows.length,1);
+assert.equal(dash.groups(d).find(g=>g.name==='Version unknown').rows.length,1);
+assert.equal(dash.groups(d,'exact').length,4);
+assert.equal(dash.reportedServers(d).length,1);
+assert.equal(dash.scoped(d,'a').runtimes.length,1);
+assert.equal(dash.scoped(d,'b').servers.length,0);
+assert.ok(!dash.overview(d).includes('<img src=x'));
+assert.ok(dash.overview(d).includes('&lt;img src=x'));
+assert.ok(dash.versions(d,'family','Java 21').includes('21.0.12'));
+assert.ok(!dash.versions(d,'family','Java 21').includes('1.6.0_45'));
+assert.ok(dash.machine(d,'missing').includes('not present'));
+assert.ok(dash.overview({}).includes('Run your first assessment'));
+const liveHost={id:'live',hostname:'instance-ol8',lastSeen:'2026-10-09T20:00:00Z',lastAssessmentAt:'2026-10-09T19:00:00Z',coverage:{status:'partial',warnings:['Skipped protected path']}};
+const at=serverTime=>dash.collectorPresence({serverTime},liveHost);
+assert.equal(at('2026-10-09T20:01:00Z').state,'recent');
+assert.equal(at('2026-10-09T20:03:00Z').state,'delayed');
+assert.equal(at('2026-10-09T20:05:00Z').state,'silent');
+assert.match(at('2026-10-09T20:05:00Z').label,/No collector contact/);
+assert.equal(dash.collectorPresence({serverTime:'2026-10-09T20:06:00Z'},{...liveHost,lastSeen:null}).state,'awaiting');
+assert.equal(dash.collectorPresence({serverTime:'2026-10-09T20:06:00Z'},{...liveHost,credentialStatus:'revoked'}).state,'revoked');
+const silentData={...d,hosts:[liveHost],serverTime:'2026-10-09T20:07:00Z'};
+assert.match(dash.machine(silentData,'live'),/No collector contact · 7 min ago/);
+assert.match(dash.machine(silentData,'live'),/Inventory shown below was collected/);
+assert.match(dash.machine(silentData,'live'),/missing heartbeat does not establish that the VM is powered off/);
+assert.match(dash.machine(silentData,'live'),/Coverage notes ↗/);
+assert.match(dash.machines(silentData),/machine-card silent/);
+assert.equal(dash.assessmentStatus('PARTIAL',true),'Assessment ready');
+assert.equal(dash.assessmentStatus('PARTIAL'),'Completed with notes');
+console.log('PASS: version groups, unique hosts, runtime vs installation counts, scoping, unknown versions, HTML escaping, empty state');
+
+const applications={...d,hosts:[{id:'a',hostname:'spring-host'},{id:'b',hostname:'tomcat-host'}],runtimes:[],servers:[{id:'tomcat',hostId:'b',name:'tomcat',type:'Tomcat',version:'9.0.122',state:null}],applications:[
+  {id:'boot',hostId:'a',name:'demo <script>bad()</script>',type:'Spring Boot',applicationType:'Spring Boot',version:'1.0.0',frameworkVersion:'4.1.1',state:'PROCESS_RUNNING',path:'/opt/demo/app.jar',observedAt:'2026-10-09T19:00:00Z'},
+  {id:'war',hostId:'b',name:'legacy-war',type:'WAR',state:null,path:'/opt/tomcat/webapps/legacy.war'},
+  {id:'evil',hostId:'b',name:'test',type:'<img src=x onerror=1>',state:null}
+],libraries:[
+  {id:'h2',hostId:'a',name:'H2 Database Engine',version:'2.4.240',category:'JDBC',usage:'found',path:'/opt/demo/app.jar!/BOOT-INF/lib/h2.jar',applicationId:'boot',applicationName:'demo <script>bad()</script>'},
+  {id:'pool',hostId:'a',name:'HikariCP',version:'7.0.2',category:'Java library',usage:'found',applicationId:'boot'},
+  {id:'mysql',hostId:'b',name:'other-host-driver',version:'5.1.49',category:'JDBC',usage:'found',path:'/opt/tomcat/lib/mysql.jar',applicationId:'war'}
+],datasources:[]};
+const bootScope=dash.scoped(applications,'a'),bootHtml=dash.machine(applications,'a'),foundHtml=dash.machine(applications,'b'),cards=dash.machines(applications);
+assert.equal(dash.observation(applications.applications[0]).label,'Process observed');
+assert.equal(dash.observation(applications.applications[1]).label,'Found in files');
+assert.equal(dash.observation({state:'RUNNING'}).label,'Runtime reported');
+assert.equal(dash.libraryObservation(applications.libraries[0]),'Found in package');
+assert.equal(dash.libraryObservation(applications.libraries[2]),'Found in files');
+assert.deepEqual(dash.jdbcLibraries(bootScope).map(l=>l.id),['h2']);
+assert.deepEqual(bootScope.applications.map(a=>a.id),['boot']);
+assert.equal(dash.reportedServers(applications).length,0,'File-only Tomcat is not a runtime server');
+assert.equal(dash.workloads(bootScope)[0].type,'Spring Boot');
+assert.match(cards,/Spring Boot <span>· process/);
+assert.match(cards,/Tomcat <span>· files/);
+assert.ok(!cards.includes('<img src=x'));
+assert.ok(cards.includes('&lt;img src=x'));
+assert.match(bootHtml,/host-applications/);
+assert.match(bootHtml,/Framework version/);
+assert.match(bootHtml,/4\.1\.1/);
+assert.match(bootHtml,/1\.0\.0/);
+assert.match(bootHtml,/Process observed/);
+assert.match(bootHtml,/host-jdbc-libraries/);
+assert.match(bootHtml,/2\.4\.240/);
+assert.match(bootHtml,/data-detail-kind="applications" data-detail-id="boot"/);
+assert.match(bootHtml,/Found in package/);
+assert.match(bootHtml,/does not confirm a configured datasource/);
+assert.match(bootHtml,/No JDBC datasource observations reported/);
+assert.ok(!bootHtml.includes('other-host-driver'));
+assert.ok(!bootHtml.includes('legacy-war'));
+assert.ok(!bootHtml.includes('HikariCP'),'Connection pool library is not a JDBC driver');
+assert.ok(!bootHtml.includes('<script>'));
+assert.match(bootHtml,/demo &lt;script&gt;bad\(\)&lt;\/script&gt;/);
+assert.match(foundHtml,/9\.0\.122/);
+assert.match(foundHtml,/Found in files/);
+assert.ok(!foundHtml.includes('Process observed'));
+assert.ok(!foundHtml.includes('H2 Database Engine'));
+console.log('PASS: application/framework versions, process vs file evidence, found server counts, JDBC package association, no datasource inference, host scope and escaping');
+
+const shared={...applications,applications:[...applications.applications,{id:'boot2',hostId:'a',name:'second-app',type:'Spring Boot',state:'PROCESS_RUNNING'}],libraries:[{id:'shared',hostId:'a',name:'Shared JDBC',category:'JDBC',usage:'found',path:'/lib/driver.jar',associations:[{applicationId:'boot',applicationName:'untrusted label',pid:101},{applicationId:'boot2',applicationName:'second-app',pid:202}]}]};
+assert.deepEqual(dash.associations(shared,shared.libraries[0]).map(a=>[a.application.id,a.pid]),[['boot',101],['boot2',202]]);
+const sharedHtml=dash.machine(shared,'a');
+assert.match(sharedHtml,/data-detail-id="boot"/);
+assert.match(sharedHtml,/data-detail-id="boot2"/);
+assert.match(sharedHtml,/PID 101/);
+assert.match(sharedHtml,/PID 202/);
+assert.ok(!sharedHtml.includes('untrusted label'),'Use the matching in-scope application name');
+const crossHost=dash.associations(shared,{hostId:'a',associations:[{applicationId:'war',applicationName:'Unresolved association'}]})[0];
+assert.equal(crossHost.application,undefined,'Do not link an ID belonging to a different host');
+assert.equal(crossHost.name,'Unresolved association');
+assert.equal(dash.workloads({servers:[{type:'Tomcat',state:null}],applications:[{type:'Tomcat',state:'PROCESS_RUNNING'}]}).length,1,'One type badge prefers process evidence over installation-only evidence');
+console.log('PASS: multiple application/process associations, host guards and one evidence badge per workload type');
+
+const configuredDatasource={id:'spring-ds',hostId:'a',name:'Spring datasource',state:'CONFIGURED',evidenceLevel:'configuration',driverName:'H2',driverClass:'org.h2.Driver',driverVersion:'2.4.240',configurationSource:'/opt/app.jar!/BOOT-INF/classes/application.properties <untrusted>',configuredMaxPoolSize:10,evidence:'Configuration found; runtime connection not verified',associations:[{applicationId:'boot',applicationName:'demo',pid:101},{applicationId:'boot2',applicationName:'second-app',pid:202}]};
+const runtimeDatasource={id:'wls-ds',hostId:'b',name:'Runtime datasource',serverName:'AdminServer',state:'Running',driverName:'Derby',driverVersion:'10.12',poolCapacity:5,activeConnections:2,evidence:'Existing WebLogic JMX snapshot /lab/snapshot.json; original observation time preserved'};
+const datasourceData={...shared,datasources:[configuredDatasource,runtimeDatasource]},snapshotBefore=JSON.stringify(datasourceData);
+assert.equal(dash.datasourceObservation(configuredDatasource).label,'Configuration found');
+assert.equal(dash.datasourceObservation({state:'CONFIGURED',evidence:'runtime not verified'}).kind,'configuration');
+assert.equal(dash.datasourceObservation(runtimeDatasource).label,'Runtime reported');
+assert.equal(dash.datasourceObservation({state:'PROCESS_RUNNING',evidence:'Java process found'}).kind,'unknown','A Java process does not prove a datasource observation');
+assert.equal(dash.datasourceObservation({evidence:'Runtime connection not confirmed'}).kind,'unknown','Negated evidence cannot confirm runtime use');
+assert.deepEqual(dash.datasourceSummary(datasourceData),{configured:1,runtime:1,unknown:0,label:'1 configured · 1 runtime observations'});
+const springDatasourceHtml=dash.machine(datasourceData,'a'),runtimeDatasourceHtml=dash.machine(datasourceData,'b');
+assert.match(springDatasourceHtml,/JDBC datasources/);
+assert.match(springDatasourceHtml,/1 configured · 0 runtime observations/);
+assert.match(springDatasourceHtml,/Configuration found/);
+assert.match(springDatasourceHtml,/Configured maximum pool size: 10/);
+assert.match(springDatasourceHtml,/Packaged driver/);
+assert.match(springDatasourceHtml,/effective profile, an active connection or runtime pool state/);
+assert.ok(!springDatasourceHtml.includes('wls-ds'));
+assert.ok(!springDatasourceHtml.includes('<untrusted>'));
+assert.ok(springDatasourceHtml.includes('&lt;untrusted&gt;'));
+assert.match(runtimeDatasourceHtml,/0 configured · 1 runtime observations/);
+assert.match(runtimeDatasourceHtml,/Runtime reported/);
+assert.ok(!runtimeDatasourceHtml.includes('spring-ds'));
+assert.deepEqual(dash.associations(datasourceData,configuredDatasource).map(a=>a.application.id),['boot','boot2']);
+assert.equal(dash.scoped(datasourceData,'a').datasources.length,1,'Multiple processes sharing one datasource configuration remain one record');
+assert.equal(JSON.stringify(datasourceData),snapshotBefore,'Evidence display must not rewrite raw datasource records');
+console.log('PASS: configured vs runtime datasources, no connection inference, shared process association, scoped counts, packaged driver/source and pool labeling');

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>org.bouncycastle</groupId>
+  <artifactId>bctls-jdk15to18</artifactId>
+  <packaging>jar</packaging>
+  <name>Bouncy Castle TLS/JSSE APIs</name>
+  <version>1.86</version>
+  <description>The  Bouncy Castle Java APIs for the TLS, including a JSSE provider (except in Java 4). The APIs are designed primarily to be used in conjunction with the BC Java provider but may also be used with other providers providing cryptographic services. This jar is designed to best work with Java 1.5 to Java 1.8.</description>
+  <url>https://www.bouncycastle.org/download/bouncy-castle-java/</url>
+  <licenses>
+    <license>
+      <name>Bouncy Castle Licence</name>
+      <url>https://www.bouncycastle.org/licence.html</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+  <scm>
+    <url>https://github.com/bcgit/bc-java</url>
+  </scm>
+  <issueManagement>
+     <system>GitHub</system>
+     <url>https://github.com/bcgit/bc-java/issues</url>
+  </issueManagement>
+  <developers>
+    <developer>
+      <id>feedback-crypto</id>
+      <name>The Legion of the Bouncy Castle Inc.</name>
+      <email>feedback-crypto@bouncycastle.org</email>
+    </developer>
+  </developers>
+  <dependencies>
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcutil-jdk15to18</artifactId>
+      <version>1.86</version>
+      <type>jar</type>
+    </dependency>
+  </dependencies>
+</project>

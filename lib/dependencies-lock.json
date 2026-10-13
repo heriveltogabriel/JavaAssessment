@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://repo.maven.apache.org/maven2/",
+  "dependencies": [
+    {
+      "groupId": "org.xerial",
+      "artifactId": "sqlite-jdbc",
+      "version": "3.53.4.0",
+      "file": "sqlite-jdbc-3.53.4.0.jar",
+      "url": "https://repo.maven.apache.org/maven2/org/xerial/sqlite-jdbc/3.53.4.0/sqlite-jdbc-3.53.4.0.jar",
+      "sha256": "bcb1f51e36f940867e83342f9efbf5968ac44a6bef4d397bb4af7b17b45cd2fb",
+      "pomSha256": "ff588556ba06aa68a568062f2cb9d243dde1f631eafd2010cfef23cab06a7ab9",
+      "license": "Apache-2.0 AND BSD-2-Clause"
+    },
+    {
+      "groupId": "org.slf4j",
+      "artifactId": "slf4j-api",
+      "version": "1.7.36",
+      "file": "slf4j-api-1.7.36.jar",
+      "url": "https://repo.maven.apache.org/maven2/org/slf4j/slf4j-api/1.7.36/slf4j-api-1.7.36.jar",
+      "sha256": "d3ef575e3e4979678dc01bf1dcce51021493b4d11fb7f1be8ad982877c16a1c0",
+      "pomSha256": "fb046a9c229437928bb11c2d27c8b5d773eb8a25e60cbd253d985210dedc2684",
+      "license": "MIT"
+    },
+    {
+      "groupId": "org.slf4j",
+      "artifactId": "slf4j-jdk14",
+      "version": "1.7.36",
+      "file": "slf4j-jdk14-1.7.36.jar",
+      "url": "https://repo.maven.apache.org/maven2/org/slf4j/slf4j-jdk14/1.7.36/slf4j-jdk14-1.7.36.jar",
+      "sha256": "5bf64690af4e59876b8902bb0db3dd39c686a40abfed97d3837eeeec7a2922ac",
+      "pomSha256": "4b8b0195a760d03f5bc2f7c4242fd1422e793bf146c05a4f54531ef8bf6efb41",
+      "license": "MIT"
+    },
+    {
+      "groupId": "org.bouncycastle",
+      "artifactId": "bcprov-jdk15to18",
+      "version": "1.86",
+      "file": "bcprov-jdk15to18-1.86.jar",
+      "url": "https://repo.maven.apache.org/maven2/org/bouncycastle/bcprov-jdk15to18/1.86/bcprov-jdk15to18-1.86.jar",
+      "sha256": "fc50334d4d87b4272e72fa95ca748ead05bdef02ef760a5b13f64ffee317cd81",
+      "pomSha256": "af3f44f2c8bd90d10d0ebbc3c2f26b5d9b54588543a57cd879465f3dc4f1eef0",
+      "license": "MIT"
+    },
+    {
+      "groupId": "org.bouncycastle",
+      "artifactId": "bcpkix-jdk15to18",
+      "version": "1.86",
+      "file": "bcpkix-jdk15to18-1.86.jar",
+      "url": "https://repo.maven.apache.org/maven2/org/bouncycastle/bcpkix-jdk15to18/1.86/bcpkix-jdk15to18-1.86.jar",
+      "sha256": "cf70d32101e53c3f92d55ba5c5f1329af51a9a44057fd21e81e20cfd6cd64953",
+      "pomSha256": "ece29ab41d3b510d94a7a9312c6a256c6efc5f227effffd90a6b00b341411713",
+      "license": "MIT"
+    },
+    {
+      "groupId": "org.bouncycastle",
+      "artifactId": "bctls-jdk15to18",
+      "version": "1.86",
+      "file": "bctls-jdk15to18-1.86.jar",
+      "url": "https://repo.maven.apache.org/maven2/org/bouncycastle/bctls-jdk15to18/1.86/bctls-jdk15to18-1.86.jar",
+      "sha256": "c0dbcd24ceeb78a263661a38d243a3c82620f002a41f49c5399a9635764a963a",
+      "pomSha256": "e57b5b2823c906bb1137f572749eb94c1c295ed2bb4fd9b6db66a5203dc639e2",
+      "license": "MIT"
+    },
+    {
+      "groupId": "org.bouncycastle",
+      "artifactId": "bcutil-jdk15to18",
+      "version": "1.86",
+      "file": "bcutil-jdk15to18-1.86.jar",
+      "url": "https://repo.maven.apache.org/maven2/org/bouncycastle/bcutil-jdk15to18/1.86/bcutil-jdk15to18-1.86.jar",
+      "sha256": "e72ef8a0fcad295207529b268ee02eb72acc7c83ec2e3a9df90cbed9380e3990",
+      "pomSha256": "0576bab3941c02ca38590878a27022b7a21f4b143855e3872323cd2ef04339e8",
+      "license": "MIT"
+    }
+  ],
+  "acquisition": "Maven Central HTTPS; initial artifacts verified against repository .jar.sha1 files. Subsequent builds and preparation enforce pinned SHA-256.",
+  "licenses": [
+    {
+      "file": "licenses/slf4j-LICENSE.txt",
+      "sha256": "6fbe2eaf44b193b8a40eed9208f52848572224ad8d7672dd09418aa174847e73",
+      "source": "https://raw.githubusercontent.com/qos-ch/slf4j/v_1.7.36/LICENSE.txt"
+    },
+    {
+      "file": "licenses/bouncycastle-LICENSE.html",
+      "sha256": "afaf5bd0b0d869dc86b71711e1b775b204948634c9710a35a9a70d1613a2ab14",
+      "source": "https://raw.githubusercontent.com/bcgit/bc-java/r1rv86/LICENSE.html"
+    },
+    {
+      "file": "licenses/sqlite-jdbc-NOTICE.txt",
+      "sha256": "a0670cf020edf700524c43c85321c2ba027a8bace5682001db60875d4a9fe52b",
+      "source": "https://raw.githubusercontent.com/xerial/sqlite-jdbc/3.53.4.0/NOTICE"
+    },
+    {
+      "file": "licenses/sqlite-jdbc-LICENSE.txt",
+      "sha256": "3ddf9be5c28fe27dad143a5dc76eea25222ad1dd68934a047064e56ed2fa40c5",
+      "source": "sqlite-jdbc-3.53.4.0.jar!/META-INF/maven/org.xerial/sqlite-jdbc/LICENSE"
+    },
+    {
+      "file": "licenses/sqlite-jdbc-LICENSE.zentus.txt",
+      "sha256": "89167dab92289c7e5e2b65b044f0856b703d05e5d5e35c3548e73d9c7d2f5048",
+      "source": "sqlite-jdbc-3.53.4.0.jar!/META-INF/maven/org.xerial/sqlite-jdbc/LICENSE.zentus"
+    }
+  ]
+}
