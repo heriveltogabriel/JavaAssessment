@@ -583,6 +583,8 @@ public final class AssessmentScan {
                 linkedFile(new File(home, "lib/catalina.jar"), context);
                 linkedTree(new File(home, "lib"), 0, context, true);
                 if (launch.serverBase != null) { linkedTree(new File(launch.serverBase, "lib"), 0, context, true); linkedTree(new File(launch.serverBase, "webapps"), 3, context, false); }
+            } else if ("WebLogic".equals(launch.serverType)) {
+                linkedFile(new File(home, "lib/weblogic.jar"), context);
             } else if ("JBoss".equals(launch.serverType)) {
                 List<String> roots = new ArrayList<String>(launch.modulePaths);
                 if (roots.isEmpty()) roots.add(new File(home, "modules").getPath());

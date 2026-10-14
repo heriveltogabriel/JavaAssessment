@@ -6,7 +6,7 @@ import java.util.*;
 /** An allowlisted description of a Java launcher. Never retains the original command line. */
 final class ProcessLaunch {
     String mainClass, jarPath, moduleName, serverType, serverHome, serverBase, serverName, applicationType;
-    String serverConfigDirectory, serverConfigFile;
+    String serverConfigDirectory, serverConfigFile, webLogicHome, wlsHome;
     final List<String> classpath = new ArrayList<String>(), modulePaths = new ArrayList<String>();
     boolean javaCommand, opaqueArguments, serverBaseExplicit;
 
@@ -40,6 +40,8 @@ final class ProcessLaunch {
         int equals = arg.indexOf('='); if (equals < 0) return;
         String key = arg.substring(2, equals), value = arg.substring(equals + 1);
         if (key.equals("catalina.home") || key.equals("jboss.home.dir")) serverHome = path(value, cwd);
+        else if (key.equals("weblogic.home")) webLogicHome = path(value, cwd);
+        else if (key.equals("wls.home")) wlsHome = path(value, cwd);
         else if (key.equals("catalina.base") || key.equals("jboss.server.base.dir") || key.equals("weblogic.RootDirectory")) { serverBase = path(value, cwd); serverBaseExplicit = serverBase != null; }
         else if (key.equals("weblogic.Name") || key.equals("jboss.server.name") || key.equals("jboss.node.name")) serverName = label(value);
         else if (key.equals("jboss.server.config.dir")) serverConfigDirectory = path(value, cwd);
@@ -97,8 +99,11 @@ final class ProcessLaunch {
         if (launch.serverHome == null && "Tomcat".equals(launch.serverType)) {
             for (String entry : launch.classpath) if (new File(entry).getName().equals("bootstrap.jar")) { File bin = new File(entry).getParentFile(); if (bin != null && bin.getParentFile() != null) launch.serverHome = bin.getParent(); }
         }
-        if (launch.serverBase == null && "WebLogic".equals(launch.serverType) && cwd != null) launch.serverBase = path(cwd.getPath(), null);
-        if (launch.serverBase == null) launch.serverBase = launch.serverHome;
+        if ("WebLogic".equals(launch.serverType)) {
+            // These properties identify WL_HOME/server, not the domain directory.
+            launch.serverHome = launch.webLogicHome != null ? launch.webLogicHome : launch.wlsHome;
+            if (launch.serverBase == null && cwd != null) launch.serverBase = path(cwd.getPath(), null);
+        } else if (launch.serverBase == null) launch.serverBase = launch.serverHome;
         if ("org.jboss.as.standalone".equals(launch.moduleName)) {
             for (int i = after; i < args.length; i++) {
                 String arg = args[i];

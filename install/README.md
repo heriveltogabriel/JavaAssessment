@@ -7,7 +7,17 @@ Arquivos para instalar o dashboard e os agentes na infraestrutura do cliente. Os
 - [Manual ilustrado da solução](Manual-2.0.2.pdf): arquitetura, inventário, operação e recursos.
 - [Guia de instalação](Guia-instalacao-2.0.2.pdf): requisitos, comandos, configuração do dashboard e instalação dos agentes.
 
-## Instalador — 2.0.2
+## Instalador atual — 2.0.3
+
+- [Baixar assessment-dashboard-installer-2.0.3.zip](https://github.com/heriveltogabriel/JavaAssessment/raw/refs/heads/main/install/v2.0.3/assessment-dashboard-installer-2.0.3.zip)
+- [Baixar arquivo SHA-256 da 2.0.3](https://github.com/heriveltogabriel/JavaAssessment/raw/refs/heads/main/install/v2.0.3/assessment-dashboard-installer-2.0.3.zip.sha256)
+- [O que mudou na 2.0.3](../docs/RELEASE_2.0.3.md)
+
+A 2.0.3 corrige a descoberta da versão do WebLogic. Os PDFs acima foram produzidos para a 2.0.2; os procedimentos continuam aplicáveis, substituindo o número da versão nos nomes dos pacotes.
+
+Na pasta que contém o ZIP e o SHA-256 da 2.0.3, confira a integridade com `sha256sum -c assessment-dashboard-installer-2.0.3.zip.sha256` no Linux ou `shasum -a 256 -c assessment-dashboard-installer-2.0.3.zip.sha256` no macOS.
+
+## Instalador anterior — 2.0.2
 
 - [Baixar assessment-dashboard-installer-2.0.2.zip](https://github.com/heriveltogabriel/JavaAssessment/raw/refs/heads/main/install/v2.0.2/assessment-dashboard-installer-2.0.2.zip)
 - [Baixar arquivo SHA-256](https://github.com/heriveltogabriel/JavaAssessment/raw/refs/heads/main/install/v2.0.2/assessment-dashboard-installer-2.0.2.zip.sha256)

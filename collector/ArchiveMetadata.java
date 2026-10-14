@@ -38,11 +38,17 @@ public final class ArchiveMetadata {
             ZipFile archive = null;
             try {
                 if (!file.isFile() || file.length() > FILE_LIMIT) throw new Limit("Large or unavailable archive skipped: " + path);
-                long central = preflight(file);
-                charge(central); // ZipFile reads its central directory; count that bounded work too.
-                if (!scan.available()) throw new Limit("Assessment deadline reached during archive discovery");
-                archive = new ZipFile(file);
-                readOuter(document, archive);
+                if (name.equals("weblogic.jar")) {
+                    // Legacy WebLogic contains >23,000 entries; read only its identity manifest.
+                    byte[] manifest = WebLogicManifest.read(this, file);
+                    if (manifest != null) accept(document, "META-INF/MANIFEST.MF", manifest);
+                } else {
+                    long central = preflight(file);
+                    charge(central); // ZipFile reads its central directory; count that bounded work too.
+                    if (!scan.available()) throw new Limit("Assessment deadline reached during archive discovery");
+                    archive = new ZipFile(file);
+                    readOuter(document, archive);
+                }
             } catch (Exception e) { report(e, path); }
             finally { if (archive != null) try { archive.close(); } catch (IOException ignored) { } }
         }

@@ -1,5 +1,5 @@
 {
-  "version": "2.0.2",
+  "version": "2.0.3",
   "releases": [
     {
       "version": "1.0.1-beta",
@@ -84,6 +84,11 @@
     {
       "version": "2.0.2",
       "builtAt": "2026-10-14T15:20:58.076149+00:00",
+      "status": "prepared"
+    },
+    {
+      "version": "2.0.3",
+      "builtAt": "2026-10-14T17:53:55.406630+00:00",
       "status": "prepared"
     }
   ]
