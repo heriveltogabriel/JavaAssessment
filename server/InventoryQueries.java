@@ -76,6 +76,15 @@ final class InventoryQueries {
         return db.rows("SELECT "+(exact?"coalesce(nullif(i.version,''),'Version unknown')":"CASE WHEN i.major='' THEN 'Version unknown' ELSE 'Java ' || i.major END")+" name,count(*) count,count(DISTINCT i.host_id) hostCount FROM inventory i JOIN hosts h ON h.id=i.host_id WHERE i.kind='runtimes' AND "+w+" GROUP BY "+column+" ORDER BY count DESC,name LIMIT ? OFFSET ?",args.toArray());
     }
     List<Map<String,Object>> osGroups(Scope f){String w=f.where();return db.rows("SELECT coalesce(nullif(json_extract(h.payload,'$.distribution'),''),nullif(json_extract(h.payload,'$.osName'),''),'OS not reported') name,count(*) count FROM hosts h WHERE "+w+" GROUP BY name ORDER BY count DESC,name LIMIT 1000",f.args.toArray());}
+    List<Map<String,Object>> productGroups(Scope f,String kind,long total){
+        boolean server=kind.equals("servers");if(!server&&!kind.equals("datasources"))throw new IllegalArgumentException("Unsupported distribution");
+        String name=server?"coalesce(nullif(i.type,''),'Java server')":"coalesce(nullif(json_extract(i.payload,'$.name'),''),'Datasource sem nome')";
+        String version=server?"coalesce(i.version,'')":"coalesce(json_extract(i.payload,'$.driverVersion'),'')";
+        String w=f.where();List<Object> args=new ArrayList<>(f.args);args.add(kind);
+        List<Map<String,Object>> groups=db.rows("SELECT "+name+" name,"+version+" version,count(*) count,count(DISTINCT i.host_id) hostCount FROM inventory i JOIN hosts h ON h.id=i.host_id WHERE "+w+" AND i.kind=?"+(server?" AND coalesce(json_extract(i.payload,'$.state'),'')<>''":"")+" GROUP BY 1,2 ORDER BY count DESC,name,version LIMIT 3",args.toArray());
+        long shown=0;for(var group:groups)shown+=n(group.get("count"));
+        if(total>shown)groups.add(map("name","Outros","version","","count",total-shown,"other",true));return groups;
+    }
     Map<String,Object> coverage(Scope f){
         String w=f.where();long complete=0,partial=0,pending=0;String latest="";
         for(Map<String,Object> row:db.rows("SELECT coverage_status status,count(*) count,max(captured_at) latest FROM hosts h WHERE "+w+" GROUP BY coverage_status",f.args.toArray())){long count=n(row.get("count"));String status=s(row.get("status"));if(status.equals("complete"))complete+=count;else if(status.equals("partial"))partial+=count;else pending+=count;if(s(row.get("latest")).compareTo(latest)>0)latest=s(row.get("latest"));}
@@ -112,8 +121,12 @@ final class InventoryQueries {
             }
         }else if(f.view.equals("overview")||f.view.equals("machine")){
             Scope preview=new Scope();preview.environment=f.environment;preview.host=f.host;preview.size=6;
-            hosts=(List<Map<String,Object>>)page(preview,"hosts").get("items");
             result.put("jobs",page(preview,"jobs").get("items"));
+            if(f.host.isEmpty()){
+                preview.size=10;preview.page=f.page;preview.q=f.q;Map<String,Object> hostPage=page(preview,"hosts");hosts=(List<Map<String,Object>>)hostPage.get("items");
+                result.put("pagination",hostPage.get("pagination"));result.put("machineQuery",f.q);
+                Map<String,Object> totals=obj(result.get("summary"));result.put("serverGroups",productGroups(f,"servers",n(totals.get("reportedServers"))));result.put("jdbcGroups",productGroups(f,"datasources",n(totals.get("datasources"))));
+            }else hosts=(List<Map<String,Object>>)page(preview,"hosts").get("items");
             if(!f.host.isEmpty()){preview.size=8;for(String k:KINDS){preview.subset=k.equals("libraries")?"jdbc":"";result.put(k,page(preview,k).get("items"));}}
         }
         if(!f.host.isEmpty()&&hosts.stream().noneMatch(h->f.host.equals(h.get("id")))){Map<String,Object> selected=db.get("hosts",f.host);if(selected!=null)hosts.add(selected);}

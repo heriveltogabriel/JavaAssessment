@@ -17,12 +17,12 @@ done
 for suite in InventoryStoreTest UserAuthTest UserAccessHttpTest \
   MachineActionsHttpTest AgentUpdateWorkerTest AgentUpdateHttpTest \
   WorkRequestsHttpTest RuntimeInventoryHttpTest CsvExportTest \
-  VersionedCsvHttpTest DashboardVersionHttpTest; do
+  VersionedCsvHttpTest DashboardVersionHttpTest CompactOverviewTest; do
   "$JAVA_HOME/bin/java" -Xmx384m -cp "$CP" "assessment.$suite"
 done
 "$JAVA_HOME/bin/java" -Xmx384m -cp "$CP" assessment.JdbcOverviewHttpTest \
   tmp/source-evidence/jdbc-fixtures.json tmp/source-evidence/jdbc-http
-for suite in interface-refresh.test.cjs version-js.test.cjs agent-release-notice.test.cjs; do
+for suite in dashboard.test.cjs interface-refresh.test.cjs version-js.test.cjs agent-release-notice.test.cjs; do
   "${NODE:-node}" "tests/$suite"
 done
 "${NODE:-node}" tests/jdbc-overview.test.cjs tmp/source-evidence/jdbc-http/overview-fixtures.json

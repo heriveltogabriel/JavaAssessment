@@ -15,14 +15,14 @@ const {spawn}=require('node:child_process'),{once}=require('node:events'),{chrom
   await page.goto(base);const health=await (await context.request.get(base+'/health')).json();assert.equal(health.version,release.version);
   await page.waitForFunction(version=>document.getElementById('dashboard-version').textContent==='Versão '+version,health.version);
   assert.equal(await page.locator('#interface-version').textContent(),'Versão '+health.version);
-  await page.locator('#login-email').fill('fixture-admin@example.com');await page.locator('#password').fill('fixture-personal-password-1234');await page.locator('#login-submit').click();await page.locator('.machine-card').first().waitFor();
+  await page.locator('#login-email').fill('fixture-admin@example.com');await page.locator('#password').fill('fixture-personal-password-1234');await page.locator('#login-submit').click();await page.locator('.overview-machine-row').first().waitFor();
   assert.equal(await page.locator('.metric-card[data-inventory="runtimes"] strong').innerText(),'1');
   await page.locator('#about').click();await page.locator('#detail-drawer').waitFor({state:'visible'});
   assert.match(await page.locator('#drawer-content').innerText(),new RegExp(health.version.replaceAll('.','\\.')));
   assert.match(await page.locator('#drawer-content').innerText(),/Release built at/i);await page.locator('#close-drawer').click();
   await page.screenshot({path:path.join(out,'dashboard-version-desktop.png')});
   await page.reload();await page.waitForFunction(version=>document.getElementById('dashboard-version').textContent==='Versão '+version,health.version);
-  await page.locator('.machine-card').first().waitFor();assert.equal(await page.locator('#interface-version').textContent(),'Versão '+health.version);
+  await page.locator('.overview-machine-row').first().waitFor();assert.equal(await page.locator('#interface-version').textContent(),'Versão '+health.version);
   await page.setViewportSize({width:390,height:844});assert.equal(await page.locator('#dashboard-version').isVisible(),true,'Full version visible on mobile');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await page.evaluate(()=>new Promise(resolve=>{scrollTo(0,0);requestAnimationFrame(()=>requestAnimationFrame(resolve));}));

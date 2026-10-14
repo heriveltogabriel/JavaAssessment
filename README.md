@@ -4,6 +4,7 @@ Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versã
 
 ## Recursos
 
+- Overview com quatro distribuições compactas: Java, sistemas operacionais, servidores por produto/versão e datasources por nome/versão do driver; máquinas em lista com busca e dez itens por página. Disponível no código para a próxima entrega.
 - Instalações Java, incluindo runtimes sem compilador quando há evidência de uso por aplicação.
 - Aplicações, processos, servidores Java, bibliotecas e datasources JDBC por configuração suportada.
 - Contas individuais com email e senha, perfis Administrador e Leitura e troca de senha no primeiro acesso.

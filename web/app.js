@@ -350,7 +350,7 @@
     $('host-filter').innerHTML='<option value="">All machines in this environment scope</option>'+(environmentData?.hosts || []).map(h=>'<option value="'+esc(h.id)+'">'+esc(h.hostname || h.fqdn || h.id)+'</option>').join('');$('host-filter').value=hostFilter;if(data.scoped){$('host-filter').innerHTML='<option value="">All machines in this environment scope</option>'+(hostFilter?'<option value="'+esc(hostFilter)+'">'+esc(hostName(hostFilter))+'</option>':'')+'<option value="__browse__">Find a machine…</option>';$('host-filter').value=hostFilter;}
     $('clear-filters').hidden=!query&&!inventorySubset;
     $('subset-filter').hidden=!inventorySubset;$('subset-filter').textContent=inventorySubset==='runtime'?'Runtime evidence only':'JDBC datasources only';
-    if(current==='overview')$('special-view').innerHTML=AssessmentDashboard.overview(data);else if(current==='versions')$('special-view').innerHTML=AssessmentDashboard.versions(data,versionMode,versionFocus);else if(current==='machine')$('special-view').innerHTML=AssessmentDashboard.machine(data,machineId);else if(current==='properties')renderProperties();else if(current==='schedule')$('special-view').innerHTML=AssessmentEnvironments.schedule(data);else if(!['environments','jobs'].includes(current))renderTable();
+    if(current==='overview'){const input=$('overview-machine-query'),editing=input&&document.activeElement===input,draft=editing?{value:input.value,start:input.selectionStart,end:input.selectionEnd}:null;$('special-view').innerHTML=AssessmentDashboard.overview(data);if(draft){const fresh=$('overview-machine-query');fresh.value=draft.value;fresh.focus({preventScroll:true});fresh.setSelectionRange(draft.start,draft.end);}}else if(current==='versions')$('special-view').innerHTML=AssessmentDashboard.versions(data,versionMode,versionFocus);else if(current==='machine')$('special-view').innerHTML=AssessmentDashboard.machine(data,machineId);else if(current==='properties')renderProperties();else if(current==='schedule')$('special-view').innerHTML=AssessmentEnvironments.schedule(data);else if(!['environments','jobs'].includes(current))renderTable();
     AssessmentEnrollment.render(data,current,machineId);
     AssessmentEnvironments.render(rawData,current,machineId,environmentScope,data);
     renderMachineUpdateAction();
@@ -469,7 +469,9 @@
   function columnDialog() {
     const cols=columns();openModal('Choose table columns','TABLE OPTIONS','<p>Choose the columns shown in this view.</p>'+cols.map(c=>'<label class="checkbox-field"><input type="checkbox" name="col-'+esc(c.key)+'" '+(columnVisibility[current]?.[c.key]!==false?'checked':'')+'><span>'+esc(c.label)+'</span></label>').join(''),'Apply',async(f)=>{if(!cols.some(c=>f.has('col-'+c.key)))throw new Error('Select at least one column.');columnVisibility[current]=Object.fromEntries(cols.map(c=>[c.key,f.has('col-'+c.key)]));renderTable();});
   }
+  document.addEventListener('submit',event=>{if(event.target.id!=='overview-machine-search'||current!=='overview')return;event.preventDefault();query=$('overview-machine-query').value.trim();page=1;loadState(false);});
   document.addEventListener('click',async(event)=>{
+    if(event.target.closest('[data-clear-machine-search]')){query='';page=1;loadState(false);return;}
     if(event.target.closest('#actions-menu button, #actions-menu a')||!event.target.closest('.menu-anchor'))closeActions();
     if(event.target.closest('[data-update-environment]')){if(current==='hosts'&&contextKind!=='machine')openAgentUpdates();return;}
     if(event.target.closest('[data-environment-overview]')){environmentOverview();return;}

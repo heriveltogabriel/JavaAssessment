@@ -12,7 +12,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
   const context=await browser.newContext({viewport:{width:1274,height:900}});const blocked=[];
   await context.route('**/*',route=>{if(new URL(route.request().url()).origin===base)return route.continue();blocked.push(route.request().url());return route.abort();});
   const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));page.setDefaultTimeout(10000);
-  await page.goto(base);await page.locator('#login-email').fill('fixture-admin@example.com');await page.locator('#password').fill('fixture-personal-password-1234');await page.locator('#login-submit').click();await page.locator('.machine-card').first().waitFor();
+  await page.goto(base);await page.locator('#login-email').fill('fixture-admin@example.com');await page.locator('#password').fill('fixture-personal-password-1234');await page.locator('#login-submit').click();await page.locator('.overview-machine-row').first().waitFor();
   const ready=()=>page.waitForFunction(()=>!document.getElementById('main-content').hasAttribute('aria-busy'));
   assert.equal(await page.locator('.metric-card[data-inventory="runtimes"] strong').innerText(),'1');
   assert.equal(await page.locator('.metric-card[data-inventory="hosts"] strong').innerText(),'1');

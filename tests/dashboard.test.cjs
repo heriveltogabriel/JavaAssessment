@@ -118,3 +118,17 @@ assert.deepEqual(dash.associations(datasourceData,configuredDatasource).map(a=>a
 assert.equal(dash.scoped(datasourceData,'a').datasources.length,1,'Multiple processes sharing one datasource configuration remain one record');
 assert.equal(JSON.stringify(datasourceData),snapshotBefore,'Evidence display must not rewrite raw datasource records');
 console.log('PASS: configured vs runtime datasources, no connection inference, shared process association, scoped counts, packaged driver/source and pool labeling');
+
+const landscapeFixture={hosts:[{id:'one',hostname:'<img src=x onerror=1>'},{id:'two',hostname:'two'}],servers:[{type:'Tomcat',version:'9.0.122',hostId:'one',state:'PROCESS_RUNNING'},{type:'Tomcat',version:'9.0.122',hostId:'two',state:'RUNNING'},{type:'WebLogic',version:null,hostId:'one',state:'PROCESS_RUNNING'},{type:'FilesOnly',version:'1',hostId:'one'}],datasources:[{name:'OrdersDS',driverVersion:'42.7.8',hostId:'one'},{name:'OrdersDS',driverVersion:'42.7.8',hostId:'two'},{name:'<script>unsafe</script>',driverVersion:null,hostId:'one'}]};
+assert.equal(dash.productGroups(landscapeFixture,'servers')[0].count,2);
+assert.equal(dash.productGroups(landscapeFixture,'servers')[0].hostCount,2);
+assert.equal(dash.productGroups(landscapeFixture,'servers').length,2);
+assert.equal(dash.productGroups(landscapeFixture,'datasources')[0].name,'OrdersDS');
+assert.equal(dash.productGroups(landscapeFixture,'datasources')[0].version,'42.7.8');
+const compact= dash.compactGroups(Array.from({length:8},(_,i)=>({name:'Group '+i,count:10})),80);
+assert.equal(compact.length,4);assert.equal(compact[3].count,50);assert.equal(compact.reduce((n,g)=>n+g.count,0),80);
+const compactHtml=dash.overview(landscapeFixture);
+assert.equal((compactHtml.match(/data-landscape=/g)||[]).length,4);
+assert.match(compactHtml,/Driver: Não informada/);assert.ok(!compactHtml.includes('<script>unsafe'));
+assert.match(compactHtml,/overview-machine-table/);assert.ok(!compactHtml.includes('class="machine-card'));
+console.log('PASS: compact server and datasource-version groups, unknown metadata, remainder totals, four panels and escaped host table.');

@@ -39,7 +39,7 @@ async function contextFixture(webRoot) {
     const capture=async name=>{await page.locator('#toast').waitFor({state:'hidden'});await page.screenshot({path:path.join(out,name),fullPage:true});};
     await page.goto(fixture.base);
     await page.locator('#login-layer').waitFor({state:'hidden'});
-    await page.locator('.machine-card').first().waitFor();
+    await page.locator('.overview-machine-row').first().waitFor();
     const state=fixture.state;
     const tab=async view=>{await page.locator('#tabs [data-tab="'+view+'"]').click();};
     const rootTab=async view=>{
@@ -119,7 +119,7 @@ async function contextFixture(webRoot) {
     assert.ok((await page.locator('.environment-card').innerText()).includes('Production'));
     await page.locator('[data-select-environment="env-a"]').click();
     assert.equal(await page.locator('#tabs').isVisible(),true,'explicit environment entry shows tabs');
-    assert.equal(await page.locator('.machine-card').count(),2,'same-environment hosts make leaks detectable');
+    assert.equal(await page.locator('.overview-machine-row').count(),2,'same-environment hosts make leaks detectable');
     assert.equal(await page.locator('.os-distribution-panel .ring-chart strong').innerText(),'2','OS distribution follows environment');
     assert.ok(!(await page.locator('.os-distribution-panel').innerText()).includes('Oracle Linux Server 8.10'));
     await capture('02-environment-context-desktop.png');
@@ -172,7 +172,7 @@ async function contextFixture(webRoot) {
     // Unassigned and empty environments cannot fall back to the whole fleet.
     await environment('__unassigned__');await assertInventory(['host-c'],'Unassigned environment');
     await environment('env-empty');await assertInventory([],'Empty environment');
-    await tab('overview');assert.equal(await page.locator('.machine-card').count(),0);
+    await tab('overview');assert.equal(await page.locator('.overview-machine-row').count(),0);
     await rootTab('environments');assert.equal(await page.locator('#tabs').isVisible(),false);
     assert.equal(await page.locator('.environment-card').count(),1);
     assert.ok((await page.locator('.environment-card').innerText()).includes('Empty environment'));

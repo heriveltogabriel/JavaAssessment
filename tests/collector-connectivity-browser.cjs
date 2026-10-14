@@ -19,7 +19,7 @@ const {startFixture}=require('./fixtures/environments-fixture.cjs');
     page.on('pageerror',error=>errors.push(error.message));
     await page.goto(fixture.base+'/#overview?env=all');
     await page.locator('#login-layer').waitFor({state:'hidden'});
-    const card=page.locator('.machine-card.silent').filter({has:page.locator('[data-machine="host-b"]')});
+    const card=page.locator('.overview-machine-row.silent').filter({has:page.locator('[data-machine="host-b"]')});
     await card.waitFor();
     assert.match(await card.innerText(),/No collector contact · 7 min ago/);
     await page.screenshot({path:path.join(out,'01-overview-stale-machine.png'),fullPage:true});
