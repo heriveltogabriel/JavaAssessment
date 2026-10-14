@@ -2,7 +2,12 @@
 
 ## Atualização remota completa do agente
 
-**Status:** adiada por decisão do usuário em 2026-10-14. Manter o mecanismo atual por enquanto.
+**Status:** retomada pelo usuário em 2026-10-14, com compatibilidade mínima 1.5.12. Desenho e plano de execução elaborados; implementação e validação da migração ainda pendentes. O mecanismo em produção continua sendo o atual.
+
+- [Desenho: migração, preservação, recuperação, limpeza e assessment](superpowers/specs/2026-10-14-full-agent-update-design.md)
+- [Plano com oito workflows e gates de validação](superpowers/plans/2026-10-14-full-agent-update.md)
+
+O primeiro gate usa o atualizador e os scripts originais 1.5.12, incluindo ACK, limpeza, locks e passagem para recuperação independente. Depois dos testes isolados, duas máquinas ainda em 1.5.12 serão canários em sequência. Uma segunda release que altere suporte/manager deverá comprovar a evolução posterior pelo painel.
 
 Hoje a atualização remota substitui somente `collector.jar`. Os scripts, bibliotecas e o atualizador instalado precisam corresponder aos arquivos de suporte do manifesto assinado. Pular versões é permitido quando esses requisitos continuam compatíveis.
 
@@ -19,4 +24,4 @@ Nos pacotes publicados, 1.5.10 a 2.0.0 usam `update-v1`; a 2.0.1 passou a `updat
 
 Não remover verificações de assinatura, hashes ou geração do atualizador para liberar artificialmente agentes antigos.
 
-Enquanto esta melhoria está adiada, toda entrega deve lembrar a atualização dos agentes no dashboard e nas instruções, conforme [o processo de release](RELEASE_PROCESS.md).
+Toda entrega continua lembrando a atualização dos agentes no dashboard e nas instruções, conforme [o processo de release](RELEASE_PROCESS.md). O novo plano inclui a opção de executar um assessment após a confirmação final; essa opção também aguarda implementação.

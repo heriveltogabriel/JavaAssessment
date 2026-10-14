@@ -86,6 +86,7 @@ Os testes de navegador usam Playwright e Chrome. Configure `NODE`, `NODE_PATH`, 
 
 - [Processo de release e aviso obrigatório de atualização dos agentes](docs/RELEASE_PROCESS.md)
 - [Melhorias planejadas](docs/TODO.md)
+- [Plano do atualizador completo a partir da 1.5.12 e assessment após atualizar](docs/superpowers/plans/2026-10-14-full-agent-update.md) — planejado; ainda não disponível na versão publicada.
 - [Visão funcional, operação e limites](docs/SOLUTION.md)
 - [Mudanças e validação da 2.0.5](docs/RELEASE_2.0.5.md)
 - [Instalação e configuração](dashboard-installer/GUIA_INSTALACAO.md)
