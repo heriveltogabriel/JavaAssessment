@@ -245,7 +245,7 @@ for ARTIFACT in "$SOURCE"/lib/*.jar; do
 done
 chmod 755 "$DEST"/*.sh "$DEST/lib"
 chmod 644 "$DEST/collector.jar" "$DEST"/lib/*.jar
-if test "$SOURCE" != "$DEST"; then cp "$SOURCE/conf/ca.pem" "$DEST/conf/ca.pem"; fi
+if test "$SOURCE" != "$DEST" && test ! -f "$DEST/conf/collector.properties"; then cp "$SOURCE/conf/ca.pem" "$DEST/conf/ca.pem"; fi
 chmod 600 "$DEST/conf/ca.pem"
 fi
 CA_FILE=$DEST/conf/ca.pem

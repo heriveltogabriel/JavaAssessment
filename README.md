@@ -86,7 +86,7 @@ Os testes de navegador usam Playwright e Chrome. Configure `NODE`, `NODE_PATH`, 
 
 - [Processo de release e aviso obrigatório de atualização dos agentes](docs/RELEASE_PROCESS.md)
 - [Melhorias planejadas](docs/TODO.md)
-- [Plano do atualizador completo a partir da 1.5.12 e assessment após atualizar](docs/superpowers/plans/2026-10-14-full-agent-update.md) — planejado; ainda não disponível na versão publicada.
+- [Plano do atualizador completo a partir da 1.5.12 e assessment após atualizar](docs/superpowers/plans/2026-10-14-full-agent-update.md) — implementado no código em validação; ainda não disponível na versão publicada.
 - [Visão funcional, operação e limites](docs/SOLUTION.md)
 - [Mudanças e validação da 2.0.5](docs/RELEASE_2.0.5.md)
 - [Instalação e configuração](dashboard-installer/GUIA_INSTALACAO.md)
@@ -94,6 +94,8 @@ Os testes de navegador usam Playwright e Chrome. Configure `NODE`, `NODE_PATH`, 
 - [Instalação do coletor](collector/INSTALL.md)
 - [Arquitetura e contrato HTTP](CONTRACT.md)
 - [Reconstrução do pacote de fontes](dashboard-installer/README-SOURCE.md)
+- [Atualização completa V3 e assessment posterior](docs/AGENT_UPDATE_V3.md)
+- [Validações e gates antes de publicar](docs/validation/full-agent-update.md)
 - [Migração e backup](dashboard-installer/BETA_MIGRATION.md)
 
 Os nomes de alguns scripts e documentos mantêm `beta` por compatibilidade com a estrutura anterior. A versão atual do produto é 2.0.5. Relatórios históricos descrevem somente o cenário e a versão em que foram produzidos.

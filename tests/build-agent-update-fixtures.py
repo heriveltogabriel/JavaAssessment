@@ -40,7 +40,7 @@ def build(destination,version):
             transport=scratch/'AgentTransport.java'
             import re
             transport.write_text(re.sub(r'static final String VERSION = "[^"]+";', 'static final String VERSION = "'+selected+'";', (ROOT/'collector/AgentTransport.java').read_text()))
-            sources=[ROOT/'shared/Json.java',transport,*[p for p in sorted((ROOT/'collector').glob('*.java')) if not p.stem.endswith('Test') and p.name!='AgentTransport.java']]
+            sources=[*sorted((ROOT/'shared').glob('*.java')),transport,*[p for p in sorted((ROOT/'collector').glob('*.java')) if not p.stem.endswith('Test') and p.name!='AgentTransport.java']]
             compile_product(ROOT,classes,java,sources)
             if name=='bad':
                 # Pass staging probe, then fail from the installed path: exercise actual rollback.

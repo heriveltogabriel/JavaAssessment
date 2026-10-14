@@ -4,15 +4,22 @@ umask 077
 unset JAVA_TOOL_OPTIONS _JAVA_OPTIONS JDK_JAVA_OPTIONS LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT LD_DEBUG CLASSPATH ENV BASH_ENV
 if test "$(/usr/bin/id -u)" = 0; then PATH=/usr/sbin:/usr/bin:/sbin:/bin; export PATH; fi
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+CODE=$ROOT
+case "$CODE" in /opt/java-assessment-collector/releases/*) ROOT=/opt/java-assessment-collector;; esac
 if test "$(/usr/bin/id -u)" = 0; then
   # Reuse the root-only helper/path/package checks before touching locks or logs.
   ASSESSMENT_ROOT=$ROOT
-  . "$ROOT/launcher-common.sh"
+  ASSESSMENT_CODE=$CODE
+  . "$CODE/launcher-common.sh"
 fi
 # Shell lock covers event retry and log rotation; Java also locks the scan itself.
 # The independent updater sends its own version heartbeat while this durable
 # journal blocks collection. A lost network ACK must not dispatch a new scan.
 if test "$ROOT" = /opt/java-assessment-collector && test -f /opt/java-assessment-update/journal.json; then exit 0; fi
+if test "$ROOT" = /opt/java-assessment-collector && test -f /opt/java-assessment-update/state/transaction.json; then
+  # An acknowledged upgrade remains usable if housekeeping needs a retry.
+  grep -Eq '"phase":"(COMMITTED|CLEANING)"' /opt/java-assessment-update/state/transaction.json || exit 0
+fi
 INSTALL_LOCK=$ROOT/collector-spool/.install-lock
 if test -d "$INSTALL_LOCK"; then
   INSTALL_PID=''

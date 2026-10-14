@@ -17,6 +17,7 @@ final class AgentUpdateCatalog {
     record Release(String version,byte[] manifest,byte[] signature,Path jar,String sha256,long bytes,int minUpdater){}
     private final Path root;
     AgentUpdateCatalog(File root){this.root=root.toPath();}
+    File rootFile(){return root.toFile();}
     static boolean version(String value){return value!=null&&value.matches("(?:0|[1-9][0-9]{0,8})\\.(?:0|[1-9][0-9]{0,8})\\.(?:0|[1-9][0-9]{0,8})");}
     static int compare(String a,String b){if(!version(a)||!version(b))throw new IllegalArgumentException("Invalid numeric version");String[] x=a.split("\\."),y=b.split("\\.");for(int i=0;i<3;i++){int c=Long.compare(Long.parseLong(x[i]),Long.parseLong(y[i]));if(c!=0)return c;}return 0;}
     private static void require(boolean condition)throws IOException{if(!condition)throw new IOException("Signed update catalog validation failed");}

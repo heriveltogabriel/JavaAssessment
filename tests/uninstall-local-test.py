@@ -83,6 +83,35 @@ elif a[0]=='daemon-reload' and (b/'reload-fail').exists():sys.exit(1)
    elif kind=='mount':put(base/'mounts',f'dev {root}/logs ext4 rw 0 0\n')
    run(False);assert (root/'collector.jar').exists();checks.append(kind+' refused')
    if kind=='mount':put(base/'mounts','')
+  # V3 Java inventory is tested against real signed ZIPs separately. This
+  # transplanted shell fixture verifies only fixed service/removal ordering.
+  for mode in ('systemd','sysv'):
+   setup(mode);updater=base/'updater'
+   if updater.exists():shutil.rmtree(updater)
+   put(helper/'v3-inventory.json','{"schema":1}\n')
+   fake_java=helper/'fixture-java'
+   put(helper/'java.path',str(fake_java)+'\n')
+   put(helper/'root-trust.sh','#!/bin/sh\nif test "$1" = java;then printf "%s\\n" "$2";fi\nexit 0\n',0o700)
+   put(fake_java,f'''#!/bin/sh
+for last do :;done
+case "$last" in
+ check) test ! -f '{base}/v3-check-fail';;
+ remove) rm -rf '{root}' '{updater}';;
+ check-helper) exit 0;;
+ *) exit 2;;
+esac
+''',0o700)
+   if mode=='systemd':
+    put(updater/'bootstrap/recovery.service','owned V3 recovery\n');put(systemd/'java-assessment-recovery.service','owned V3 recovery\n')
+    put(updater/'helper.service','owned legacy update\n');put(systemd/'java-assessment-update.service','owned legacy update\n')
+   else:
+    put(updater/'bootstrap/recovery.init','owned V3 recovery init\n');put(init/'java-assessment-recovery','owned V3 recovery init\n')
+    put(updater/'bootstrap/update-bootstrap.sh','#!/bin/sh\nexit 0\n',0o700)
+    put(updater/'helper.init','owned legacy update init\n');put(init/'java-assessment-update','owned legacy update init\n')
+    put(updater/'update-service.sh','#!/bin/sh\nexit 0\n',0o700)
+   put(base/'v3-check-fail','1');run(False);assert root.exists() and updater.exists();(base/'v3-check-fail').unlink()
+   run();assert not root.exists() and not updater.exists();assert not (systemd/'java-assessment-recovery.service').exists() and not (init/'java-assessment-recovery').exists();run()
+   checks.append(mode+' V3 signed-inventory boundary, recovery/legacy updater services and repeat')
   assert app.poll() is None
   after={str(p.relative_to(base)):(p.read_bytes(),p.stat().st_mode) for folder in ('apps','jvm','dashboard') for p in (base/folder).rglob('*') if p.is_file()}
   assert before==after

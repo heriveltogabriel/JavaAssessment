@@ -10,20 +10,44 @@ INIT=$(readlink -f /etc/init.d)
 test "$(id -u)" = 0 || exit 2
 case "${1:-}" in systemd|sysv) mode=$1;; *) exit 2;; esac
 test "$#" = 1 || exit 2
+SOURCE=$ROOT
+V3=false
+if test -f "$ROOT/current.json"; then
+  V3=true
+  BOOT=/opt/java-assessment-update/bootstrap
+  /bin/sh "$BOOT/root-trust.sh" package "$ROOT"
+  IFS= read -r java < "$ROOT/conf/java.path"
+  java=$(/bin/sh "$BOOT/root-trust.sh" java "$java")
+  cp_path=$BOOT/anchor.jar
+  for lib in "$BOOT"/lib/*.jar; do test ! -f "$lib" || cp_path="$cp_path:$lib"; done
+  SOURCE=$("$java" -Xms16m -Xmx96m -Djava.security.egd=file:/dev/./urandom -cp "$cp_path" assessment.AgentMigrationBootstrap code-path)
+  case "$SOURCE" in "$ROOT"/releases/*) ;; *) exit 1;; esac
+fi
 for file in "$HELPER/request.json" "$HELPER/claim.json" "$ROOT/collector-spool/uninstall-request.json";do test ! -e "$file" && test ! -L "$file" || { echo 'Uninstall is pending; refuse administrative overwrite.' >&2;exit 1; };done
 if test -d "$HELPER";then
   /bin/sh "$ROOT/root-trust.sh" package "$HELPER"
+  if $V3; then
+    # The immutable anchor checks the old helper before any library is pruned.
+    # A file merely ending in .jar is not evidence of product ownership.
+    "$java" -Xms16m -Xmx96m -Djava.security.egd=file:/dev/./urandom -cp "$cp_path" assessment.AgentV3UninstallInventory helper-owned
+  fi
   if test "$mode" = systemd;then systemctl stop java-assessment-uninstall.service;else /bin/sh "$HELPER/uninstall-service.sh" stop;fi
 fi
 # The existing root trust helper validates all parents, including /opt.
 test ! -L "$HELPER" || exit 1
 mkdir -p "$HELPER/lib"
 chmod 700 "$HELPER" "$HELPER/lib"
-for file in collector.jar root-trust.sh lifecycle-lock.sh uninstall-service.sh uninstall-local.sh;do
-  test -f "$ROOT/$file" && test ! -L "$ROOT/$file" || exit 1
-  cp "$ROOT/$file" "$HELPER/$file";chmod 600 "$HELPER/$file"
-done
-for lib in "$ROOT"/lib/*.jar;do cp "$lib" "$HELPER/lib/";done
+if $V3; then
+  # A durable per-file intent and atomic rename keep the independent executor
+  # recoverable if installation stops while its own JAR is being replaced.
+  "$java" -Xms16m -Xmx96m -Djava.security.egd=file:/dev/./urandom -cp "$cp_path" assessment.AgentV3UninstallInventory install-code
+else
+  for file in collector.jar root-trust.sh lifecycle-lock.sh uninstall-service.sh uninstall-local.sh;do
+    test -f "$SOURCE/$file" && test ! -L "$SOURCE/$file" || exit 1
+    cp "$SOURCE/$file" "$HELPER/$file";chmod 600 "$HELPER/$file"
+  done
+  for lib in "$SOURCE"/lib/*.jar;do cp "$lib" "$HELPER/lib/";done
+fi
 cp "$ROOT/conf/java.path" "$HELPER/java.path";chmod 600 "$HELPER/java.path"
 printf '%s\n' "$mode" > "$HELPER/scheduler"
 # Explicit package-owned files. No traversal or dashboard-driven manifest.
@@ -59,7 +83,14 @@ conf/ca.pem
 trust/ca.pem
 logs/first-cycle.tmp
 FILES
-for lib in "$ROOT"/lib/*.jar;do printf 'lib/%s\n' "$(basename "$lib")" >> "$HELPER/owned-files";done
+for lib in "$SOURCE"/lib/*.jar;do printf 'lib/%s\n' "$(basename "$lib")" >> "$HELPER/owned-files";done
+if $V3; then
+  # Seal current helper code and the explicitly owned flat migration files.
+  # Versioned slots remain authorized by their retained signed receipts.
+  cp_path=$HELPER/collector.jar
+  for lib in "$HELPER"/lib/*.jar; do cp_path="$cp_path:$lib"; done
+  "$java" -Xms16m -Xmx96m -Djava.security.egd=file:/dev/./urandom -cp "$cp_path" assessment.AgentV3UninstallInventory seal
+fi
 rm -f "$HELPER/stop"
 if test "$mode" = systemd;then
   for unit in service timer;do cp "$SYSTEMD/java-assessment-collector.$unit" "$HELPER/collector.$unit";done

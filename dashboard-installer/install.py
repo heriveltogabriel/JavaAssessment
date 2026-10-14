@@ -26,6 +26,7 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 from bootstrap import choose_public_url, el_major, generate_tls, open_firewall
 from dependencies import verify_libraries
+from agent_updates import distribution_assets
 
 SOURCE = Path(__file__).resolve().parent
 DEST = Path('/opt/java-assessment-dashboard')
@@ -217,21 +218,20 @@ def repackage_collector(source, destination, ca_bytes):
             fail('Generic collector ZIP is incomplete or contains duplicate entries')
         if any(name.startswith('/') or '..' in Path(name).parts for name in names):
             fail('Generic collector ZIP contains an unsafe path')
+        if 'DEPENDENCIES.json' in names:
+            metadata = json.loads(original.read('DEPENDENCIES.json'))
+            metadata['ca'] = {'source': 'dashboard installer input',
+                              'sha256': hashlib.sha256(ca_bytes).hexdigest()}
+            replacements['DEPENDENCIES.json'] = json.dumps(metadata, indent=2).encode('utf-8')
         hashes = []
         with zipfile.ZipFile(destination, 'w', zipfile.ZIP_DEFLATED) as configured:
             for name in names:
-                if name in ('SHA256SUMS', 'DEPENDENCIES.json'):
+                if name == 'SHA256SUMS':
                     continue
                 data = replacements[name] if name in replacements else original.read(name)
                 configured.writestr(name, data)
                 hashes.append(f'{hashlib.sha256(data).hexdigest()}  {name}')
             configured.writestr('SHA256SUMS', '\n'.join(hashes) + '\n')
-            if 'DEPENDENCIES.json' in names:
-                import json
-                metadata = json.loads(original.read('DEPENDENCIES.json'))
-                metadata['ca'] = {'source': 'dashboard installer input',
-                                  'sha256': hashlib.sha256(ca_bytes).hexdigest()}
-                configured.writestr('DEPENDENCIES.json', json.dumps(metadata, indent=2))
 
 
 def write_private(path, content, mode=0o600):
@@ -309,10 +309,12 @@ def build_stage(stage, java_home, url, host, port, cert, key, ca, password, lega
     shutil.copyfile(ca, stage / 'conf/agent-ca.pem')
     repackage_collector(SOURCE / 'dist/assessment-collector.zip',
                         stage / 'dist/assessment-collector.zip', ca.read_bytes())
-    if (SOURCE / 'dist/agent-update-public.der').is_file():
-        shutil.copyfile(SOURCE / 'dist/agent-update-public.der', stage / 'dist/agent-update-public.der')
-        shutil.copytree(SOURCE / 'dist/agent-updates', stage / 'dist/agent-updates')
-    sources = [str(stage / 'shared/Json.java')] + [str(f) for f in sorted((stage / 'server').glob('*.java'))]
+    updates = distribution_assets(SOURCE, (SOURCE / 'VERSION').read_text().strip())
+    for name, content in updates.items():
+        target = stage / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+    sources = [str(f) for directory in ('shared', 'server') for f in sorted((stage / directory).glob('*.java'))]
     command([str(java_home / 'bin/javac'), '--release', '17', '-encoding', 'UTF-8',
              '--add-modules', 'jdk.httpserver', '-cp', str(stage / 'lib/*'),
              '-d', str(stage / 'classes')] + sources)
@@ -428,6 +430,7 @@ def save_root_secret(path, value):
 def install(args):
     verify_manifest()
     verify_libraries(SOURCE / 'lib')
+    distribution_assets(SOURCE, (SOURCE / 'VERSION').read_text().strip())
     if sys.platform != 'linux' and not args.check:
         fail('Run this installer on Enterprise Linux 8 or later')
     if not args.check:

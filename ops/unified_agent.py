@@ -2,6 +2,7 @@
 import io
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -26,11 +27,11 @@ def compile_product(root, destination, java, sources):
     return result.stdout + result.stderr
 
 
-def build(root, out, release, baseline, support, java):
+def build(root, out, release, baseline, support, java, full_bundle=False, bundle_bootstrap=None):
     version = release['version']
     require(agent_version((root / 'collector/AgentTransport.java').read_text()) == version,
             'Agent source version differs from shared release')
-    source_paths = [root / 'shared/Json.java', *[p for p in sorted((root / 'collector').glob('*.java'))
+    source_paths = [*sorted((root / 'shared').glob('*.java')), *[p for p in sorted((root / 'collector').glob('*.java'))
                                                if not p.stem.endswith('Test')]]
     source_bytes = {p: p.read_bytes() for p in source_paths}
     classes = out / 'build/collector'
@@ -87,4 +88,76 @@ def build(root, out, release, baseline, support, java):
             info.external_attr = (0o100000 | (0o755 if name.endswith('.sh') else 0o644)) << 16
             archive.writestr(info, data)
     support.read_zip(public)
+    if full_bundle:
+        build_bundle(root, out, public, version, bundle_bootstrap)
     return public
+
+
+def build_bundle(root, out, agent_path, version, bootstrap=None):
+    """Explicit opt-in full artifacts; existing JAR-only release builds stay unchanged."""
+    from agent_update_signing import sign_bundle_release
+    assets = sign_bundle_release(root, agent_path, version, bootstrap)
+    for name, data in assets.items():
+        target = out / 'build' / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        require(not target.exists(), 'Immutable full bundle output already exists: ' + name)
+        target.write_bytes(data)
+    return assets
+
+
+def build_bridge(root, out, origin_zip, bridge_version, target_version, java,
+                 origin_sha256, allowed_helper_hashes=None):
+    """Compile staged Java-6 bridge sources with a private version override.
+
+    Source files in the checkout are never changed. The baseline package is
+    independently pinned; the original collector is embedded for post-ACK
+    recovery. No signing private key is used by this compilation function.
+    """
+    from agent_update_signing import legacy_bridge_profile, validate_jar, VERSION
+    require(VERSION.fullmatch(bridge_version) and VERSION.fullmatch(target_version), 'Invalid bridge version')
+    original, profile = legacy_bridge_profile(origin_zip, origin_sha256)
+    numeric = lambda value: tuple(map(int, value.split('.')))
+    require(numeric('1.5.12') <= numeric(profile['fromVersion']) < numeric(bridge_version) < numeric(target_version), 'Invalid bridge ordering')
+    helpers = list(allowed_helper_hashes or [profile['fromCollectorSha256']])
+    require(profile['fromCollectorSha256'] in helpers and len(helpers) <= 16 and len(set(helpers)) == len(helpers)
+            and all(re.fullmatch('[a-f0-9]{64}', value) for value in helpers), 'Bridge helper hashes must be explicit known baselines')
+    metadata = {'schema': 1, **profile, 'bridgeVersion': bridge_version, 'targetVersion': target_version,
+                'recoveryResource': 'migration/baseline/collector.jar', 'allowedHelperHashes': helpers}
+    target = out / 'build' / ('assessment-bridge-' + bridge_version + '-' + profile['fromVersion'] + '.jar')
+    target.parent.mkdir(parents=True, exist_ok=True)
+    require(not target.exists(), 'Immutable bridge build output already exists')
+    with tempfile.TemporaryDirectory(prefix='bridge-compile-', dir=target.parent) as temporary:
+        scratch = Path(temporary)
+        sources = scratch / 'sources'
+        sources.mkdir()
+        paths = [*sorted((root / 'shared').glob('*.java')), *[p for p in sorted((root / 'collector').glob('*.java')) if not p.stem.endswith('Test')]]
+        original_sources = {path: path.read_bytes() for path in paths}
+        staged = []
+        for path, data in original_sources.items():
+            if path.name == 'AgentTransport.java':
+                text, count = re.subn(r'static final String VERSION = "[^"]+";', 'static final String VERSION = "' + bridge_version + '";', data.decode())
+                require(count == 1, 'Bridge source version override is ambiguous')
+                data = text.encode()
+            copy = sources / path.name
+            copy.write_bytes(data)
+            staged.append(copy)
+        classes = scratch / 'classes'
+        classes.mkdir()
+        compile_product(root, classes, java, staged)
+        files = {path.relative_to(classes).as_posix(): path.read_bytes() for path in classes.rglob('*.class')}
+        require(files and all(int.from_bytes(data[6:8], 'big') == 50 for data in files.values()), 'Bridge must retain Java-6 bytecode')
+        files['META-INF/MANIFEST.MF'] = ('Manifest-Version: 1.0\nImplementation-Version: ' + bridge_version + '\n\n').encode()
+        files['migration/bridge.json'] = (json.dumps(metadata, sort_keys=True, separators=(',', ':')) + '\n').encode()
+        files['migration/baseline/collector.jar'] = original['collector.jar']
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, 'w', zipfile.ZIP_DEFLATED) as jar:
+            for name, data in sorted(files.items()):
+                info = zipfile.ZipInfo(name, (1980, 1, 1, 0, 0, 0))
+                info.compress_type = zipfile.ZIP_DEFLATED
+                info.external_attr = 0o100600 << 16
+                jar.writestr(info, data)
+        payload = stream.getvalue()
+        validate_jar(payload, bridge_version)
+        require(all(path.read_bytes() == data for path, data in original_sources.items()), 'Checkout source changed during bridge compilation')
+        target.write_bytes(payload)
+    return target

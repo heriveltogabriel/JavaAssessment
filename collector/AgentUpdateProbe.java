@@ -12,8 +12,11 @@ public final class AgentUpdateProbe {
             JavaProbe.main(new String[0]);
             String[] classes = {"assessment.AssessmentCollector", "assessment.AssessmentScan", "assessment.AgentTransport",
                 "assessment.AgentUpdateWorker", "org.bouncycastle.jce.provider.BouncyCastleProvider",
-                "org.bouncycastle.jsse.provider.BouncyCastleJsseProvider"};
+                "org.bouncycastle.jsse.provider.BouncyCastleJsseProvider", "assessment.AgentBundleManifest",
+                "assessment.AgentMigrationBootstrap", "assessment.AgentBundleInstaller", "assessment.AgentBundleRecovery",
+                "assessment.AgentOwnedCleanup", "assessment.AgentV3UninstallInventory"};
             for (int i = 0; i < classes.length; i++) Class.forName(classes[i]);
+            AgentMigrationBootstrap.probeBridge();
             if ("probe".equals(args[0])) {
                 if (args.length != 2) throw new IllegalArgumentException("Invalid probe arguments");
                 System.out.println("AGENT_UPDATE_PROBE=" + AgentTransport.VERSION); return;

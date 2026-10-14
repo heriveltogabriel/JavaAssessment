@@ -87,13 +87,13 @@ Each inventory record has `id` and `hostId`; IDs need only be unique within the 
 
 Results retry by `(hostId,jobId,eventId)` without duplicate inventory. A result arriving after a server restart or lease timeout may complete its original job; an older captured snapshot cannot replace newer machine inventory. Invalid ownership or a database error rejects the entire snapshot.
 
-## Beta limits and operation
+## Limits and operation
 
 - 1,000 registered machines; 200 environments; 500 enrollment records.
 - Result body 2 MiB; other JSON bodies 32 KiB. Up to 2,000 rows per inventory kind; 16 KiB per row; 64 KiB host detail record.
 - HTTP and HTTPS each use eight workers and a queue of 32; exports are serialized.
 - Default retention: 100 completed jobs and 200 result receipts per machine. `jobHistoryPerHost` (10–1,000) and `receiptHistoryPerHost` (200–2,000) configure these limits. Queued/running jobs are preserved.
-- Installer dashboard heap: 384 MiB; systemd total-memory ceiling: 768 MiB. Native and OS memory are additional to Java heap. OOM exits the process so systemd can restart it.
+- Installer dashboard heap: Xms/Xmx 1,536 MiB; systemd total-memory ceiling: 2 GiB. Native and OS memory are additional to Java heap. OOM exits the process so systemd can restart it.
 - Recurrence is disabled initially. Collection defaults: 120 seconds, 10,000 files, batches of 100 with a 30 ms pause. Scope paths and limits can be overridden per environment/machine.
 - The collector continues using existing protected JVM discovery, system service, bounded scans and HTTPS. Application directory permissions are not changed.
 
@@ -115,3 +115,13 @@ States: `WAITING`, `UNINSTALLING`, `SUCCEEDED`, `FAILED`, `UNCONFIRMED`, `CANCEL
 At most 100 records per machine and 20 audit entries per request are retained. Valid completion receipts are not evicted early; new requests are refused if retention is full. Public host views/exports contain the latest request and bounded audit, never completion credentials or request keys. `summary.activeAgents` counts active operational identities and excludes confirmed uninstalled agents. Host/inventory counts remain historical.
 
 The fixed remover rejects unknown files, symlinks, hardlinks, nested mounts, changed service units, systemd overrides, alternative scheduler files and collector entries in crontabs. It removes only inspected owned files; application JVMs and files are untouched. Existing administrator rollback directories outside `/opt/java-assessment-collector` are preserved. Nonempty internal backup directories require inspection. Helper identity/CA/completion state is removed after confirmation or its local 24-hour deadline. One bounded credential-free diagnostic record remains. See `docs/REMOTE_UNINSTALL_REVIEW.md` for validation and operational limits.
+
+## Complete agent update (V3, not yet published)
+
+The full implementation and release gates are specified in `docs/AGENT_UPDATE_V3.md` and `docs/validation/full-agent-update.md`. Known protected installations from 1.5.12 may migrate through a signed, origin-specific legacy bridge; version alone does not establish compatibility. Existing V3 managers receive a complete signed bundle directly.
+
+One logical operation spans bridge and final generation. Dedicated V3 claim, pinned route/bundle/manager hashes, a new manager process and final authenticated heartbeat are required for success. V1 reports cannot complete a V3 parent. Recovery, active/previous code and immutable bootstrap are independent of configuration, identity, CA, JVM and spool. Unknown files are preserved.
+
+`runAssessmentAfterUpdate` is a strict boolean included in request-key identity. The UI defaults to true; omitted API fields default to false. Only final success enables an idempotent post-update assessment. It may reuse a job without a lease, uses current effective settings, and is limited to one linked collection per environment and two globally, with ten seconds between starts in one environment. Collection outcome remains separate from update success.
+
+The complete bundle is bounded at 64 MiB transferred / 128 MiB expanded / 256 files, with RSA-3072 signatures and exact file inventory. The legacy JAR route remains bounded at 32 MiB. Collector and manager launchers retain a 96 MiB maximum heap. Real Linux service/reboot and Java 6 validation remain release gates; 32-bit support is not claimed as tested.

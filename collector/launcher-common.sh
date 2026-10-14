@@ -31,9 +31,10 @@ assessment_check_private_file() {
   fi
 }
 assessment_select_java() {
-ASSESSMENT_CP="$ASSESSMENT_ROOT/classes"
-if test -f "$ASSESSMENT_ROOT/collector.jar"; then ASSESSMENT_CP="$ASSESSMENT_ROOT/collector.jar"; fi
-for ASSESSMENT_LIBRARY in "$ASSESSMENT_ROOT"/lib/*.jar; do
+ASSESSMENT_CODE=${ASSESSMENT_CODE:-$ASSESSMENT_ROOT}
+ASSESSMENT_CP="$ASSESSMENT_CODE/classes"
+if test -f "$ASSESSMENT_CODE/collector.jar"; then ASSESSMENT_CP="$ASSESSMENT_CODE/collector.jar"; fi
+for ASSESSMENT_LIBRARY in "$ASSESSMENT_CODE"/lib/*.jar; do
   test -f "$ASSESSMENT_LIBRARY" && ASSESSMENT_CP="$ASSESSMENT_CP:$ASSESSMENT_LIBRARY"
 done
 ASSESSMENT_JAVA_BIN=''

@@ -111,3 +111,32 @@ def finish(root, version, status):
         release = next(item for item in state['releases'] if item['version'] == version)
         release['status'] = status
         write_state(state_path, state)
+
+
+def reserve_update_pair(root, minimum_version=None, requested_version=None):
+    """Reserve B and T in one lock, without reusing an internal bridge number."""
+    root = Path(root)
+    state_path = root / 'release/dashboard.json'
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    with (state_path.parent / '.dashboard-release.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        state = json.loads(state_path.read_text())
+        highest = max(version_numbers(state['version']), version_numbers(minimum_version or state['version']),
+                      *(version_numbers(item['version']) for item in state['releases']))
+        bridge = next_version('.'.join(map(str, highest)))
+        target = next_version(bridge) if requested_version is None else stable_version(requested_version)
+        if version_numbers(target) <= version_numbers(bridge):
+            raise ValueError('Full update needs a reserved internal bridge below the final release')
+        base = root / 'output/dashboard-releases'
+        # A partial mkdir remains a used reservation; no existing output is reset.
+        (base / bridge).mkdir(parents=True, exist_ok=False)
+        output = base / target
+        output.mkdir(parents=True, exist_ok=False)
+        built_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        internal = {'version': bridge, 'builtAt': built_at, 'status': 'bridge-reserved',
+                    'kind': 'agent-bridge', 'targetVersion': target}
+        release = {'version': target, 'builtAt': built_at, 'status': 'reserved', 'bridgeVersion': bridge}
+        state['version'] = target
+        state['releases'].extend((internal, release))
+        write_state(state_path, state)
+        return release, output

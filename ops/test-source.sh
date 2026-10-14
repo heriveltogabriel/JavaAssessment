@@ -5,11 +5,11 @@ cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 : "${JAVA_HOME:?Set JAVA_HOME to a JDK 17+ directory}"
 mkdir -p tmp/source-classes tmp/source-evidence
 "$JAVA_HOME/bin/javac" --release 17 -encoding UTF-8 -cp 'lib/*' \
-  -d tmp/source-classes shared/Json.java server/*.java collector/*.java tests/*.java
+  -d tmp/source-classes shared/*.java server/*.java collector/*.java tests/*.java
 CP='tmp/source-classes:lib/*'
 for suite in ArchiveMetadataTest WebLogicVersionTest SpringDataSourceTest RuntimeInventoryTest \
   ProcessLaunchTest JdkInventoryTest BoundedDirectoryTest CollectorSweepTest \
-  CollectorTest AgentToolTest LegacyDiscoveryTest; do
+  CollectorTest AgentToolTest LegacyDiscoveryTest AgentBundleManifestTest; do
   "$JAVA_HOME/bin/java" -Xmx96m -cp "$CP" "assessment.$suite"
 done
 "$JAVA_HOME/bin/java" -Xmx96m -cp "$CP" assessment.ServerDataSourcesTest \
@@ -17,7 +17,7 @@ done
 for suite in InventoryStoreTest UserAuthTest UserAccessHttpTest \
   MachineActionsHttpTest AgentUpdateWorkerTest AgentUpdateHttpTest \
   WorkRequestsHttpTest RuntimeInventoryHttpTest CsvExportTest \
-  VersionedCsvHttpTest DashboardVersionHttpTest CompactOverviewTest; do
+  VersionedCsvHttpTest DashboardVersionHttpTest CompactOverviewTest PostUpdateAssessmentsTest PostUpdateAssessmentHttpTest; do
   "$JAVA_HOME/bin/java" -Xmx384m -cp "$CP" "assessment.$suite"
 done
 "$JAVA_HOME/bin/java" -Xmx384m -cp "$CP" assessment.JdbcOverviewHttpTest \

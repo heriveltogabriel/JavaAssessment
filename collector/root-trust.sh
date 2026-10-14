@@ -145,6 +145,11 @@ case "${1:-}" in
     safe_path "$2" && test -f "$2" && test ! -L "$2" || fail 'configuration path is not trusted'
     case "$(stat -c %a "$2")" in 600|400) ;; *) fail 'configuration files must have mode 600 or 400';; esac
     ;;
+  ca)
+    test "$#" -eq 2 || fail 'expected ca /absolute/CA/path'
+    safe_path "$2" && test -f "$TRUST_RESOLVED" || fail 'CA path is not trusted'
+    test "$(wc -c < "$TRUST_RESOLVED")" -le 524288 || fail 'CA bundle exceeds bound'
+    ;;
   links)
     test "$#" -ge 4 || exit 1
     TRUST_BATCH_TREE=$2; TRUST_BATCH_DEPTH=$3; shift 3

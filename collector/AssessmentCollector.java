@@ -55,6 +55,14 @@ public final class AssessmentCollector {
     }
 
     static String updateCapability(Properties config) {
+        if ("/opt/java-assessment-collector/collector-spool".equals(config.getProperty("spoolDirectory"))) {
+            try {
+                AgentInstallLayout layout = AgentInstallLayout.production();
+                if (layout.current() != null && new File(layout.home, "bootstrap/anchor.jar").isFile()
+                    && new File(layout.home, "bootstrap/update-bootstrap.sh").isFile()
+                    && "update-v3".equals(AssessmentScan.readFile(new File(layout.root, "conf/update-capability"), 32).trim())) return "update-v3";
+            } catch (Exception invalid) { return ""; }
+        }
         if (!("/opt/java-assessment-collector/collector-spool".equals(config.getProperty("spoolDirectory"))
             && new File("/opt/java-assessment-collector/conf/root-service-mode").isFile()
             && new File("/opt/java-assessment-update/helper.jar").isFile()
@@ -73,6 +81,11 @@ public final class AssessmentCollector {
 
     private boolean publishAction(Object action) throws Exception {
         if (action == null) return false;
+        if (action instanceof Map && "UPDATE_AGENT_V3".equals(((Map)action).get("type"))) {
+            if (!"update-v3".equals(updateCapability(config))) throw new IOException("Unsupported complete update action");
+            AssessmentScan.atomicWrite(new File(spool, "update-v3-request.json"), Json.stringify(action));
+            System.out.println("ASSESSMENT_COMPLETE_UPDATE_PENDING"); return true;
+        }
         if (action instanceof Map && "UPDATE_AGENT_V1".equals(((Map)action).get("type"))) {
             if (!updateCapable(config)) throw new IOException("Unsupported update action");
             AssessmentScan.atomicWrite(new File(spool, "update-request.json"), Json.stringify(action));
@@ -89,13 +102,18 @@ public final class AssessmentCollector {
         try {
             lock = lockFile.getChannel().tryLock();
             if (lock == null) throw new IOException("Another collector is running");
+            if (AgentMigrationBootstrap.continueBridge(config)) { System.out.println("ASSESSMENT_MIGRATION_HANDOFF_PENDING"); return; }
             String hostname = config.getProperty("hostname");
             if (hostname == null || hostname.trim().length() == 0) {
                 try { hostname = InetAddress.getLocalHost().getHostName(); }
                 catch (Exception e) { hostname = hostId; }
             }
-            request("POST", "/api/agent/heartbeat", Json.stringify(AssessmentScan.map(
-                "hostId", hostId, "hostname", hostname, "javaVersion", System.getProperty("java.version"), "collectorVersion", AgentTransport.VERSION, "uninstallCapability", uninstallCapable() ? "uninstall-v1" : "", "updateCapability", updateCapability(config))));
+            Map heartbeat = AssessmentScan.map("hostId", hostId, "hostname", hostname, "javaVersion", System.getProperty("java.version"), "collectorVersion", AgentTransport.VERSION, "uninstallCapability", uninstallCapable() ? "uninstall-v1" : "", "updateCapability", updateCapability(config));
+            heartbeat.putAll(AgentInstallLayout.heartbeat(config)); request("POST", "/api/agent/heartbeat", Json.stringify(heartbeat));
+            if ("update-v3".equals(updateCapability(config))) {
+                Map completeAction = new AgentBundleTransport(config).action();
+                if (publishAction(completeAction.get("action"))) return;
+            }
             if (uninstallCapable() || updateCapable(config)) {
                 Map actions = request("GET", "/api/agent/actions?hostId=" + URLEncoder.encode(hostId, "UTF-8") + capabilities(), null);
                 if (publishAction(actions.get("action"))) return;

@@ -40,9 +40,11 @@ public final class AgentTool {
     }
     static Map heartbeat(Properties config, AgentTransport transport) throws Exception {
         String hostId = AssessmentCollector.required(config, "hostId");
-        Map ack = transport.request("POST", "/api/agent/heartbeat", Json.stringify(AssessmentScan.map(
+        Map body = AssessmentScan.map(
             "hostId", hostId, "hostname", hostname(config), "javaVersion", System.getProperty("java.version"),
-            "collectorVersion", AgentTransport.VERSION, "updateCapability", AssessmentCollector.updateCapability(config))), AssessmentCollector.required(config, "agentToken"));
+            "collectorVersion", AgentTransport.VERSION, "updateCapability", AssessmentCollector.updateCapability(config));
+        body.putAll(AgentInstallLayout.heartbeat(config));
+        Map ack = transport.request("POST", "/api/agent/heartbeat", Json.stringify(body), AssessmentCollector.required(config, "agentToken"));
         if (!Boolean.TRUE.equals(ack.get("accepted"))) throw new IOException("Heartbeat was not acknowledged");
         return ack;
     }
@@ -162,7 +164,13 @@ public final class AgentTool {
     }
     public static void main(String[] args) {
         try {
-            if (args.length == 3 && args[0].equals("register")) register(new File(args[1]), new File(args[2]));
+            if (args.length == 1 && args[0].equals("version")) {
+                AgentInstallLayout layout = AgentInstallLayout.production(); Map current = layout.current();
+                System.out.println("AGENT_VERSION=" + (current == null ? AgentTransport.VERSION : current.get("version")));
+                System.out.println("UPDATE_CAPABILITY=" + (current == null ? "legacy" : "update-v3"));
+                if (current != null) { System.out.println("BUNDLE_SHA256=" + current.get("bundleSha256")); System.out.println("MANAGER_SHA256=" + current.get("managerSha256")); }
+            }
+            else if (args.length == 3 && args[0].equals("register")) register(new File(args[1]), new File(args[2]));
             else if (args.length == 2 && args[0].equals("diagnose")) diagnose(new File(args[1]));
             else if (args.length == 3 && args[0].equals("events")) {
                 Properties config = load(new File(args[1]));

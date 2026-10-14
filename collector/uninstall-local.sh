@@ -12,6 +12,14 @@ CRON=/etc/cron.d
 test "$(uname -s)" = Linux && test "$(id -u)" = 0 || exit 2
 case "$INIT" in /etc/init.d|/etc/rc.d/init.d) ;; *) exit 2;; esac
 fail() { echo 'UNINSTALL_LOCAL_VERIFICATION_FAILED' >&2; exit 1; }
+v3() { test -f "$HELPER/v3-inventory.json"; }
+v3_inventory() {
+  IFS= read -r java < "$HELPER/java.path"
+  java=$(/bin/sh "$HELPER/root-trust.sh" java "$java")
+  cp_path=$HELPER/collector.jar
+  for library in "$HELPER"/lib/*.jar; do cp_path="$cp_path:$library"; done
+  "$java" -Xms16m -Xmx96m -Djava.security.egd=file:/dev/./urandom -cp "$cp_path" assessment.AgentV3UninstallInventory "$1"
+}
 # Trust every parent and tree; no symbolic links, hardlinks, mounted nested trees
 # or special files are accepted. GNU find on RHEL 5 supports these predicates.
 trusted() {
@@ -65,6 +73,10 @@ check_scheduler() {
   esac
 }
 check_files() {
+  if v3; then
+    test ! -d "$ROOT" || check_tree "$ROOT"
+    v3_inventory check; return
+  fi
   test ! -L "$ROOT" || fail
   test -d "$ROOT" || { test -f "$HELPER/removal-started" || fail;return; }
   check_tree "$ROOT"
@@ -100,6 +112,19 @@ case "${1:-}" in
     test ! -e "$UPDATE/journal.json" && test ! -L "$UPDATE/journal.json" && test ! -e "$ROOT/collector-spool/update-request.json" || fail
     if test -d "$UPDATE"; then
       check_tree "$UPDATE"
+      if v3; then
+        test ! -e "$UPDATE/state/transaction.json" && test ! -e "$ROOT/collector-spool/update-v3-request.json" || fail
+        if test -f "$SYSTEMD/java-assessment-recovery.service"; then
+          test ! -L "$SYSTEMD/java-assessment-recovery.service" && cmp -s "$SYSTEMD/java-assessment-recovery.service" "$UPDATE/bootstrap/recovery.service" || fail
+          systemctl disable --now java-assessment-recovery.service
+          systemctl is-active --quiet java-assessment-recovery.service && fail
+          rm -f "$SYSTEMD/java-assessment-recovery.service"; systemctl daemon-reload
+        elif test -f "$INIT/java-assessment-recovery"; then
+          test ! -L "$INIT/java-assessment-recovery" && cmp -s "$INIT/java-assessment-recovery" "$UPDATE/bootstrap/recovery.init" || fail
+          /bin/sh "$UPDATE/bootstrap/update-bootstrap.sh" stop
+          chkconfig java-assessment-recovery off; chkconfig --del java-assessment-recovery; rm -f "$INIT/java-assessment-recovery"
+        else fail; fi
+      fi
       if test -f "$SYSTEMD/java-assessment-update.service"; then
         test ! -L "$SYSTEMD/java-assessment-update.service" && cmp -s "$SYSTEMD/java-assessment-update.service" "$UPDATE/helper.service" || fail
         systemctl disable --now java-assessment-update.service
@@ -109,8 +134,8 @@ case "${1:-}" in
         test ! -L "$INIT/java-assessment-update" && cmp -s "$INIT/java-assessment-update" "$UPDATE/helper.init" || fail
         /bin/sh "$UPDATE/update-service.sh" stop
         chkconfig java-assessment-update off; chkconfig --del java-assessment-update; rm -f "$INIT/java-assessment-update"
-      else fail; fi
-      rm -rf "$UPDATE"
+      elif ! v3; then fail; fi
+      if ! v3; then rm -rf "$UPDATE"; fi
     fi
     : > "$HELPER/removal-started"
     # Persist claim/identity and the directory renames before removing anything.
@@ -138,6 +163,7 @@ case "${1:-}" in
       if tr '\000' ' ' < "$proc" | grep -F "$ROOT/" | grep -E 'assessment\.(AssessmentCollector|AgentTool)( |$)|root-service.sh loop' >/dev/null; then fail;fi
     done
     check_files
+    if v3; then v3_inventory remove; fi
     if test -d "$ROOT"; then
       # Unlink only inspected regular files. rmdir refuses any unexpected/new
       # member; rm -rf is deliberately never used on the collector tree.
@@ -161,6 +187,7 @@ case "${1:-}" in
     test "$#" = 1 || fail
     . "$HELPER/lifecycle-lock.sh"
     check_tree "$HELPER";trusted "$SYSTEMD";trusted "$INIT"
+    if v3; then v3_inventory check-helper; fi
     # Helper belongs exclusively to this protocol, independently of dashboard.
     if test -f "$SYSTEMD/java-assessment-uninstall.service"; then
       test ! -L "$SYSTEMD/java-assessment-uninstall.service" && cmp -s "$SYSTEMD/java-assessment-uninstall.service" "$HELPER/helper.service" || fail

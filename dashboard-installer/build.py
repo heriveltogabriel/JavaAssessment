@@ -11,6 +11,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 from dependencies import verify_libraries
+import agent_updates
 
 PROJECT = Path(__file__).resolve().parent.parent
 SOURCE = PROJECT / 'dashboard-installer'
@@ -20,7 +21,7 @@ if not re.fullmatch(r'[0-9]+\.[0-9]+(?:\.[0-9]+)?(?:-beta)?', RELEASE_VERSION):
 OUTPUT = PROJECT / ('dist/assessment-dashboard-installer-' + RELEASE_VERSION + '.zip')
 COMPATIBILITY_OUTPUT = PROJECT / 'dist/assessment-dashboard-installer.zip'
 SOURCE_OUTPUT = PROJECT / ('dist/assessment-dashboard-source-' + RELEASE_VERSION + '.zip')
-INSTALLER_FILES = ('install.sh', 'install.py', 'bootstrap.py', 'dependencies.py',
+INSTALLER_FILES = ('install.sh', 'install.py', 'bootstrap.py', 'dependencies.py', 'agent_updates.py',
                    'DatabaseTool.java', 'README.md', 'GUIA_INSTALACAO.md',
                    'BETA_RELEASE.md', 'BETA_MIGRATION.md', 'VERSION')
 WEB_SUFFIXES = {'.html', '.css', '.js', '.svg', '.png', '.ico', '.woff2'}
@@ -153,11 +154,7 @@ def build(output):
         stage = Path(temporary)
         for name in INSTALLER_FILES:
             shutil.copy2(SOURCE / name, stage / name)
-        for name in ('shared/Json.java',):
-            dest = stage / name
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(PROJECT / name, dest)
-        for directory, pattern in (('server', '*.java'), ('web', '*')):
+        for directory, pattern in (('shared', '*.java'), ('server', '*.java'), ('web', '*')):
             (stage / directory).mkdir()
             for path in sorted((PROJECT / directory).glob(pattern)):
                 if path.is_file() and (directory != 'web' or path.suffix in WEB_SUFFIXES):
@@ -229,6 +226,10 @@ def copy_update_catalog(stage):
         raise ValueError('Signed agent update source runtime checksum mismatch')
     collector = (stage / 'dist/assessment-collector.zip').read_bytes()
     with zipfile.ZipFile(source) as archive:
+        read = agent_updates.archive_reader(archive)
+        if agent_updates.has_full(read, RELEASE_VERSION):
+            return copy_full_catalog(stage, collector, read)
+        require_classic_installer(collector)
         names = [name for name in archive.namelist() if name == 'dist/agent-update-public.der' or name.startswith('dist/agent-updates/' + RELEASE_VERSION + '/')]
         if not names:
             # Existing immutable releases predate the update capability.
@@ -246,12 +247,38 @@ def copy_update_catalog(stage):
         target.write_bytes(data)
 
 
+def require_classic_installer(collector):
+    with zipfile.ZipFile(io.BytesIO(collector)) as archive:
+        if ('update-bootstrap.sh' in archive.namelist() or
+                any(name.startswith('full-update/') for name in archive.namelist())):
+            raise ValueError('V3 collector is missing its complete public update catalog')
+
+
+def copy_full_catalog(stage, collector, read):
+    """Validate everything before writing; copy only the exact signed route closure."""
+    assets = agent_updates.collect_full(RELEASE_VERSION, read)
+    assets.update(agent_updates.classic_assets(RELEASE_VERSION, read, collector))
+    configured = agent_updates.embed_full(collector, assets, RELEASE_VERSION)
+    for name, data in assets.items():
+        target = stage / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+    (stage / 'dist/assessment-collector.zip').write_bytes(configured)
+
+
 def copy_checkout_catalog(stage):
     """Rebuild an installer with the published signature, never the private signer."""
     collector = (stage / 'dist/assessment-collector.zip').read_bytes()
     prefix = 'dist/agent-updates/' + RELEASE_VERSION + '/'
     expected = {'dist/agent-update-public.der', *{prefix + name for name in
                 ('manifest.json', 'manifest.sig', 'collector.jar')}}
+    # Prefer a verified full catalog, even if another source retains a classic catalog.
+    for source_root in (PROJECT / 'release', PROJECT / 'dist'):
+        source_read = agent_updates.filesystem_reader(source_root)
+        read = lambda name, maximum, source_read=source_read: source_read(name[len('dist/'):], maximum)
+        if agent_updates.has_full(read, RELEASE_VERSION):
+            return copy_full_catalog(stage, collector, read)
+    require_classic_installer(collector)
     for source_root in (PROJECT / 'release', PROJECT / 'dist'):
         paths = {name: source_root / name[len('dist/'):] for name in expected}
         if not any(path.exists() or path.is_symlink() for path in paths.values()):
@@ -298,10 +325,14 @@ def build_source(output):
             target = stage / 'tests/fixtures' / source.name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
-        for name in ('ops/prepare-beta-dependencies.py', 'ops/test-beta.sh',
-                     'ops/agent_update_signing.py', 'ops/dashboard_release.py', 'ops/unified_agent.py', 'ops/test-source.sh',
+        for name in ('ops/prepare-beta-dependencies.py', 'ops/test-beta.sh', 'ops/test-agent-migration.sh',
+                     'ops/agent_update_signing.py', 'ops/full_agent_release.py', 'ops/dashboard_release.py', 'ops/unified_agent.py', 'ops/test-source.sh',
                      'collector/public/agent-update-public.der',
-                     'collector/public/ca.pem', 'CONTRACT.md', 'README.md', 'LICENSE', 'docs/validation/beta-1000-load.json'):
+                     'collector/public/ca.pem', 'CONTRACT.md', 'README.md', 'LICENSE',
+                     'docs/validation/beta-1000-load.json', 'docs/validation/agent-migration-baselines.json',
+                     'docs/validation/full-agent-update.md', 'docs/validation/agent-v3-uninstall.md', 'docs/validation/agent-profile-fallback.md', 'docs/runbooks/agent-update-1512-canary.md',
+                     'docs/superpowers/specs/2026-10-14-full-agent-update-design.md',
+                     'docs/superpowers/plans/2026-10-14-full-agent-update.md'):
             if not (PROJECT / name).is_file():
                 if name in ('ops/test-beta.sh', 'docs/validation/beta-1000-load.json'):
                     raise ValueError('Final Beta source evidence is missing: ' + name)

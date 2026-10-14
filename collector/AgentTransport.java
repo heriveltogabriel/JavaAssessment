@@ -121,8 +121,9 @@ final class AgentTransport {
 
     /** Raw update assets stay on the configured authenticated origin. No redirects. */
     void download(String path, File target, long limit, String token) throws Exception {
-        if (!path.matches("/api/agent/update/(manifest|signature|package)\\?hostId=[A-Za-z0-9%+_.-]+&requestId=[a-f0-9-]{36}")
-                || limit < 1 || limit > 32L * 1024 * 1024)
+        boolean legacyAsset = path.matches("/api/agent/update/(manifest|signature|package)\\?hostId=[A-Za-z0-9%+_.-]+&requestId=[a-f0-9-]{36}");
+        boolean bundleAsset = path.matches("/api/agent/update-v3/(manifest|signature|package)\\?hostId=[A-Za-z0-9%+_.-]+&operationId=[a-f0-9-]{36}");
+        if (!(legacyAsset || bundleAsset) || limit < 1 || limit > (bundleAsset ? 64L : 32L) * 1024 * 1024)
             throw new IllegalArgumentException("Unexpected update asset");
         if (token == null || token.length() == 0 || token.length() > 1024 || token.indexOf('\r') >= 0 || token.indexOf('\n') >= 0)
             throw new IllegalArgumentException("Invalid collector credential");

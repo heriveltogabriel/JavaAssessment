@@ -10,6 +10,12 @@ umask 077
 test "$(id -u)" = 0 || { echo 'Use sudo ./install.sh --system-root.' >&2; exit 2; }
 SOURCE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 DEST=/opt/java-assessment-collector
+if test -e /opt/java-assessment-update/state/transaction.json || test -L /opt/java-assessment-update/state/transaction.json; then
+  echo 'A complete agent update is pending; administrative installation refused.' >&2; exit 1
+fi
+if test -e "$DEST/current.json" || test -L "$DEST/current.json"; then
+  echo 'This agent uses complete updates. Use the dashboard; administrative recovery requires the dedicated recovery procedure.' >&2; exit 1
+fi
 . "$SOURCE/lifecycle-lock.sh"
 # Finish an already-running independent uninstall invocation before inspecting
 # its durable state. Its destructive stage also needs the lifecycle lock.
@@ -208,6 +214,16 @@ fi
 if test ! -f "$STAGE/identity" && { test -e "$SOURCE/conf/bootstrap.properties" || test -L "$SOURCE/conf/bootstrap.properties"; }; then
   read_input read-bootstrap "$SOURCE/conf/bootstrap.properties" > "$STAGE/bootstrap"
 fi
+# Reinstalling the same protected identity must retain the CA it actually uses.
+# A generic package must never silently replace dashboard trust.
+PRESERVED_CA=''
+if ! $SWITCH_DASHBOARD && test -f "$DEST/conf/collector.properties"; then
+  PRESERVED_CA=$(sed -n 's/^tlsCaFile=//p' "$DEST/conf/collector.properties" | tr -d '\r')
+  test -n "$PRESERVED_CA" && safe_path "$PRESERVED_CA" && safe_parent "$(dirname "$PRESERVED_CA")" || exit 1
+  test -f "$PRESERVED_CA" && test ! -L "$PRESERVED_CA" && test "$(stat -c %u "$PRESERVED_CA")" = 0 || exit 1
+  ca_mode=$(stat -c %a "$PRESERVED_CA"); test "$((0$ca_mode & 022))" = 0 || exit 1
+  cp "$PRESERVED_CA" "$STAGE/preserved-ca.pem"; chmod 600 "$STAGE/preserved-ca.pem"
+fi
 BACKUP=/opt/java-assessment-collector-backup-$RUN_ID
 mkdir "$BACKUP"; chmod 700 "$BACKUP"
 if $SWITCH_DASHBOARD && test -f "$DEST/trust/ca.pem"; then
@@ -242,6 +258,7 @@ for file in "$SOURCE"/lib/*.jar; do
 done
 CA_SOURCE=$SOURCE/conf/ca.pem
 if test "$SOURCE" = "$DEST"; then CA_SOURCE=$DEST/trust/ca.pem; fi
+if test -f "$STAGE/preserved-ca.pem"; then CA_SOURCE=$STAGE/preserved-ca.pem; fi
 copy_artifact "$CA_SOURCE" "$DEST/trust/ca.pem" 600
 if test -f "$STAGE/identity"; then
   while IFS= read -r line; do
@@ -372,6 +389,22 @@ INIT
     /bin/sh "$DEST/uninstall-install.sh" sysv
     /bin/sh "$DEST/update-install.sh" sysv
   fi
+fi
+if test -d "$SOURCE/full-update" && ! $NO_SERVICE; then
+  # Public signed assets only. The bootstrap revalidates them before installing
+  # any recovery service; no synthetic dashboard action is created.
+  test ! -L "$SOURCE/full-update" && test ! -L "$DEST/full-update" || exit 1
+  mkdir -p "$DEST/full-update"; chmod 700 "$DEST/full-update"
+  for file in manifest.json manifest.sig bundle.zip; do
+    test -f "$SOURCE/full-update/$file" && test ! -L "$SOURCE/full-update/$file" || exit 1
+    if test "$SOURCE" != "$DEST"; then copy_artifact "$SOURCE/full-update/$file" "$DEST/full-update/$file" 600; fi
+  done
+  cp_path=$DEST/collector.jar
+  for file in "$DEST"/lib/*.jar; do cp_path="$cp_path:$file"; done
+  # initialize-local starts a separate lock-owning service. Do not retain the
+  # administrative installer's flock while that service acquires its own lock.
+  exec 9>&-
+  "$JAVA_PATH" -Xms16m -Xmx96m -Djava.security.egd=file:/dev/./urandom -Dhttp.keepAlive=false -cp "$cp_path" assessment.AgentMigrationBootstrap initialize-local
 fi
 WHEN=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 message='Root system service polling installed. Application permissions were preserved.'

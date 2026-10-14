@@ -6,7 +6,7 @@ Desde o coletor 1.5.1, uma JVM de aplicação observada permite inventariar seu 
 
 ## Execução
 
-Compile `collector/*.java` e `shared/Json.java` usando `-cp "lib/*"`, com os três JARs BC/BCJSSE presentes, para um diretório `classes`. Os launchers, `launcher-common.sh`, `lib/` e esse diretório ficam lado a lado. A distribuição fornece `collector.jar`; ele inclui as classes operacionais e `assessment.JavaProbe`, sem classes de testes.
+Compile `collector/*.java` e `shared/*.java` usando `-cp "lib/*"`, com os três JARs BC/BCJSSE presentes, para um diretório `classes`. Os launchers, `launcher-common.sh`, `lib/` e esse diretório ficam lado a lado. A distribuição fornece `collector.jar`; ele inclui as classes operacionais e `assessment.JavaProbe`, sem classes de testes.
 
 ```sh
 chmod 700 ./run-once.sh
@@ -105,7 +105,7 @@ A opção TLS do pacote usa autoridades públicas confiáveis. Certificados priv
 Com JDK 6 e as dependências em `lib/`:
 
 ```sh
-javac -encoding UTF-8 -cp 'lib/*' -d classes shared/Json.java collector/*.java
+javac -encoding UTF-8 -cp 'lib/*' -d classes shared/*.java collector/*.java
 java -Xmx64m -cp 'classes:lib/*' assessment.CollectorTest
 java -Xmx64m -cp 'classes:lib/*' assessment.ProcessLaunchTest
 java -Xmx64m -cp 'classes:lib/*' assessment.JdkInventoryTest
