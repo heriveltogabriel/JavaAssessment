@@ -29,11 +29,12 @@
 *.log
 *.hprof
 
-# Generated packages. Only the credential-free generic collector is versioned.
+# Generated packages. Publish only generic collectors and customer installers.
 /dist/*
 !/dist/assessment-collector.zip
 *.zip
 !/dist/assessment-collector.zip
+!/install/v*/assessment-dashboard-installer-*.zip
 *.tar.gz
 *.tgz
 *.class

@@ -39,6 +39,8 @@ O pacote do agente versionado em `dist/assessment-collector.zip` é genérico e 
 
 ## Instalar no cliente
 
+O [diretório install](install/README.md) reúne o manual ilustrado, o guia de instalação em PDF e o instalador pronto da versão 2.0.2, com seu SHA-256.
+
 Na VM destinada ao dashboard, após transferir o instalador e seu SHA-256:
 
 ```sh
