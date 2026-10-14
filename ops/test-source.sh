@@ -22,7 +22,7 @@ for suite in InventoryStoreTest UserAuthTest UserAccessHttpTest \
 done
 "$JAVA_HOME/bin/java" -Xmx384m -cp "$CP" assessment.JdbcOverviewHttpTest \
   tmp/source-evidence/jdbc-fixtures.json tmp/source-evidence/jdbc-http
-for suite in interface-refresh.test.cjs version-js.test.cjs; do
+for suite in interface-refresh.test.cjs version-js.test.cjs agent-release-notice.test.cjs; do
   "${NODE:-node}" "tests/$suite"
 done
 "${NODE:-node}" tests/jdbc-overview.test.cjs tmp/source-evidence/jdbc-http/overview-fixtures.json

@@ -83,6 +83,8 @@ Os testes de navegador usam Playwright e Chrome. Configure `NODE`, `NODE_PATH`, 
 
 ## Documentação
 
+- [Processo de release e aviso obrigatório de atualização dos agentes](docs/RELEASE_PROCESS.md)
+- [Melhorias planejadas](docs/TODO.md)
 - [Visão funcional, operação e limites](docs/SOLUTION.md)
 - [Mudanças e validação da 2.0.3](docs/RELEASE_2.0.3.md)
 - [Instalação e configuração](dashboard-installer/GUIA_INSTALACAO.md)

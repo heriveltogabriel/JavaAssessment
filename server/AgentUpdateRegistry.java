@@ -16,6 +16,15 @@ final class AgentUpdateRegistry {
     private static long number(Object value){return value instanceof Number?((Number)value).longValue():0;}
     private static void require(boolean condition,int status,String reason){if(!condition)throw new EnrollmentRegistry.Failure(status,reason);}
     static boolean busy(InventoryStore store,String host){return store.scalar("SELECT count(*) FROM agent_update_requests WHERE host_id=? AND status IN ("+BUSY_SQL+")",host)>0;}
+    Map<String,Object> versionNotice(){
+        long outdated=0;
+        // Global, independent of inventory filters and pagination; no catalog verification or mutation.
+        for(var group:store.rows("SELECT json_extract(h.payload,'$.collectorVersion') AS version,count(*) AS total FROM hosts h JOIN identities i ON i.id=h.id WHERE i.status='active' AND COALESCE(json_extract(h.payload,'$.agentLifecycle'),'')<>'uninstalled' GROUP BY json_extract(h.payload,'$.collectorVersion')")){
+            String version=text(group.get("version"));
+            if(AgentUpdateCatalog.version(version)&&AgentUpdateCatalog.compare(DashboardVersion.VERSION,version)>0)outdated+=number(group.get("total"));
+        }
+        return map("version",DashboardVersion.VERSION,"outdatedCount",outdated);
+    }
     Map<String,Object> latest(String host){var records=store.documents("SELECT payload FROM agent_update_requests WHERE host_id=? ORDER BY rowid DESC LIMIT 1",host);return records.isEmpty()?null:records.get(0);}
     Map<String,Object> publicRecord(Map<String,Object> request){if(request==null)return null;Map<String,Object> safe=new LinkedHashMap<>();for(String key:List.of("id","hostId","batchId","targetVersion","fromVersion","status","createdAt","updatedAt","expiresAt","diagnostic"))safe.put(key,request.get(key));return safe;}
     private void save(Map<String,Object> request){store.put("agent_update_requests",request);}

@@ -10,6 +10,8 @@ O heap do agente continua em 96 MiB. Permanecem os limites compartilhados de lei
 
 ## Atualização
 
+**Atenção: atualize também os agentes.** Publicar o dashboard não atualiza as máquinas automaticamente. Agentes 2.0.2 com atualização remota habilitada podem atualizar pelo painel; instalações anteriores precisam receber o pacote completo com os componentes de suporte atuais. Acompanhe a atualização em Work requests e confirme a versão informada pelo agente.
+
 Dashboard e agente usam a versão 2.0.3. Publique o dashboard, solicite a atualização do agente e execute um novo assessment. O inventário já coletado não muda retroativamente.
 
 Os arquivos de suporte exigidos pela atualização assinada são idênticos aos da 2.0.2. Agentes 2.0.2 com atualização remota habilitada podem receber o novo JAR pelo dashboard. A elegibilidade de instalações antigas depende dos arquivos e recursos locais informados por cada agente.

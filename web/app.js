@@ -236,6 +236,7 @@
     finishNavigation();
   }
   function clearSession() {
+    AssessmentAgentUpdates.renderNotice(null);
     requestRevision++;detailRevision++;stateController?.abort();closeActions();closeDrawer();AssessmentMachines.clear();AssessmentAgentUpdates.clear();AssessmentWorkRequests.clear();AssessmentEnvironments.clear();AssessmentEnrollment.clear();clearInterval(pollTimer);csrf='';rawData=null;environmentData=null;data=null;refreshing=false;manualRefresh=null;
     if($('modal').open)$('modal').close();$('modal-body').replaceChildren();$('drawer-content').replaceChildren();$('special-view').replaceChildren();$('inventory-table').querySelector('tbody').replaceChildren();$('view-actions').replaceChildren();updateRefreshState();clearTimeout(toastTimer);$('toast').hidden=true;$('toast').textContent='';
   }
@@ -316,6 +317,7 @@
     $('context-back').dataset.contextBack=contextKind==='machine'?'environment':'root';
   }
   function render() {
+    AssessmentAgentUpdates.renderNotice(rawData?.agentUpdateNotice);
     AssessmentMachines.sync();
     document.body.classList.toggle('work-requests-page',current==='jobs');
     AssessmentWorkRequests.sync({enabled:!!data&&AssessmentAccess.canInventory()&&contextKind!=='root'&&current!=='administration',view:current,environmentId:environmentScope,hostId:contextKind==='machine'?machineId:'',environments:rawData?.environments||[],requestId:workRequestId,requestType:workRequestType});
