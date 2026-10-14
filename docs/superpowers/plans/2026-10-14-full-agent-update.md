@@ -189,7 +189,7 @@ O modo `lifecycle` executa `AgentBundleInstallerTest` com injeção de falha em 
 /bin/sh ops/test-agent-migration.sh --suite server
 ```
 
-O modo `server` executa `AgentUpdateCoordinatorTest`, `AgentUpdateMigrationHttpTest` e as regressões `AgentUpdateHttpTest`, `WorkRequestsHttpTest`, `DashboardVersionHttpTest`. Incluir reinício do servidor entre etapas, perda de ACK, replay, escopo/CSRF/Leitura, revogação, conflitos e rota imutável.
+O modo `server` executa `AgentUpdateCoordinatorTest`, `AgentUpdateProfileFallbackTest`, `AgentUpdateMigrationHttpTest` e as regressões `AgentUpdateHttpTest`, `WorkRequestsHttpTest`, `DashboardVersionHttpTest`. Incluir reinício do servidor entre etapas, perda de ACK, replay, escopo/CSRF/Leitura, revogação, conflitos e rota imutável.
 
 ## WF4 — Assessment posterior idempotente e carga controlada
 
@@ -327,6 +327,7 @@ Foram confrontados o worker original, os scripts atuais, os locks, o ACK/cleanup
 - Desinstalação: 2.896 verificações; CA de 48 KiB, remoção parcial, intent atômico e shim explícito após primeiro rollback.
 - Scripts: 30 verificações com caminhos/serviços de teste. Backend e navegadores usam HTTP/SQLite reais em loopback, sem execução de serviços Linux.
 - Empacotamento público: 13 testes; assembly offline: 16; publicação: 63. As chaves das fixtures são exclusivas de teste.
+- Perfis sequenciais: 109 verificações com dois bridges assinados e worker original; apenas incompatibilidade de suporte antes da troca avança para o próximo.
 - A regressão de fontes passou. Os resultados consolidados e os limites ficam em `docs/validation/full-agent-update.md`.
 
 Os passos de WF2 marcados referem-se à implementação e às provas locais; instalação/serviços/reboot no SO real continuam em WF6/WF7. Não publicar nem declarar compatibilidade de produção até fechar esses gates. O commit de contratos é separado para revisão; desenvolvimento foi coordenado pelas frentes antes da consolidação final dos commits.

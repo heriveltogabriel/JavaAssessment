@@ -16,6 +16,6 @@ Acrescentar ao texto a versão entregue e os caminhos de atualização efetivame
 
 Use o pacote configurado para o dashboard e ambiente corretos. A operação deve preservar cadastro e configuração existentes, inclusive a CA usada na conexão HTTPS.
 
-## Melhoria adiada
+## Atualização completa em validação
 
-A atualização completa dos componentes de suporte está em [TODO](TODO.md). O aviso não muda as regras de elegibilidade nem instala nada automaticamente.
+O código V3 e seus gates estão em [TODO](TODO.md) e no [contrato](AGENT_UPDATE_V3.md). Para a primeira release, reservar B/T com `reserve_update_pair()`, preparar origens conhecidas por checksum e incluir o catálogo/bridges/bundle no runtime e instalador. Validar os canários antes de anunciar compatibilidade real. O aviso não cria pedidos nem instala nada automaticamente.
