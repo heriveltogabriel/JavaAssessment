@@ -1,10 +1,10 @@
 # Java Assessment
 
-Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versão **2.0.3** reúne dashboard, agente Linux e banco SQLite local, com organização por ambiente e máquina.
+Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versão **2.0.5** reúne dashboard, agente Linux e banco SQLite local, com organização por ambiente e máquina.
 
 ## Recursos
 
-- Overview com quatro distribuições compactas: Java, sistemas operacionais, servidores por produto/versão e datasources por nome/versão do driver; máquinas em lista com busca e dez itens por página. Disponível no código para a próxima entrega.
+- Overview com quatro distribuições compactas: Java, sistemas operacionais, servidores por produto/versão e datasources por nome/versão do driver; máquinas em lista com busca e dez itens por página.
 - Instalações Java, incluindo runtimes sem compilador quando há evidência de uso por aplicação.
 - Aplicações, processos, servidores Java, bibliotecas e datasources JDBC por configuração suportada.
 - Contas individuais com email e senha, perfis Administrador e Leitura e troca de senha no primeiro acesso.
@@ -34,20 +34,20 @@ python3 -B ops/prepare-beta-dependencies.py --check
 python3 -B dashboard-installer/build.py --with-source
 ```
 
-Os resultados ficam em `dist/assessment-dashboard-installer-2.0.3.zip` e `dist/assessment-dashboard-source-2.0.3.zip`, com arquivos SHA-256. O build usa as bibliotecas fixadas, o agente genérico e o catálogo público assinado incluídos no repositório. Não exige arquivos da máquina de desenvolvimento nem a chave privada de assinatura.
+Os resultados ficam em `dist/assessment-dashboard-installer-2.0.5.zip` e `dist/assessment-dashboard-source-2.0.5.zip`, com arquivos SHA-256. O build usa as bibliotecas fixadas, o agente genérico e o catálogo público assinado incluídos no repositório. Não exige arquivos da máquina de desenvolvimento nem a chave privada de assinatura.
 
-O pacote do agente versionado em `dist/assessment-collector.zip` é genérico e não contém identidade cadastrada. O catálogo em `release/agent-updates/2.0.3` é verificado contra a assinatura, a chave pública e os bytes desse pacote. Alterações nos arquivos executáveis exigem uma nova entrega assinada; o build não assina nem substitui a confiança instalada.
+O pacote do agente versionado em `dist/assessment-collector.zip` é genérico e não contém identidade cadastrada. O catálogo em `release/agent-updates/2.0.5` é verificado contra a assinatura, a chave pública e os bytes desse pacote. Alterações nos arquivos executáveis exigem uma nova entrega assinada; o build não assina nem substitui a confiança instalada.
 
 ## Instalar no cliente
 
-O [diretório install](install/README.md) reúne o manual ilustrado, o guia de instalação em PDF e o instalador pronto da versão 2.0.3, com seu SHA-256.
+O [diretório install](install/README.md) reúne o manual ilustrado, o guia de instalação em PDF e o instalador pronto da versão 2.0.5, com seu SHA-256.
 
 Na VM destinada ao dashboard, após transferir o instalador e seu SHA-256:
 
 ```sh
-sha256sum -c assessment-dashboard-installer-2.0.3.zip.sha256
-unzip assessment-dashboard-installer-2.0.3.zip -d dashboard-installer-2.0.3
-cd dashboard-installer-2.0.3
+sha256sum -c assessment-dashboard-installer-2.0.5.zip.sha256
+unzip assessment-dashboard-installer-2.0.5.zip -d dashboard-installer-2.0.5
+cd dashboard-installer-2.0.5
 ./install.sh \
   --public-url https://dashboard.exemplo.com \
   --admin-name "Administrador" \
@@ -62,7 +62,7 @@ Crie os ambientes e baixe o agente pelo dashboard do cliente. Na máquina monito
 sudo /bin/sh ./install.sh --system-root
 ```
 
-O destino operacional é `/opt/java-assessment-collector`, independentemente da pasta de extração ou do nome do usuário. A passagem de agentes antigos para 2.0.3 exige o instalador completo uma vez, pois scripts e executor mudaram. Depois, atualizações compatíveis podem ser solicitadas pelo painel.
+O destino operacional é `/opt/java-assessment-collector`, independentemente da pasta de extração ou do nome do usuário. **Atenção: publicar o dashboard não atualiza os agentes automaticamente.** Agentes 2.0.2 e 2.0.3 com atualização remota habilitada e arquivos de suporte originais podem receber 2.0.5 pelo painel. Para instalações anteriores, use o instalador completo configurado para o ambiente, preservando o cadastro, a configuração e a CA. Acompanhe em **Work requests** e confirme a versão da máquina.
 
 ## Desenvolvimento e validação local
 
@@ -87,7 +87,7 @@ Os testes de navegador usam Playwright e Chrome. Configure `NODE`, `NODE_PATH`, 
 - [Processo de release e aviso obrigatório de atualização dos agentes](docs/RELEASE_PROCESS.md)
 - [Melhorias planejadas](docs/TODO.md)
 - [Visão funcional, operação e limites](docs/SOLUTION.md)
-- [Mudanças e validação da 2.0.3](docs/RELEASE_2.0.3.md)
+- [Mudanças e validação da 2.0.5](docs/RELEASE_2.0.5.md)
 - [Instalação e configuração](dashboard-installer/GUIA_INSTALACAO.md)
 - [Opções do instalador](dashboard-installer/README.md)
 - [Instalação do coletor](collector/INSTALL.md)
@@ -95,7 +95,7 @@ Os testes de navegador usam Playwright e Chrome. Configure `NODE`, `NODE_PATH`, 
 - [Reconstrução do pacote de fontes](dashboard-installer/README-SOURCE.md)
 - [Migração e backup](dashboard-installer/BETA_MIGRATION.md)
 
-Os nomes de alguns scripts e documentos mantêm `beta` por compatibilidade com a estrutura anterior. A versão atual do produto é 2.0.3. Relatórios históricos descrevem somente o cenário e a versão em que foram produzidos.
+Os nomes de alguns scripts e documentos mantêm `beta` por compatibilidade com a estrutura anterior. A versão atual do produto é 2.0.5. Relatórios históricos descrevem somente o cenário e a versão em que foram produzidos.
 
 Configurações privadas, chaves, inventário, logs, pacotes de ambientes e ferramentas específicas do laboratório ficam fora do Git. Publicar código neste repositório não instala nem atualiza servidores ou agentes.
 

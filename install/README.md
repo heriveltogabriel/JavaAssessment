@@ -7,15 +7,23 @@ Arquivos para instalar o dashboard e os agentes na infraestrutura do cliente. Os
 - [Manual ilustrado da solução](Manual-2.0.2.pdf): arquitetura, inventário, operação e recursos.
 - [Guia de instalação](Guia-instalacao-2.0.2.pdf): requisitos, comandos, configuração do dashboard e instalação dos agentes.
 
-## Instalador atual — 2.0.3
+## Instalador atual — 2.0.5
 
-- [Baixar assessment-dashboard-installer-2.0.3.zip](https://github.com/heriveltogabriel/JavaAssessment/raw/refs/heads/main/install/v2.0.3/assessment-dashboard-installer-2.0.3.zip)
-- [Baixar arquivo SHA-256 da 2.0.3](https://github.com/heriveltogabriel/JavaAssessment/raw/refs/heads/main/install/v2.0.3/assessment-dashboard-installer-2.0.3.zip.sha256)
-- [O que mudou na 2.0.3](../docs/RELEASE_2.0.3.md)
+- [assessment-dashboard-installer-2.0.5.zip](v2.0.5/assessment-dashboard-installer-2.0.5.zip)
+- [Arquivo SHA-256 da 2.0.5](v2.0.5/assessment-dashboard-installer-2.0.5.zip.sha256)
+- [O que mudou na 2.0.5](../docs/RELEASE_2.0.5.md)
 
-A 2.0.3 corrige a descoberta da versão do WebLogic. Os PDFs acima foram produzidos para a 2.0.2; os procedimentos continuam aplicáveis, substituindo o número da versão nos nomes dos pacotes.
+A 2.0.5 traz os quatro painéis compactos do overview, a lista paginada de máquinas e o aviso para revisar agentes desatualizados. Os PDFs acima foram produzidos para a 2.0.2; os procedimentos continuam aplicáveis, substituindo o número da versão nos nomes dos pacotes.
 
-Na pasta que contém o ZIP e o SHA-256 da 2.0.3, confira a integridade com `sha256sum -c assessment-dashboard-installer-2.0.3.zip.sha256` no Linux ou `shasum -a 256 -c assessment-dashboard-installer-2.0.3.zip.sha256` no macOS.
+Confira a integridade com `sha256sum -c assessment-dashboard-installer-2.0.5.zip.sha256` no Linux ou `shasum -a 256 -c assessment-dashboard-installer-2.0.5.zip.sha256` no macOS.
+
+**Atenção: atualize também os agentes.** Publicar o dashboard não atualiza as máquinas automaticamente. Instalações 2.0.2 e 2.0.3 com atualização remota habilitada e suporte original podem receber 2.0.5 pelo painel. Para agentes anteriores, baixe o pacote do ambiente no dashboard e utilize o instalador completo com `--system-root`. Acompanhe em **Work requests**.
+
+## Instalador anterior — 2.0.3
+
+- [assessment-dashboard-installer-2.0.3.zip](v2.0.3/assessment-dashboard-installer-2.0.3.zip)
+- [Arquivo SHA-256 da 2.0.3](v2.0.3/assessment-dashboard-installer-2.0.3.zip.sha256)
+- [Mudanças da 2.0.3](../docs/RELEASE_2.0.3.md)
 
 ## Instalador anterior — 2.0.2
 
