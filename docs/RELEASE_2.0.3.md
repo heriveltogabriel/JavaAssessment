@@ -22,6 +22,6 @@ Os arquivos de suporte exigidos pela atualização assinada são idênticos aos 
 - Compilação das classes de produção para Java 6 (major 50), regressões com heap de 96 MiB e build integrado da entrega.
 - Regressões de Tomcat, JBoss/WildFly, JDBC, inventário Java, CSV, autenticação e atualização de agentes.
 
-Os metadados reais do WebLogic 10.3.6.0 foram fornecidos pelo usuário. O teste isolado na VM deve retornar `WEBLOGIC_VERSION=10.3.6.0` e `CHECK=OK`. A compilação compatível com Java 6 e os testes locais, por si só, não comprovam execução em todas as versões de Java/Linux nem em 32 bits.
+Um teste isolado adicional, executado pelo usuário, confirmou a leitura do manifesto com resultado `CHECK=OK`. Os detalhes do ambiente e as medições dessa execução permanecem apenas no registro local de validação. O teste não instala o agente, não reinicia serviços e não envia inventário ao dashboard; a atualização do agente e um novo assessment são necessários para verificar o fluxo completo. Esse teste não comprova execução em todas as versões de Java/Linux nem em 32 bits.
 
 A versão exibida é a declaração do manifesto do produto. Inventário de patches/PSUs não faz parte desta correção.
