@@ -10,6 +10,7 @@ export BETA_JAVA="$JAVA_HOME/bin/java"
 mkdir -p tmp/beta-classes
 "$JAVA_HOME/bin/javac" --release 17 -encoding UTF-8 -cp 'lib/*' \
   -d tmp/beta-classes shared/Json.java server/*.java \
+  tests/TestAccounts.java tests/UserAuthTest.java tests/UserAccessHttpTest.java \
   tests/InventoryStoreTest.java tests/BetaServerTest.java \
   tests/BetaLoadTest.java tests/BetaUiFixture.java
 "$BETA_JAVA" -Xmx256m -cp 'tmp/beta-classes:lib/*' assessment.InventoryStoreTest

@@ -10,6 +10,25 @@ umask 077
 test "$(id -u)" = 0 || { echo 'Use sudo ./install.sh --system-root.' >&2; exit 2; }
 SOURCE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 DEST=/opt/java-assessment-collector
+. "$SOURCE/lifecycle-lock.sh"
+# Finish an already-running independent uninstall invocation before inspecting
+# its durable state. Its destructive stage also needs the lifecycle lock.
+if test -d /opt/java-assessment-uninstall; then
+  /bin/sh "$SOURCE/root-trust.sh" package /opt/java-assessment-uninstall
+  if command -v systemctl >/dev/null 2>&1 && test -d /run/systemd/system; then systemctl stop java-assessment-uninstall.service
+  else /bin/sh /opt/java-assessment-uninstall/uninstall-service.sh stop; fi
+fi
+for update_state in /opt/java-assessment-update/journal.json "$DEST/collector-spool/update-request.json"; do
+  test ! -e "$update_state" && test ! -L "$update_state" || { echo 'Agent update is pending; installation refused.' >&2; exit 1; }
+done
+if test -d /opt/java-assessment-update; then
+  /bin/sh "$SOURCE/root-trust.sh" package /opt/java-assessment-update
+  if command -v systemctl >/dev/null 2>&1 && test -d /run/systemd/system; then systemctl stop java-assessment-update.service
+  else /bin/sh /opt/java-assessment-update/update-service.sh stop; fi
+fi
+for uninstall_state in /opt/java-assessment-uninstall/request.json /opt/java-assessment-uninstall/claim.json "$DEST/collector-spool/uninstall-request.json"; do
+  test ! -e "$uninstall_state" && test ! -L "$uninstall_state" || { echo "Agent uninstall is pending; installation refused." >&2; exit 1; }
+done
 SERVER=''; CODE_FILE=''; JAVA_PATH=''; SAVED_JAVA_PATH=''; MIGRATE_FROM=''; NO_SERVICE=false; SWITCH_DASHBOARD=false
 while test "$#" -gt 0; do
   case "$1" in
@@ -212,8 +231,9 @@ copy_artifact() {
   temporary=$(mktemp "$DEST/.artifact.XXXXXX")
   cp "$1" "$temporary"; chown root:root "$temporary"; chmod "$3" "$temporary"; mv -f "$temporary" "$2"
 }
-for name in install.sh system-install.sh root-system-install.sh root-migrate-input.sh root-service.sh root-trust.sh root-java-discovery.sh launcher-common.sh bootstrap-config.sh run-once.sh agent-tool.sh poll.sh collector.jar; do
+for name in install.sh system-install.sh root-system-install.sh root-migrate-input.sh root-service.sh root-trust.sh root-java-discovery.sh launcher-common.sh bootstrap-config.sh run-once.sh agent-tool.sh poll.sh collector.jar uninstall-install.sh uninstall-service.sh uninstall-local.sh lifecycle-lock.sh update-install.sh update-service.sh update-local.sh update-public.der; do
   mode=700; test "$name" != collector.jar || mode=600
+  test "$name" != update-public.der || mode=600
   if test "$SOURCE" != "$DEST"; then copy_artifact "$SOURCE/$name" "$DEST/$name" "$mode"; else test -f "$DEST/$name" && test ! -L "$DEST/$name" || exit 1; chmod "$mode" "$DEST/$name"; fi
 done
 for file in "$SOURCE"/lib/*.jar; do
@@ -288,6 +308,7 @@ if test -e "$OLD_CRON" || test -L "$OLD_CRON"; then
     temporary=$(mktemp /etc/cron.d/.java-assessment.XXXXXX); cp "$STAGE/cron-d-next" "$temporary"; chmod 644 "$temporary"; mv "$temporary" "$OLD_CRON"
   fi
 fi
+rm -f "$DEST/conf/uninstall-capability" "$DEST/conf/update-capability"
 if ! $NO_SERVICE; then
   if command -v systemctl >/dev/null 2>&1 && test -d /run/systemd/system; then
     safe_parent /etc/systemd/system || exit 1
@@ -327,6 +348,8 @@ TIMER
     systemctl daemon-reload
     systemctl enable --now java-assessment-collector.timer
     systemctl is-active --quiet java-assessment-collector.timer
+    /bin/sh "$DEST/uninstall-install.sh" systemd
+    /bin/sh "$DEST/update-install.sh" systemd
   else
     INIT_DIRECTORY=$(readlink -f /etc/init.d)
     case "$INIT_DIRECTORY" in /etc/init.d|/etc/rc.d/init.d) ;; *) echo 'Unsupported SysV init directory.' >&2; exit 1;; esac
@@ -346,6 +369,8 @@ INIT
     chkconfig --add java-assessment-collector
     chkconfig java-assessment-collector on
     /bin/sh "$target" start
+    /bin/sh "$DEST/uninstall-install.sh" sysv
+    /bin/sh "$DEST/update-install.sh" sysv
   fi
 fi
 WHEN=$(date -u +%Y-%m-%dT%H:%M:%SZ)

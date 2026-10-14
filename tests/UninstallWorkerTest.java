@@ -1,0 +1,33 @@
+package assessment;
+import java.nio.file.*;
+import java.util.*;
+import static assessment.BetaServerTest.*;
+import static assessment.AssessmentServer.map;
+
+/** Runs a test-only path-transplanted helper; no production paths are reachable. */
+public final class UninstallWorkerTest {
+    static Path helper,target,count,cleanup;
+    static void file(Path p,String text)throws Exception{Files.createDirectories(p.getParent());Files.writeString(p,text);}
+    static void setup(String h,String token,String id)throws Exception {
+        Files.createDirectories(helper);Files.createDirectories(target.resolve("collector-spool"));file(target.resolve("conf/collector.properties"),"serverUrl="+base+"\nhostId="+h+"\nagentToken="+token+"\n");file(target.resolve("trust/ca.pem"),"fixture-ca");file(target.resolve("collector-spool/uninstall-request.json"),Json.stringify(map("type",UninstallRegistry.TYPE,"requestId",id,"expiresMillis",System.currentTimeMillis()+3600000L)));
+        file(helper.resolve("uninstall-local.sh"),"#!/bin/sh\ncase \"$1\" in\nremove) echo remove >> '"+count+"'; rm -rf '"+target+"'; if test -f '"+helper.getParent().resolve("interrupt")+"';then /usr/bin/yes X | /usr/bin/head -c 9000;fi;;\ncleanup) echo cleanup >> '"+cleanup+"';rm -rf '"+helper+"';;\nesac\n");
+    }
+    public static void main(String[] args)throws Exception {
+        root=Files.createTempDirectory("uninstall-worker-http-");System.setProperty("fixture.home",root.resolve("helper").toString());System.setProperty("fixture.target",root.resolve("collector").toString());helper=root.resolve("helper");target=root.resolve("collector");count=root.resolve("remove-count");cleanup=root.resolve("cleanup-count");Files.createDirectories(root.resolve("conf"));Properties c=new Properties();c.setProperty("seedLegacyHost","false");c.setProperty("adminSalt","fixture-salt");c.setProperty("adminPasswordSha256",InventoryStore.hash("fixture-saltfixture-password"));c.setProperty("hostId","unused-fixture");c.setProperty("agentToken","unused-fixture");try(var out=Files.newOutputStream(root.resolve("conf/server.properties"))){c.store(out,"fixture");}
+        try{start();String code=(String)ok("POST","/api/enrollments",map("label","worker fixture","maxUses",10,"autoCollect",false),true,null,201).get("enrollmentToken");var identity=ok("POST","/api/agent/register",registration("worker-fixture-00001"),false,code,200);String h=(String)identity.get("hostId"),token=(String)identity.get("agentToken");RemoteUninstallTest.heartbeat(h,token,true);
+            var request=ok("POST","/api/hosts/uninstall",RemoteUninstallTest.req(h,"worker-fixture-00001","worker-request-00001"),true,null,202);String id=(String)request.get("id");setup(h,token,id);
+            app.store.exec("CREATE TRIGGER worker_network BEFORE UPDATE ON identities BEGIN SELECT RAISE(ABORT,'fixture'); END");
+            try{UninstallWorker.cycle();throw new AssertionError("network failure expected");}catch(AgentTransport.ApiException expected){check(expected.status==500,"network failure handled");}
+            check(!Files.exists(target),"local completion survives loss of confirmation");check(Files.exists(helper.resolve("claim.json"))&&Files.exists(helper.resolve("result.json")),"claim/result durable outside removed root");String secret=(String)UninstallWorker.read(helper.resolve("claim.json").toFile()).get("completionToken");app.store.exec("DROP TRIGGER worker_network");
+            // Commit success, deliberately leave the helper without its local ACK.
+            ok("POST","/api/agent/uninstall/complete",UninstallWorker.read(helper.resolve("result.json").toFile()),false,secret,200);check(call("POST","/api/agent/heartbeat",map("hostId",h),false,token).code()==401,"normal credential revoked");UninstallWorker.cycle();check(!Files.exists(helper),"credentials and helper cleaned after replayed confirmation");check(Files.readAllLines(count).size()==1,"cached result never repeats local removal");
+            // Cancelled request must clear temporary credentials and accept future work.
+            identity=ok("POST","/api/agent/register",registration("worker-fixture-00002"),false,code,200);h=(String)identity.get("hostId");token=(String)identity.get("agentToken");RemoteUninstallTest.heartbeat(h,token,true);request=ok("POST","/api/hosts/uninstall",RemoteUninstallTest.req(h,"worker-fixture-00002","worker-request-cancel"),true,null,202);id=(String)request.get("id");setup(h,token,id);ok("POST","/api/hosts/uninstall/cancel",map("hostId",h,"requestId",id),true,null,200);UninstallWorker.cycle();check(!Files.exists(helper.resolve("identity.properties"))&&!Files.exists(helper.resolve("request.json")),"cancelled request secrets cleared");check(Files.exists(target),"cancelled request preserves collector");
+            request=ok("POST","/api/hosts/uninstall",RemoteUninstallTest.req(h,"worker-fixture-00002","worker-request-crash"),true,null,202);id=(String)request.get("id");setup(h,token,id);file(root.resolve("interrupt"),"fixture");try{UninstallWorker.cycle();throw new AssertionError("interruption expected");}catch(java.io.IOException expected){}
+            check(!Files.exists(target)&&Files.exists(helper.resolve("claim.json"))&&!Files.exists(helper.resolve("result.json")),"partial local interruption retains claim");Files.delete(root.resolve("interrupt"));UninstallWorker.cycle();check(!Files.exists(helper),"recovery completes and cleans helper");
+            identity=ok("POST","/api/agent/register",registration("worker-fixture-00003"),false,code,200);h=(String)identity.get("hostId");token=(String)identity.get("agentToken");RemoteUninstallTest.heartbeat(h,token,true);request=ok("POST","/api/hosts/uninstall",RemoteUninstallTest.req(h,"worker-fixture-00003","worker-request-deadline"),true,null,202);id=(String)request.get("id");setup(h,token,id);
+            file(helper.resolve("request.json"),Json.stringify(map("type",UninstallRegistry.TYPE,"requestId",id,"localDeadline",0L)));file(helper.resolve("identity.properties"),"hostId="+h+"\nagentToken="+token+"\n");file(helper.resolve("claim.json"),"{\"completionToken\":\"fixture-secret\"}");UninstallWorker.cycle();check(!Files.exists(helper)&&Files.exists(target),"local retention deadline cleans helper/secrets without executing stale request");check("WAITING".equals(app.store.get("uninstall_requests",id).get("status")),"local timeout never reports success");
+            System.out.println("UninstallWorkerTest PASS: real loopback transport, durable state outside target, network/ACK loss, revoked-token completion replay, cached-result idempotency, cancellation cleanup, interruption recovery, 24h retention cleanup without false success.");
+        }finally{stop();}
+    }
+}

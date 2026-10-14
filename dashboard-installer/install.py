@@ -169,12 +169,42 @@ def read_password(path):
     if path is None:
         return secrets.token_urlsafe(24)
     file = regular_file(path, 'Administrator password file')
-    if stat.S_IMODE(file.stat().st_mode) & 0o077:
+    if stat.S_IMODE(file.stat().st_mode) not in (0o600, 0o400):
         fail('Administrator password file must be mode 600 or 400')
+    if file.stat().st_uid not in (0, os.geteuid()):
+        fail('Administrator password file must belong to root or the installing user')
     password = file.read_text(encoding='utf-8').rstrip('\r\n')
-    if len(password) < 12 or len(password) > 256 or '\n' in password or '\r' in password:
-        fail('Administrator password must contain 12–256 characters on one line')
+    if len(password) < 8 or len(password) > 128 or '\n' in password or '\r' in password:
+        fail('Administrator password must contain 8–128 characters on one line')
     return password
+
+
+def admin_identity(name, email, *, input_fn=input, interactive=None):
+    interactive = sys.stdin.isatty() if interactive is None else interactive
+    if not name or not email:
+        if not interactive:
+            fail('Provide --admin-name and --admin-email for the first administrator')
+        name = name or input_fn('First administrator name: ')
+        email = email or input_fn('First administrator email: ')
+    name, email = name.strip(), email.strip().lower()
+    if not 1 <= len(name) <= 120 or any(ord(c) < 32 or ord(c) == 127 for c in name):
+        fail('Administrator name must contain 1–120 printable characters')
+    if len(email) > 254 or not re.fullmatch(r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,63}", email):
+        fail('Provide a valid administrator email')
+    return name, email
+
+
+def provision_admin(stage, java_home, name, email, password):
+    """Run the same protected account tool used for recovery, before service startup."""
+    # Keep the temporary input out of the dashboard tree and remove it even on failure.
+    with tempfile.TemporaryDirectory(prefix='.assessment-first-admin-', dir=stage.parent) as folder:
+        secret = Path(folder) / 'password'
+        write_private(secret, password + '\n')
+        command([str(java_home / 'bin/java'), '-Xmx128m',
+                 '-Dorg.sqlite.tmpdir=' + str(stage / 'data/native'),
+                 '-cp', str(stage / 'classes') + ':' + str(stage / 'lib/*'),
+                 'assessment.UserAdminTool', '--root', str(stage), '--mode', 'provision',
+                 '--name', name, '--email', email, '--password-file', str(secret)])
 
 
 def repackage_collector(source, destination, ca_bytes):
@@ -260,7 +290,8 @@ def legacy_files(directory):
     return content
 
 
-def build_stage(stage, java_home, url, host, port, cert, key, ca, password, legacy=None):
+def build_stage(stage, java_home, url, host, port, cert, key, ca, password, legacy=None,
+                *, admin_name, admin_email):
     verify_libraries(SOURCE / 'lib')
     for name in ('shared', 'server', 'web', 'lib'):
         shutil.copytree(SOURCE / name, stage / name)
@@ -278,15 +309,15 @@ def build_stage(stage, java_home, url, host, port, cert, key, ca, password, lega
     shutil.copyfile(ca, stage / 'conf/agent-ca.pem')
     repackage_collector(SOURCE / 'dist/assessment-collector.zip',
                         stage / 'dist/assessment-collector.zip', ca.read_bytes())
+    if (SOURCE / 'dist/agent-update-public.der').is_file():
+        shutil.copyfile(SOURCE / 'dist/agent-update-public.der', stage / 'dist/agent-update-public.der')
+        shutil.copytree(SOURCE / 'dist/agent-updates', stage / 'dist/agent-updates')
     sources = [str(stage / 'shared/Json.java')] + [str(f) for f in sorted((stage / 'server').glob('*.java'))]
     command([str(java_home / 'bin/javac'), '--release', '17', '-encoding', 'UTF-8',
              '--add-modules', 'jdk.httpserver', '-cp', str(stage / 'lib/*'),
              '-d', str(stage / 'classes')] + sources)
-    salt = secrets.token_hex(16)
     host_id = 'bootstrap-' + secrets.token_hex(12)
-    password_hash = hashlib.sha256((salt + password).encode('utf-8')).hexdigest()
-    props = {'adminSalt': salt, 'adminPasswordSha256': password_hash,
-             'agentToken': secrets.token_hex(32), 'hostId': host_id,
+    props = {'agentToken': secrets.token_hex(32), 'hostId': host_id,
              'seedLegacyHost': 'false', 'fleetName': 'Java Assessment',
              'jobHistoryPerHost': '100', 'receiptHistoryPerHost': '200',
              'httpBind': '127.0.0.1',
@@ -298,7 +329,7 @@ def build_stage(stage, java_home, url, host, port, cert, key, ca, password, lega
     write_private(stage / 'run-server.sh',
                   '#!/bin/sh\nset -eu\numask 077\n'
                   f'cd {shlex.quote(str(DEST))}\n'
-                  f'exec {shlex.quote(str(java_home / "bin/java"))} -Xms32m -Xmx384m '
+                  f'exec {shlex.quote(str(java_home / "bin/java"))} -Xms1536m -Xmx1536m '
                   '-XX:+ExitOnOutOfMemoryError '
                   f'-Dorg.sqlite.tmpdir={shlex.quote(str(DEST / "data/native"))} '
                   '-XX:ErrorFile=logs/hs_err_pid%p.log '
@@ -317,6 +348,7 @@ def build_stage(stage, java_home, url, host, port, cert, key, ca, password, lega
     for path in (stage / 'conf/tls/fullchain.pem', stage / 'conf/tls/privkey.pem',
                  stage / 'conf/agent-ca.pem'):
         os.chmod(path, 0o600)
+    provision_admin(stage, java_home, admin_name, admin_email, password)
 
 
 def set_stage_ownership(stage, account):
@@ -339,13 +371,13 @@ def set_stage_ownership(stage, account):
 def service_unit(port):
     capability = ('AmbientCapabilities=CAP_NET_BIND_SERVICE\n'
                   'CapabilityBoundingSet=CAP_NET_BIND_SERVICE\n') if port < 1024 else ''
-    return ('[Unit]\nDescription=Java Assessment dashboard 1.0 Beta\nAfter=network-online.target\n'
+    return ('[Unit]\nDescription=Java Assessment dashboard\nAfter=network-online.target\n'
             'Wants=network-online.target\nStartLimitIntervalSec=60\nStartLimitBurst=5\n'
             '\n[Service]\nType=simple\n'
             f'User={ACCOUNT}\nGroup={ACCOUNT}\nWorkingDirectory={DEST}\n'
             f'ExecStart=/bin/sh {DEST}/run-server.sh\nRestart=on-failure\nRestartSec=3\n'
             'UMask=0077\nTimeoutStopSec=30\nStandardOutput=journal\nStandardError=journal\n'
-            'MemoryAccounting=true\nMemoryMax=768M\n'
+            'MemoryAccounting=true\nMemoryMax=2G\n'
             'NoNewPrivileges=true\nPrivateTmp=true\nProtectSystem=strict\n'
             f'ReadWritePaths={DEST}/data {DEST}/logs\n' + capability +
             '\n[Install]\nWantedBy=multi-user.target\n')
@@ -417,6 +449,8 @@ def install(args):
             fail('Dedicated service account already exists; inspect it before installation')
     url = choose_public_url(args.public_url)
     host, port = parse_url(url)
+    admin_name, admin_email = admin_identity(getattr(args, 'admin_name', None),
+                                           getattr(args, 'admin_email', None))
     java_home = ensure_java(args.java_home, not args.check and not args.no_package_install)
     legacy = legacy_files(getattr(args, 'legacy_data', None))
     if bool(args.tls_cert) != bool(args.tls_key):
@@ -438,14 +472,17 @@ def install(args):
             return
         stage = Path(tempfile.mkdtemp(prefix='.java-assessment-dashboard-', dir='/opt'))
         try:
-            build_stage(stage, java_home, url, host, port, cert, key, ca, password, legacy)
+            build_stage(stage, java_home, url, host, port, cert, key, ca, password, legacy,
+                        admin_name=admin_name, admin_email=admin_email)
             command(['useradd', '--system', '--user-group', '--home-dir', str(DEST),
                      '--shell', '/sbin/nologin', ACCOUNT])
             account = pwd.getpwnam(ACCOUNT)
             set_stage_ownership(stage, account)
             os.replace(stage, DEST)
             write_private(UNIT, '# Java Assessment dashboard managed by install.py\n' + service_unit(port), 0o644)
-            save_root_secret(PASSWORD_RECORD, 'URL: ' + url + '\nPassword: ' + password + '\n')
+            save_root_secret(PASSWORD_RECORD, 'URL: ' + url + '\nName: ' + admin_name +
+                             '\nEmail: ' + admin_email + '\nTemporary password: ' + password +
+                             '\nExpires: 24 hours after provisioning; change required at first login.\n')
             if ca_key:
                 save_root_secret(CA_KEY_RECORD, ca_key.read_text(encoding='ascii'))
             command(['systemctl', 'daemon-reload'])
@@ -459,13 +496,14 @@ def install(args):
     except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
         print('WARNING: local firewall could not be configured:', error, file=sys.stderr)
     print(f'INSTALLED: {url}')
-    print('Initial password: sudo cat ' + str(PASSWORD_RECORD))
+    print('First administrator: ' + admin_email)
+    print('Temporary access (24h): sudo cat ' + str(PASSWORD_RECORD))
     if ca_key:
         print('Browser trust CA: ' + str(DEST / 'conf/agent-ca.pem'))
         print('The generated certificate is private to this installation; browsers may ask you to trust its CA.')
     print('OCI network: allow inbound TCP ' + str(port) + ' in the instance NSG or Security List.')
     print('Service: systemctl status java-assessment-dashboard --no-pager')
-    print('Next: create an environment in the dashboard and download its configured agent')
+    print('Next: sign in with email and temporary password, choose a new password, then create an environment')
 
 
 def main():
@@ -475,7 +513,9 @@ def main():
     parser.add_argument('--tls-cert', help='Optional full PEM server certificate chain')
     parser.add_argument('--tls-key', help='Optional unencrypted RSA PKCS#8 PEM key')
     parser.add_argument('--agent-ca', help='Optional PEM CA for the TLS certificate; defaults to bundled CA')
-    parser.add_argument('--admin-password-file', help='Optional mode-600 password file for unattended installation')
+    parser.add_argument('--admin-name', help='First administrator full name; prompted when omitted')
+    parser.add_argument('--admin-email', help='First administrator email; prompted when omitted')
+    parser.add_argument('--admin-password-file', help='Optional mode-600/400 temporary password file (8–128 characters, valid 24h)')
     parser.add_argument('--no-package-install', action='store_true', help='Do not install a missing JDK with dnf')
     parser.add_argument('--legacy-data', help='Private directory with a consistent state.json and auth-registry.json backup; imported before first boot')
     parser.add_argument('--check', action='store_true', help='Validate inputs without installing')

@@ -14,7 +14,7 @@ final class AgentTransport {
     // These utilities run in their own process. Old JDK6 keep-alive pooling can race
     // closed server connections across sequential bootstrap requests.
     static { System.setProperty("http.keepAlive", "false"); }
-    static final String VERSION = "1.4.4";
+    static final String VERSION = "2.0.2";
     static final int MAX_BODY = 2 * 1024 * 1024;
     final String server;
     private final SSLSocketFactory sockets;
@@ -117,6 +117,39 @@ final class AgentTransport {
             if (!(parsed instanceof Map)) throw new IOException("Dashboard response is not an object");
             return (Map) parsed;
         } finally { conn.disconnect(); }
+    }
+
+    /** Raw update assets stay on the configured authenticated origin. No redirects. */
+    void download(String path, File target, long limit, String token) throws Exception {
+        if (!path.matches("/api/agent/update/(manifest|signature|package)\\?hostId=[A-Za-z0-9%+_.-]+&requestId=[a-f0-9-]{36}")
+                || limit < 1 || limit > 32L * 1024 * 1024)
+            throw new IllegalArgumentException("Unexpected update asset");
+        if (token == null || token.length() == 0 || token.length() > 1024 || token.indexOf('\r') >= 0 || token.indexOf('\n') >= 0)
+            throw new IllegalArgumentException("Invalid collector credential");
+        HttpURLConnection conn = (HttpURLConnection) new URL(server + path).openConnection();
+        if (conn instanceof HttpsURLConnection) ((HttpsURLConnection) conn).setSSLSocketFactory(sockets);
+        conn.setInstanceFollowRedirects(false); conn.setConnectTimeout(5000); conn.setReadTimeout(15000);
+        conn.setRequestProperty("Authorization", "Bearer " + token);
+        conn.setRequestProperty("Accept", "application/octet-stream"); conn.setRequestProperty("Connection", "close");
+        boolean complete = false;
+        try {
+            int status = conn.getResponseCode();
+            if (status != 200) throw new ApiException(status);
+            if (conn.getContentLength() > limit) throw new IOException("Update asset exceeds limit");
+            InputStream in = conn.getInputStream();
+            try {
+                FileOutputStream out = new FileOutputStream(target);
+                try {
+                    byte[] buffer = new byte[16384]; long total = 0, deadline = System.currentTimeMillis() + 120000L; int n;
+                    while ((n = in.read(buffer)) != -1) {
+                        total += n;
+                        if (total > limit || System.currentTimeMillis() > deadline) throw new IOException("Update transfer limit");
+                        out.write(buffer, 0, n);
+                    }
+                    out.getFD().sync(); complete = true;
+                } finally { out.close(); }
+            } finally { in.close(); }
+        } finally { conn.disconnect(); if (!complete) target.delete(); }
     }
 
     static boolean isTlsFailure(Throwable error) {

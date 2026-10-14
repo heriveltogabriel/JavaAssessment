@@ -194,14 +194,17 @@ public final class ArchiveMetadata {
     void report(Exception e, String path) { scan.warn(e instanceof Limit ? e.getMessage() + ": " + path : "Archive metadata could not be read: " + path); }
 
     long preflight(File file) throws IOException {
+        return preflight(file, ENTRY_LIMIT, CENTRAL_LIMIT);
+    }
+    long preflight(File file, int entryLimit, int centralLimit) throws IOException {
         RandomAccessFile input = new RandomAccessFile(file, "r");
         try {
             long length = input.length(); int size = (int) Math.min(length, 65557L); byte[] tail = new byte[size];
             charge(size); input.seek(length - size); input.readFully(tail);
-            long[] directory = directory(tail, length, length - size);
+            long[] directory = directory(tail, length, length - size, entryLimit, centralLimit);
             charge(directory[0]); byte[] central = new byte[(int) directory[0]];
             input.seek(directory[1]); input.readFully(central);
-            validateCentral(central, 0, central.length, (int) directory[2]);
+            validateCentral(central, 0, central.length, (int) directory[2], entryLimit);
             return directory[0];
         } finally { input.close(); }
     }
@@ -211,6 +214,9 @@ public final class ArchiveMetadata {
         return directory[0];
     }
     static long[] directory(byte[] bytes, long totalLength, long offset) throws IOException {
+        return directory(bytes, totalLength, offset, ENTRY_LIMIT, CENTRAL_LIMIT);
+    }
+    static long[] directory(byte[] bytes, long totalLength, long offset, int entryLimit, int centralLimit) throws IOException {
         for (int i = bytes.length - 22; i >= 0; i--) {
             if (u32(bytes, i) != 0x06054b50L || i + 22 + u16(bytes, i + 20) != bytes.length) continue;
             int entries = u16(bytes, i + 10); long central = u32(bytes, i + 12), position = u32(bytes, i + 16);
@@ -218,7 +224,7 @@ public final class ArchiveMetadata {
                 throw new Limit("Multidisk archives are not inspected");
             if (entries == 65535 || central == 0xffffffffL || position == 0xffffffffL || i >= 20 && u32(bytes, i - 20) == 0x07064b50L)
                 throw new Limit("ZIP64 archives are not inspected");
-            if (entries > ENTRY_LIMIT || central > CENTRAL_LIMIT) throw new Limit("Archive central directory exceeds bounded inspection limits");
+            if (entries > entryLimit || central > centralLimit) throw new Limit("Archive central directory exceeds bounded inspection limits");
             if (position + central > offset + i || position > totalLength || central > totalLength)
                 throw new Limit("Invalid archive central directory");
             return new long[] {central, position, entries};
@@ -226,11 +232,14 @@ public final class ArchiveMetadata {
         throw new Limit("Archive end record is missing or unsupported");
     }
     static void validateCentral(byte[] content, int start, int size, int expected) throws IOException {
+        validateCentral(content, start, size, expected, ENTRY_LIMIT);
+    }
+    static void validateCentral(byte[] content, int start, int size, int expected, int entryLimit) throws IOException {
         int end = start + size, count = 0;
         if (start < 0 || end < start || end > content.length) throw new Limit("Invalid archive central directory bounds");
         while (start < end) {
             if (end - start < 46 || u32(content,start) != 0x02014b50L) throw new Limit("Invalid archive central directory entry");
-            if (++count > ENTRY_LIMIT) throw new Limit("Archive entry count limit reached");
+            if (++count > entryLimit) throw new Limit("Archive entry count limit reached");
             if (u32(content,start + 20) == 0xffffffffL || u32(content,start + 24) == 0xffffffffL || u32(content,start + 42) == 0xffffffffL)
                 throw new Limit("ZIP64 archive entries are not inspected");
             int length = 46 + u16(content,start + 28) + u16(content,start + 30) + u16(content,start + 32);

@@ -4,10 +4,12 @@ JAVA_HOME=/path/to/jdk BETA_INSTALLER_RUNTIME_TEST=1 python3 -B tests/beta-insta
 This never executes useradd, systemctl, SSH or a remote deployment.
 """
 import hashlib
+import http.client
 import json
 import os
 import shutil
 import socket
+import ssl
 import stat
 import subprocess
 import sys
@@ -47,7 +49,7 @@ class BetaInstallerTest(unittest.TestCase):
         lock = verify_libraries(self.source / 'lib')
         self.assertEqual(7, len(lock['dependencies']))
         self.assertTrue((self.source / 'server/InventoryStore.java').is_file())
-        self.assertEqual('1.0-beta', (self.source / 'VERSION').read_text().strip())
+        self.assertEqual(build.RELEASE_VERSION, (self.source / 'VERSION').read_text().strip())
         self.assertEqual(self.checksum, hashlib.sha256(self.package.read_bytes()).hexdigest())
         self.assertEqual(self.checksum, self.package.with_suffix('.zip.sha256').read_text().split()[0])
         with zipfile.ZipFile(self.package) as archive:
@@ -79,6 +81,7 @@ class BetaInstallerTest(unittest.TestCase):
         bad = self.folder / 'enrolled.zip'
         with zipfile.ZipFile(bad, 'w') as archive:
             archive.writestr('INSTALL.md', 'example')
+            archive.writestr('DEPENDENCIES.json', json.dumps({'version': build.RELEASE_VERSION}))
             archive.writestr('conf/bootstrap.properties', 'enrollmentToken=private')
         with self.assertRaisesRegex(ValueError, 'runtime identity'):
             build.configured_generic(bad)
@@ -112,7 +115,10 @@ class BetaInstallerTest(unittest.TestCase):
             self.assertIn('server/InventoryStore.java', names)
             self.assertIn('ops/prepare-beta-dependencies.py', names)
             self.assertNotIn('ops/remote.py', names)
-            self.assertFalse(any(name.startswith(('conf/', 'data/', 'logs/', 'tests/fixtures/')) for name in names))
+            self.assertFalse(any(name.startswith(('conf/', 'data/', 'logs/')) for name in names))
+            fixtures = [name for name in names if name.startswith('tests/fixtures/')]
+            self.assertIn('tests/fixtures/csv.cjs', fixtures)
+            self.assertTrue(all(name.endswith('.cjs') for name in fixtures))
             self.assertFalse(any(name.endswith(('.key', '.p12', '.jks', '.sqlite')) for name in names))
 
     def test_private_data_owned_by_service_before_boot(self):
@@ -140,7 +146,7 @@ class BetaInstallerTest(unittest.TestCase):
 
     def test_unit_recovers_failures_and_restricts_writes(self):
         unit = install.service_unit(443)
-        for setting in ('Restart=on-failure', 'MemoryMax=768M', 'UMask=0077',
+        for setting in ('Restart=on-failure', 'MemoryMax=2G', 'UMask=0077',
                         'StandardError=journal', 'ProtectSystem=strict', 'PrivateTmp=true',
                         'AmbientCapabilities=CAP_NET_BIND_SERVICE'):
             self.assertIn(setting + '\n', unit)
@@ -157,16 +163,22 @@ class BetaInstallerTest(unittest.TestCase):
                  mock.patch.object(install, 'DEST', stage), \
                  mock.patch.object(install, 'command') as command:
                 install.build_stage(stage, Path('/test/jdk'), 'https://dashboard.example.com',
-                                    'dashboard.example.com', 443, cert, key, ca, 'test-password-1234')
-            compile_args = command.call_args.args[0]
+                                    'dashboard.example.com', 443, cert, key, ca, 'test-password-1234',
+                                    admin_name='Fixture Admin', admin_email='fixture@example.com')
+            compile_args = command.call_args_list[0].args[0]
             self.assertEqual('17', compile_args[compile_args.index('--release') + 1])
             self.assertIn(str(stage / 'server/InventoryStore.java'), compile_args)
             runner = (stage / 'run-server.sh').read_text()
             self.assertIn('-XX:+ExitOnOutOfMemoryError', runner)
             self.assertIn('-Dorg.sqlite.tmpdir=' + str(stage / 'data/native'), runner)
-            self.assertIn('-Xmx384m', runner)
+            self.assertIn('-Xms1536m -Xmx1536m', runner)
             self.assertEqual(0o700, stat.S_IMODE((stage / 'data/native').stat().st_mode))
             self.assertEqual(0o600, stat.S_IMODE((stage / 'conf/tls/privkey.pem').stat().st_mode))
+            self.assertIn('assessment.UserAdminTool', command.call_args_list[1].args[0])
+            config = (stage / 'conf/server.properties').read_text()
+            self.assertNotIn('adminSalt', config)
+            self.assertNotIn('adminPasswordSha256', config)
+            self.assertNotIn('test-password-1234', config)
 
     @unittest.skipUnless(os.environ.get('BETA_INSTALLER_RUNTIME_TEST') == '1',
                          'Enable BETA_INSTALLER_RUNTIME_TEST=1 for actual Java/TLS/SQLite startup')
@@ -194,7 +206,8 @@ class BetaInstallerTest(unittest.TestCase):
             cert, key, ca, _ = bootstrap.generate_tls(Path(folder) / 'tls', 'dashboard.example.com')
             with mock.patch.object(install, 'SOURCE', self.source), mock.patch.object(install, 'DEST', stage):
                 install.build_stage(stage, java_home, 'https://dashboard.example.com:%d' % port,
-                                    'dashboard.example.com', port, cert, key, ca, 'test-password-1234', legacy)
+                                    'dashboard.example.com', port, cert, key, ca, 'test-password-1234', legacy,
+                                    admin_name='Fixture Admin', admin_email='fixture@example.com')
             with (stage / 'conf/server.properties').open('a') as output:
                 output.write('\nhttpPort=0\nhttpsBind=127.0.0.1\n')
             with (Path(folder) / 'startup.log').open('wb') as output:
@@ -205,6 +218,32 @@ class BetaInstallerTest(unittest.TestCase):
                     self.assertTrue((stage / 'data/inventory.sqlite').is_file())
                     self.assertTrue(list((stage / 'data/native').glob('*sqlite*')))
                     self.assertEqual(0o600, stat.S_IMODE((stage / 'data/inventory.sqlite').stat().st_mode))
+                    def request(method, path, payload=None, cookie=None, csrf=None):
+                        data = b'' if payload is None else json.dumps(payload).encode()
+                        headers = ['Host: dashboard.example.com', 'Connection: close']
+                        if payload is not None:
+                            headers += ['Content-Type: application/json', 'Content-Length: ' + str(len(data))]
+                        if cookie:
+                            headers.append('Cookie: ' + cookie)
+                        if csrf:
+                            headers.append('X-CSRF-Token: ' + csrf)
+                        context = ssl.create_default_context(cafile=str(ca))
+                        with socket.create_connection(('127.0.0.1', port), timeout=10) as plain:
+                            with context.wrap_socket(plain, server_hostname='dashboard.example.com') as secure:
+                                secure.sendall((method + ' ' + path + ' HTTP/1.1\r\n' + '\r\n'.join(headers) + '\r\n\r\n').encode() + data)
+                                response = http.client.HTTPResponse(secure); response.begin()
+                                return response.status, dict(response.headers), json.loads(response.read())
+                    code, _, status = request('GET', '/api/auth/status')
+                    self.assertEqual(200, code); self.assertFalse(status['bootstrapRequired'])
+                    code, headers, login = request('POST', '/api/login', {'email': 'fixture@example.com', 'password': 'test-password-1234'})
+                    self.assertEqual(200, code); self.assertTrue(login['mustChangePassword'])
+                    self.assertEqual('ADMIN', login['user']['role'])
+                    cookie = next(v for k, v in headers.items() if k.lower() == 'set-cookie').split(';', 1)[0]
+                    self.assertEqual(403, request('GET', '/api/state', cookie=cookie)[0])
+                    code, _, changed = request('POST', '/api/account/password',
+                        {'currentPassword': 'test-password-1234', 'newPassword': 'fixture-new-personal-password'},
+                        cookie, login['csrfToken'])
+                    self.assertEqual(200, code); self.assertFalse(changed['mustChangePassword'])
                     if legacy:
                         self.assertTrue(list((stage / 'data').glob('migration-backup-*/state.json')))
                     backup = Path(folder) / 'snapshot.sqlite'

@@ -16,9 +16,20 @@ PROJECT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT / 'dashboard-installer'))
 import bootstrap  # noqa: E402
 import install  # noqa: E402
+import build  # noqa: E402
 
 
 class DashboardInstallerTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.folder = tempfile.TemporaryDirectory(prefix='dashboard-installer-fixture-')
+        cls.package = Path(cls.folder.name) / 'installer.zip'
+        build.build(cls.package)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.folder.cleanup()
+
     def test_enterprise_linux_version(self):
         with tempfile.TemporaryDirectory() as folder:
             release = Path(folder) / 'os-release'
@@ -51,7 +62,7 @@ class DashboardInstallerTest(unittest.TestCase):
                 self.assertEqual(ca_key.stat().st_mode & 0o077, 0)
 
     def test_package_manifest_and_ca_replacement(self):
-        package = PROJECT / 'dist/assessment-dashboard-installer.zip'
+        package = self.package
         self.assertTrue(package.is_file(), 'Run dashboard-installer/build.py first')
         with tempfile.TemporaryDirectory() as folder:
             with zipfile.ZipFile(package) as archive:
@@ -81,19 +92,60 @@ class DashboardInstallerTest(unittest.TestCase):
                     self.assertNotIn('conf/bootstrap.properties', agent.namelist())
 
     def test_preflight_checks_generated_tls_without_installing(self):
-        package = PROJECT / 'dist/assessment-dashboard-installer.zip'
+        package = self.package
         with tempfile.TemporaryDirectory() as folder:
             with zipfile.ZipFile(package) as archive:
                 archive.extractall(folder)
             args = argparse.Namespace(public_url='https://8.8.8.8', java_home=None,
                                       tls_cert=None, tls_key=None, agent_ca=None,
                                       admin_password_file=None, no_package_install=True,
+                                      admin_name='Fixture Admin', admin_email='fixture@example.com',
                                       check=True)
             with mock.patch.object(install, 'SOURCE', Path(folder)), \
                  mock.patch.object(install, 'ensure_java', return_value=Path('/fake/jdk')), \
                  contextlib.redirect_stdout(io.StringIO()) as output:
                 install.install(args)
             self.assertIn('PRECHECK OK', output.getvalue())
+
+    def test_first_admin_requires_explicit_valid_identity_without_terminal(self):
+        for name, email in [(None, None), ('Admin', 'missing-domain'), ('bad\nname', 'admin@example.com')]:
+            with self.subTest(name=name, email=email), self.assertRaises(RuntimeError):
+                install.admin_identity(name, email, interactive=False)
+        self.assertEqual(('Admin Name', 'admin@example.com'),
+                         install.admin_identity(' Admin Name ', 'ADMIN@EXAMPLE.COM ', interactive=False))
+
+    def test_first_admin_password_has_no_legacy_short_or_shared_file_exception(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'password'
+            path.write_text('1234567\n'); path.chmod(0o600)
+            with self.assertRaisesRegex(RuntimeError, '8–128'):
+                install.read_password(path)
+            path.write_text('Abcd123!\n')
+            self.assertEqual('Abcd123!', install.read_password(path))
+            path.write_text('a' * 129 + '\n')
+            with self.assertRaisesRegex(RuntimeError, '8–128'):
+                install.read_password(path)
+            path.write_text('fixture-personal-password\n'); path.chmod(0o644)
+            with self.assertRaisesRegex(RuntimeError, 'mode 600 or 400'):
+                install.read_password(path)
+            path.chmod(0o400)
+            self.assertEqual('fixture-personal-password', install.read_password(path))
+
+    def test_provisioning_uses_private_ephemeral_file_and_erases_it_on_failure(self):
+        with tempfile.TemporaryDirectory() as folder:
+            stage = Path(folder) / 'stage'; stage.mkdir()
+            observed = []
+            def provision(argv):
+                self.assertIn('assessment.UserAdminTool', argv)
+                self.assertNotIn('fixture-temporary-password', argv)
+                secret = Path(argv[argv.index('--password-file') + 1]); observed.append(secret)
+                self.assertEqual(0o600, secret.stat().st_mode & 0o777)
+                self.assertEqual('fixture-temporary-password\n', secret.read_text())
+                raise RuntimeError('fixture provisioning failure')
+            with mock.patch.object(install, 'command', side_effect=provision), self.assertRaises(RuntimeError):
+                install.provision_admin(stage, Path('/fixture/jdk'), 'Fixture Admin', 'fixture@example.com', 'fixture-temporary-password')
+            self.assertEqual(1, len(observed))
+            self.assertFalse(observed[0].exists())
 
 
 if __name__ == '__main__':

@@ -1,82 +1,99 @@
 # Java Assessment
 
-Inventário de instalações Java, aplicações, servidores Java e JDBC, organizado por ambiente e máquina. A versão **1.0 Beta** reúne um dashboard web com SQLite e um coletor para Linux, incluindo ambientes legados com Java 6.
+Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versão **2.0.2** reúne dashboard, agente Linux e banco SQLite local, com organização por ambiente e máquina.
 
-## Componentes
+## Recursos
+
+- Instalações Java, incluindo runtimes sem compilador quando há evidência de uso por aplicação.
+- Aplicações, processos, servidores Java, bibliotecas e datasources JDBC por configuração suportada.
+- Contas individuais com email e senha, perfis Administrador e Leitura e troca de senha no primeiro acesso.
+- Exportação de um CSV único por ambiente, máquina ou todos os ambientes.
+- Ações de máquina, revogação e desinstalação controlada do agente.
+- Atualização de agentes compatíveis por HTTPS, individualmente ou por ambiente, com assinatura e verificação.
+- Histórico de coletas e atualizações em **Work requests**, incluindo progresso e resultado por máquina.
+
+O agente inicia a comunicação HTTPS com o dashboard. Contato e consulta de tarefas são separados da varredura: sem tarefa, não há novo assessment. Os dados permanecem na instalação do cliente.
+
+## Componentes e requisitos
 
 | Componente | Função | Requisitos |
 | --- | --- | --- |
-| Dashboard | Recebe coletas, armazena o inventário, apresenta filtros e agenda assessments | Enterprise Linux 8+, systemd, JDK 17+ |
-| Coletor | Descobre JVMs existentes e coleta evidências com limites configuráveis | Linux, Java compatível já instalado; modo de serviço com sudo/root |
-| Banco local | Persistência transacional e consultas paginadas | SQLite embarcado; sem serviço de banco separado |
+| Dashboard | Inventário, ambientes, coletas, usuários e administração | Enterprise Linux 8+ compatível, 64 bits, systemd, JDK 17+ |
+| Agente | Descoberta com escopo, exclusões e limites configuráveis | Linux e JVM existente compatível; serviço instalado com sudo/root |
+| SQLite | Inventário, configurações e histórico | Embarcado; sem serviço de banco separado |
 
-O agente comunica-se por HTTPS usando uma identidade individual. Cada pacote baixado de um ambiente recebe o endereço do dashboard, a CA e a credencial de registro. Heartbeat e consulta de tarefas são separados da varredura: uma comunicação sem tarefa não inicia um novo assessment.
+Uma instalação nova do dashboard configura `Xms=Xmx=1536m` e limite do serviço de 2 GiB. O coletor usa `Xms16m` e `Xmx96m`; memória nativa e subprocessos são adicionais. Dimensionamento e cobertura dependem do ambiente real.
 
-## Gerar o instalador do dashboard
+## Gerar o instalador a partir do Git
 
-Com Python 3 e JDK 17+ disponíveis, execute na raiz do repositório:
+Na raiz deste repositório, com Python 3 e OpenSSL disponíveis:
 
 ```sh
 python3 -B ops/prepare-beta-dependencies.py --check
 python3 -B dashboard-installer/build.py --with-source
 ```
 
-O instalador será gerado em `dist/assessment-dashboard-installer-1.0-beta.zip`, acompanhado de SHA-256. As bibliotecas fixadas e suas licenças já estão em `lib/`. O ZIP genérico do coletor está versionado como entrada do build; pacotes de agentes configurados para ambientes são privados e não devem ser adicionados ao Git.
+Os resultados ficam em `dist/assessment-dashboard-installer-2.0.2.zip` e `dist/assessment-dashboard-source-2.0.2.zip`, com arquivos SHA-256. O build usa as bibliotecas fixadas, o agente genérico e o catálogo público assinado incluídos no repositório. Não exige arquivos da máquina de desenvolvimento nem a chave privada de assinatura.
 
-## Instalar em uma nova VM
+O pacote do agente versionado em `dist/assessment-collector.zip` é genérico e não contém identidade cadastrada. O catálogo em `release/agent-updates/2.0.2` é verificado contra a assinatura, a chave pública e os bytes desse pacote. Alterações nos arquivos executáveis exigem uma nova entrega assinada; o build não assina nem substitui a confiança instalada.
 
-Copie o instalador gerado e seu arquivo `.sha256` para uma VM Enterprise Linux 8+:
+## Instalar no cliente
+
+Na VM destinada ao dashboard, após transferir o instalador e seu SHA-256:
 
 ```sh
-sha256sum -c assessment-dashboard-installer-1.0-beta.zip.sha256
-unzip assessment-dashboard-installer-1.0-beta.zip -d dashboard-installer
-cd dashboard-installer
-./install.sh
+sha256sum -c assessment-dashboard-installer-2.0.2.zip.sha256
+unzip assessment-dashboard-installer-2.0.2.zip -d dashboard-installer-2.0.2
+cd dashboard-installer-2.0.2
+./install.sh \
+  --public-url https://dashboard.exemplo.com \
+  --admin-name "Administrador" \
+  --admin-email admin@exemplo.com
 ```
 
-O instalador configura JDK quando necessário, HTTPS, senha inicial e serviço systemd. Confirme um IP ou DNS acessível pelos navegadores e pelos agentes. Libere TCP 443 na rede da nuvem. A CA gerada é privada; o navegador precisa confiar nela ou a instalação deve usar um certificado já confiável.
+Substitua o endereço e a identidade pelos valores do cliente. O instalador fornece uma senha temporária e exige sua troca no primeiro acesso. A equipe deve configurar a confiança no certificado HTTPS e permitir acesso à porta 443. O endereço pode ser privado.
 
-Após entrar no dashboard, crie um ambiente e use **Download agent** para obter o pacote e as instruções de instalação.
+Crie os ambientes e baixe o agente pelo dashboard do cliente. Na máquina monitorada, extraia o ZIP em uma pasta nova e execute:
+
+```sh
+sudo /bin/sh ./install.sh --system-root
+```
+
+O destino operacional é `/opt/java-assessment-collector`, independentemente da pasta de extração ou do nome do usuário. A passagem de agentes antigos para 2.0.2 exige o instalador completo uma vez, pois scripts e executor mudaram. Depois, atualizações compatíveis podem ser solicitadas pelo painel.
+
+## Desenvolvimento e validação local
+
+Com JDK 17+ e Node.js no ambiente:
+
+```sh
+export JAVA_HOME=/caminho/do/jdk17
+/bin/sh ops/test-source.sh
+python3 -B tests/agent-update-installer-test.py
+python3 -B tests/dashboard_installer_test.py
+BETA_INSTALLER_RUNTIME_TEST=1 python3 -B tests/beta-installer-test.py
+```
+
+As verificações HTTP/HTTPS usam loopback e diretórios temporários. Não atualizam VMs. `ops/test-source.sh` não executa os testes pesados de carga ou de diretórios.
+
+Para compilar o agente com alvo Java 6, configure `ASSESSMENT_ECJ_JAR` com um Eclipse Compiler compatível, como ECJ 3.33.0. Os testes executados em JDK 17 não comprovam execução em Java 6 ou Linux de 32 bits.
+
+Os testes de navegador usam Playwright e Chrome. Configure `NODE`, `NODE_PATH`, `PLAYWRIGHT_MODULE` ou `BROWSER_CHANNEL` conforme o ambiente. `BETA_LOAD=0 /bin/sh ops/test-beta.sh` executa a suíte histórica de interface sem o teste de carga.
 
 ## Documentação
 
+- [Visão funcional, operação e limites](docs/SOLUTION.md)
+- [Mudanças e validação da 2.0.2](docs/RELEASE_2.0.2.md)
 - [Instalação e configuração](dashboard-installer/GUIA_INSTALACAO.md)
 - [Opções do instalador](dashboard-installer/README.md)
 - [Instalação do coletor](collector/INSTALL.md)
 - [Arquitetura e contrato HTTP](CONTRACT.md)
+- [Reconstrução do pacote de fontes](dashboard-installer/README-SOURCE.md)
 - [Migração e backup](dashboard-installer/BETA_MIGRATION.md)
-- [Mudanças da Beta](dashboard-installer/BETA_RELEASE.md)
-- [Testes e resultados com 1.000 máquinas](docs/BETA_VALIDATION.md)
 
-## Desenvolvimento e testes
+Os nomes de alguns scripts e documentos mantêm `beta` por compatibilidade com a estrutura anterior. A versão atual do produto é 2.0.2. Relatórios históricos descrevem somente o cenário e a versão em que foram produzidos.
 
-```sh
-export JAVA_HOME=/caminho/do/jdk17
-python3 -B tests/beta-installer-test.py
-```
-
-Para incluir inicialização HTTPS/SQLite real em diretório temporário:
-
-```sh
-BETA_INSTALLER_RUNTIME_TEST=1 python3 -B tests/beta-installer-test.py
-```
-
-A suíte principal inclui armazenamento, API, interface e carga. Requer Node.js, Playwright e Chrome disponíveis; use `NODE`, `NODE_PATH` ou `PLAYWRIGHT_MODULE` para instalações fora do caminho padrão:
-
-```sh
-/bin/sh ops/test-beta.sh
-```
-
-`BETA_LOAD=0` omite o teste de carga. A suíte usa fixtures locais, sem acessar dashboards instalados. Testes históricos individuais podem cobrir contratos anteriores; `ops/test-beta.sh` é a entrada de validação da Beta.
-
-## Origem desta publicação
-
-Esta base foi importada do pacote de fontes validado da versão 1.0 Beta, preservando o código do dashboard e do coletor. Foram adicionados documentação do repositório, regras de exclusão e fixtures sintéticas dos testes. Referências fixas ao laboratório e scripts de teste que operavam VMs reais foram retirados; o endereço público é configurado pelo instalador.
-
-O relatório de carga registra uma execução local de um minuto com 1.000 máquinas simuladas. Ele não representa uma garantia de desempenho para qualquer VM nem um teste prolongado de estabilidade.
-
-A desinstalação remota está em desenvolvimento separado e ainda não integra esta base. Nenhuma publicação neste repositório atualiza automaticamente uma VM.
+Configurações privadas, chaves, inventário, logs, pacotes de ambientes e ferramentas específicas do laboratório ficam fora do Git. Publicar código neste repositório não instala nem atualiza servidores ou agentes.
 
 ## Licença
 
-[MIT](LICENSE). As dependências mantêm suas próprias licenças, incluídas em [lib/licenses](lib/licenses), com versões e checksums em [dependencies-lock.json](lib/dependencies-lock.json).
+[MIT](LICENSE). As dependências mantêm suas próprias licenças em [lib/licenses](lib/licenses), com versões e checksums em [dependencies-lock.json](lib/dependencies-lock.json).

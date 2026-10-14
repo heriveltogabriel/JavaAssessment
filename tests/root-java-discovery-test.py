@@ -195,6 +195,12 @@ class RootJavaDiscovery(unittest.TestCase):
         bootstrap = '\n. "$SOURCE/bootstrap-config.sh"\n'
         self.assertEqual(source.count(bootstrap), 1)
         prefix = source.split(bootstrap, 1)[0]
+        # Lifecycle locks/services are covered by the isolated update tests.
+        # Keep this JVM-selection harness away from every production path.
+        executable(self.package / "lifecycle-lock.sh", "#!/bin/sh\n:\n")
+        prefix = prefix.replace("/opt/java-assessment-collector", str(self.package))
+        prefix = prefix.replace("/opt/java-assessment-uninstall", str(self.base / "uninstall"))
+        prefix = prefix.replace("/opt/java-assessment-update", str(self.base / "update"))
         begin = 'if test -z "$JAVA_PATH"; then\n'
         end = "printf '%s\\n' \"$JAVA_PATH\" > \"$DEST/conf/java.path\""
         self.assertEqual(source.count(begin), 1)

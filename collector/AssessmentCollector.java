@@ -48,6 +48,41 @@ public final class AssessmentCollector {
         System.out.println("ASSESSMENT_ACCEPTED=" + result.get("eventId"));
     }
 
+    private boolean uninstallCapable() {
+        return spool.getPath().equals("/opt/java-assessment-collector/collector-spool")
+            && new File("/opt/java-assessment-collector/conf/uninstall-capability").isFile()
+            && new File("/opt/java-assessment-uninstall/uninstall-local.sh").isFile();
+    }
+
+    static String updateCapability(Properties config) {
+        if (!("/opt/java-assessment-collector/collector-spool".equals(config.getProperty("spoolDirectory"))
+            && new File("/opt/java-assessment-collector/conf/root-service-mode").isFile()
+            && new File("/opt/java-assessment-update/helper.jar").isFile()
+            && new File("/opt/java-assessment-update/update-local.sh").isFile())) return "";
+        try { return capabilityMarker(AssessmentScan.readFile(new File("/opt/java-assessment-collector/conf/update-capability"), 32)); }
+        catch (IOException error) { return ""; }
+    }
+    static String capabilityMarker(String marker) {
+        String value = marker.trim(); return "update-v1".equals(value) || "update-v2".equals(value) ? value : "";
+    }
+    static boolean updateCapable(Properties config) { return !updateCapability(config).equals(""); }
+
+    private String capabilities() {
+        return (uninstallCapable() ? "&capability=uninstall-v1" : "") + (updateCapable(config) ? "&updateCapability=" + updateCapability(config) : "");
+    }
+
+    private boolean publishAction(Object action) throws Exception {
+        if (action == null) return false;
+        if (action instanceof Map && "UPDATE_AGENT_V1".equals(((Map)action).get("type"))) {
+            if (!updateCapable(config)) throw new IOException("Unsupported update action");
+            AssessmentScan.atomicWrite(new File(spool, "update-request.json"), Json.stringify(action));
+            System.out.println("ASSESSMENT_UPDATE_PENDING"); return true;
+        }
+        if (!uninstallCapable() || !(action instanceof Map) || !"UNINSTALL_AGENT_V1".equals(((Map) action).get("type"))) throw new IOException("Unsupported action");
+        AssessmentScan.atomicWrite(new File(spool, "uninstall-request.json"), Json.stringify(action));
+        System.out.println("ASSESSMENT_UNINSTALL_PENDING"); return true;
+    }
+
     public void run() throws Exception {
         RandomAccessFile lockFile = new RandomAccessFile(new File(spool, ".collector.lock"), "rw");
         FileLock lock = null;
@@ -60,7 +95,11 @@ public final class AssessmentCollector {
                 catch (Exception e) { hostname = hostId; }
             }
             request("POST", "/api/agent/heartbeat", Json.stringify(AssessmentScan.map(
-                "hostId", hostId, "hostname", hostname, "javaVersion", System.getProperty("java.version"), "collectorVersion", AgentTransport.VERSION)));
+                "hostId", hostId, "hostname", hostname, "javaVersion", System.getProperty("java.version"), "collectorVersion", AgentTransport.VERSION, "uninstallCapability", uninstallCapable() ? "uninstall-v1" : "", "updateCapability", updateCapability(config))));
+            if (uninstallCapable() || updateCapable(config)) {
+                Map actions = request("GET", "/api/agent/actions?hostId=" + URLEncoder.encode(hostId, "UTF-8") + capabilities(), null);
+                if (publishAction(actions.get("action"))) return;
+            }
             File[] pending = spool.listFiles(new FilenameFilter() {
                 public boolean accept(File directory, String name) { return name.startsWith("pending-") && name.endsWith(".json"); }
             });
@@ -70,7 +109,8 @@ public final class AssessmentCollector {
                 if (i >= 3) { System.out.println("ASSESSMENT_PENDING_RESULTS_REMAIN"); return; }
                 send(pending[i]);
             }
-            Map poll = request("GET", "/api/agent/poll?hostId=" + URLEncoder.encode(hostId, "UTF-8"), null);
+            Map poll = request("GET", "/api/agent/poll?hostId=" + URLEncoder.encode(hostId, "UTF-8") + capabilities(), null);
+            if (publishAction(poll.get("action"))) return;
             Object jobId = poll.get("jobId");
             if (jobId == null) { System.out.println("ASSESSMENT_NO_JOB"); return; }
             if (!(jobId instanceof String) || ((String) jobId).length() > 256) throw new IOException("Invalid leased job ID");

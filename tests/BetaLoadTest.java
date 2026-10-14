@@ -85,8 +85,8 @@ public final class BetaLoadTest {
         return new Reply(response.statusCode(),obj(Json.parse(new String(response.body(),StandardCharsets.UTF_8),32*1024*1024)),response.body().length,elapsed,response.headers());
     }
     private void login()throws Exception {
-        Reply reply=request("POST","/api/login",map("password","load-fixture-password"),false,null);check(reply.status==200,"fixture login HTTP "+reply.status);
-        cookie=reply.headers.firstValue("Set-Cookie").orElseThrow().split(";",2)[0];csrf=String.valueOf(reply.body.get("csrfToken"));
+        var reply=TestAccounts.login(base,"load-fixture-password");
+        cookie=reply.headers().firstValue("Set-Cookie").orElseThrow().split(";",2)[0];csrf=String.valueOf(obj(Json.parse(reply.body())).get("csrfToken"));
     }
     private Reply query(QueryCase query)throws Exception {
         Reply reply=request("GET",query.path,null,true,null);check(reply.status==200,query.label+" returned HTTP "+reply.status);

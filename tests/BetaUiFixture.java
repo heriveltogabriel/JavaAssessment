@@ -21,7 +21,7 @@ public final class BetaUiFixture {
      app.store.putInventory("libraries",id,List.of(map("id","library","hostId",id,"name","JDBC library","category","JDBC","usage","found","applicationId","app","applicationName","Example app","observedAt",now)));
      app.store.putInventory("datasources",id,List.of(map("id","datasource","hostId",id,"name","Orders datasource","applicationId","app","applicationName","Example app","state","CONFIGURED","evidenceLevel","configuration","observedAt",now)));
     }return null;});
-   HttpServer http=HttpServer.create(new InetSocketAddress("127.0.0.1",0),16);ExecutorService pool=Executors.newFixedThreadPool(4);http.createContext("/",app);http.setExecutor(pool);http.start();System.out.println("BETA_UI_URL=http://127.0.0.1:"+http.getAddress().getPort());System.out.flush();try{System.in.read();}finally{http.stop(0);pool.shutdownNow();}
+   HttpServer http=HttpServer.create(new InetSocketAddress("127.0.0.1",0),16);ExecutorService pool=Executors.newFixedThreadPool(4);http.createContext("/",app);http.setExecutor(pool);http.start();TestAccounts.login("http://127.0.0.1:"+http.getAddress().getPort());System.out.println("BETA_UI_URL=http://127.0.0.1:"+http.getAddress().getPort());System.out.flush();try{System.in.read();}finally{http.stop(0);pool.shutdownNow();}
   }finally{try(var paths=Files.walk(root)){paths.sorted(Comparator.reverseOrder()).forEach(file->{try{Files.delete(file);}catch(IOException ignored){}});}}
  }
 }

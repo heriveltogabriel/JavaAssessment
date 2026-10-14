@@ -1,23 +1,31 @@
-# Fontes da versão 1.0 Beta
+# Fontes da versão 2.0.2
 
-O ZIP de fontes inclui servidor, frontend, coletor, código de testes, instalador, bibliotecas fixadas, licenças e o ZIP genérico do agente. Ele exclui configurações privadas, inventário, logs, credenciais, resultados de máquinas e scripts antigos de publicação remota. O pacote contém apenas código de testes; evidências de ambientes reais e fixtures com dados não fazem parte da entrega.
+O pacote inclui servidor, interface, coletor, testes locais, instalador, bibliotecas fixadas, licenças, agente genérico e catálogo público de atualização assinado. Configurações privadas, chaves de assinatura, identidades, inventário, logs e ferramentas específicas do laboratório não fazem parte da entrega.
 
-Na raiz extraída, usando Python 3 e um JDK 17+ local:
+Na raiz extraída, com Python 3 e OpenSSL:
 
 ```sh
 python3 -B ops/prepare-beta-dependencies.py --check
-python3 -B tests/beta-installer-test.py
 python3 -B dashboard-installer/build.py --with-source
 ```
 
-Para incluir o teste real de inicialização local, configure `JAVA_HOME` para o JDK de teste e execute:
+O empacotador verifica assinatura, versão, integridade e arquivos estáveis do agente antes de incluir o catálogo. A cópia do Git usa os arquivos públicos de `release/`; o ZIP de fontes usa o catálogo em `dist/`. Nenhum dos dois precisa dos arquivos de uma publicação anterior ou da chave privada.
+
+O build mantém os bytes executáveis do agente publicado. Para mudar o agente distribuído, prepare uma nova versão e seu catálogo assinado pelo processo de release autorizado. O código de assinatura recusa criar outra chave quando já existe uma chave pública fixada e a privada correspondente está ausente.
+
+Para conferir o instalador em isolamento, com um JDK 17+ local:
 
 ```sh
+export JAVA_HOME=/caminho/do/jdk17
+python3 -B tests/agent-update-installer-test.py
+python3 -B tests/dashboard_installer_test.py
 BETA_INSTALLER_RUNTIME_TEST=1 python3 -B tests/beta-installer-test.py
 ```
 
-Esse teste compila o servidor para Java 17, gera certificado, abre uma porta HTTPS somente em `127.0.0.1`, cria SQLite e verifica backup/restauração em diretórios temporários. Não executa `systemctl`, SSH nem atualização de uma máquina externa. O sistema deve permitir escutar no loopback. Os testes de permissões de conta e de unidade systemd usam simulação; o teste local não substitui a homologação em Enterprise Linux.
+O último comando compila o servidor, gera certificado, abre HTTPS somente em `127.0.0.1`, cria SQLite e verifica instalação, autenticação e migração em diretórios temporários. Não executa systemctl, SSH nem publicação remota. O ambiente de teste deve permitir loopback.
 
-O build produz o instalador versionado e o nome de compatibilidade em `dist`, com SHA-256. `--output /caminho/pacote.zip` gera uma cópia isolada. `--source-output /caminho/fontes.zip` escolhe outro destino para o pacote de fontes. A preparação de dependências sem `--check` baixa apenas os JARs/POMs fixados do Maven Central e exige os SHA-256 já registrados no repositório.
+Fixtures JavaScript incluídas são código sintético de teste, não resultados de máquinas. Para testes de navegador, instale Playwright e Chrome ou configure `PLAYWRIGHT_MODULE` e `BROWSER_CHANNEL`.
 
-Consulte `BETA_MIGRATION.md` para importação dos JSON legados, backup SQLite e retorno à versão anterior. A geração dos pacotes não instala nem atualiza o dashboard.
+`--output /caminho/pacote.zip` e `--source-output /caminho/fontes.zip` permitem destinos isolados. Os artefatos recebem arquivo SHA-256. A preparação de dependências sem `--check` baixa apenas os arquivos fixados do Maven Central e exige os checksums registrados.
+
+A compatibilidade legada e os limites desta entrega estão em `docs/RELEASE_2.0.2.md`. Compilação Java 6 não substitui homologação em JVM e Linux legados reais.

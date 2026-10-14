@@ -14,7 +14,7 @@ import java.util.concurrent.locks.*;
 /** SQLite document storage with indexed query columns and atomic per-host snapshots. */
 public final class InventoryStore implements AutoCloseable {
     private static final int STATE_LIMIT=32*1024*1024, AUTH_LIMIT=8*1024*1024, READERS=4;
-    private static final Set<String> TABLES=Set.of("hosts","environments","jobs","identities","enrollments");
+    private static final Set<String> TABLES=Set.of("hosts","environments","jobs","identities","enrollments","uninstall_requests","agent_update_requests");
     private static final Set<String> KINDS=Set.of("runtimes","processes","servers","libraries","applications","datasources");
     private final File data;
     private Connection writer;
@@ -74,6 +74,12 @@ public final class InventoryStore implements AutoCloseable {
     private void schema() {
         transaction(()->{
             String[] statements={
+                "CREATE TABLE IF NOT EXISTS agent_update_batches(id TEXT PRIMARY KEY,request_key TEXT NOT NULL UNIQUE,target_version TEXT NOT NULL,selection TEXT NOT NULL,payload TEXT NOT NULL)",
+                "CREATE TABLE IF NOT EXISTS agent_update_requests(id TEXT PRIMARY KEY,host_id TEXT NOT NULL,batch_id TEXT NOT NULL,ordinal INTEGER NOT NULL,status TEXT NOT NULL,payload TEXT NOT NULL,UNIQUE(batch_id,host_id))",
+                "CREATE INDEX IF NOT EXISTS agent_update_host ON agent_update_requests(host_id,status)",
+                "CREATE INDEX IF NOT EXISTS agent_update_batch ON agent_update_requests(batch_id,ordinal)",
+                "CREATE TABLE IF NOT EXISTS uninstall_requests(id TEXT PRIMARY KEY,host_id TEXT NOT NULL,request_key TEXT NOT NULL,status TEXT NOT NULL,payload TEXT NOT NULL,UNIQUE(host_id,request_key))",
+                "CREATE INDEX IF NOT EXISTS uninstall_host ON uninstall_requests(host_id,status)",
                 "CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,payload TEXT NOT NULL)",
                 "CREATE TABLE IF NOT EXISTS hosts(id TEXT PRIMARY KEY,environment_id TEXT NOT NULL DEFAULT '',hostname TEXT NOT NULL DEFAULT '',last_seen TEXT NOT NULL DEFAULT '',captured_at TEXT NOT NULL DEFAULT '',coverage_status TEXT NOT NULL DEFAULT 'pending',payload TEXT NOT NULL)",
                 "CREATE TABLE IF NOT EXISTS environments(id TEXT PRIMARY KEY,name TEXT NOT NULL,payload TEXT NOT NULL)",
@@ -124,6 +130,10 @@ public final class InventoryStore implements AutoCloseable {
             case "identities":
                 String tokenHash=document.containsKey("agentToken")?hash(string(document.get("agentToken"))):required(document,"tokenHash");
                 exec("INSERT INTO identities(id,installation_id,token_hash,status,payload) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET installation_id=excluded.installation_id,token_hash=excluded.token_hash,status=excluded.status,payload=excluded.payload",id,string(document.get("installationId")),tokenHash,required(document,"status"),payload);break;
+            case "agent_update_requests":
+                exec("INSERT INTO agent_update_requests(id,host_id,batch_id,ordinal,status,payload) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,payload=excluded.payload",id,required(document,"hostId"),required(document,"batchId"),number(document.get("ordinal")),required(document,"status"),payload);break;
+            case "uninstall_requests":
+                exec("INSERT INTO uninstall_requests(id,host_id,request_key,status,payload) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,payload=excluded.payload",id,required(document,"hostId"),required(document,"requestKey"),required(document,"status"),payload);break;
             case "enrollments":
                 exec("INSERT INTO enrollments(id,token_hash,status,expires_millis,payload) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET token_hash=excluded.token_hash,status=excluded.status,expires_millis=excluded.expires_millis,payload=excluded.payload",id,required(document,"tokenHash"),required(document,"status"),number(document.get("expiresMillis")),payload);break;
             default:throw new IllegalArgumentException("Unsupported document table");
@@ -140,6 +150,9 @@ public final class InventoryStore implements AutoCloseable {
     }
 
     /** Replace one collection for one host in the surrounding result transaction. */
+    static boolean includeRuntime(Map<String,Object> document) {
+        return !"JRE".equalsIgnoreCase(string(document.get("kind")).trim()) || Boolean.TRUE.equals(document.get("inUse"));
+    }
     public void putInventory(String kind,String hostId,List<Object> documents) {
         if(!KINDS.contains(kind))throw new IllegalArgumentException("Invalid inventory collection");
         if(hostId==null||hostId.isEmpty())throw new IllegalArgumentException("Missing inventory host");
@@ -149,7 +162,7 @@ public final class InventoryStore implements AutoCloseable {
                 Map<String,Object> d=object(value);
                 if(!hostId.equals(d.get("hostId")))throw new IllegalArgumentException("Invalid inventory ownership");
                 String id=required(d,"id");
-                if("runtimes".equals(kind)&&"JRE".equalsIgnoreCase(string(d.get("kind")).trim()))continue;
+                if("runtimes".equals(kind)&&!includeRuntime(d))continue;
                 String version=string(d.get("version")),major=major(version);
                 String type=string(d.getOrDefault("type",d.getOrDefault("kind",d.getOrDefault("category",""))));
                 exec("INSERT INTO inventory(kind,host_id,id,version,major,type,observed_at,search_text,payload) VALUES(?,?,?,?,?,?,?,?,?)",

@@ -12,8 +12,8 @@ async function startFixture(webRoot) {
   if(url.pathname.startsWith('/api/')){
    let body={};for await(const chunk of req){body._raw=(body._raw || '')+chunk;}if(body._raw){try{body=JSON.parse(body._raw);}catch(_){return json(400,{error:'Invalid JSON'});}}
    fixture.requests.push({path:url.pathname,method:req.method,body,csrf:req.headers['x-csrf-token']});
-   if(url.pathname==='/api/session')return fixture.authenticated?json(200,{authenticated:true,csrfToken:'fixture-csrf'}):json(401,{error:'Session expired'});
-   if(url.pathname==='/api/login'){fixture.authenticated=true;return json(200,{authenticated:true,csrfToken:'fixture-csrf'});}
+   if(url.pathname==='/api/session')return fixture.authenticated?json(200,{authenticated:true,csrfToken:'fixture-csrf',mustChangePassword:false,user:{id:'fixture-admin',name:'Fixture Admin',email:'fixture-admin@example.com',role:'ADMIN',status:'ACTIVE',mustChangePassword:false}}):json(401,{error:'Session expired'});
+   if(url.pathname==='/api/login'){fixture.authenticated=true;return json(200,{authenticated:true,csrfToken:'fixture-csrf',mustChangePassword:false,user:{id:'fixture-admin',name:'Fixture Admin',email:'fixture-admin@example.com',role:'ADMIN',status:'ACTIVE',mustChangePassword:false}});}
    if(!fixture.authenticated)return json(401,{error:'Session expired'});
    if(req.method!=='GET'&&req.headers['x-csrf-token']!=='fixture-csrf')return json(403,{error:'Missing CSRF'});
    if(url.pathname==='/api/state')return json(200,fixture.state);
@@ -24,13 +24,14 @@ async function startFixture(webRoot) {
    }
    if(url.pathname==='/api/enrollments/revoke'){const e=fixture.state.enrollments.find(e=>e.id===body.enrollmentId);if(!e)return json(404,{error:'Unknown enrollment'});e.status='revoked';return json(200,{revoked:true});}
    if(url.pathname==='/api/hosts/revoke'){const h=fixture.state.hosts.find(h=>h.id===body.hostId);if(!h)return json(404,{error:'Unknown host'});h.credentialStatus='revoked';return json(200,{revoked:true});}
-   if(url.pathname==='/api/hosts/settings'){const h=fixture.state.hosts.find(h=>h.id===body.hostId);if(!h)return json(404,{error:'Unknown host'});h.settings={...h.settings,...body.settings};return json(200,h.settings);}
+   if(url.pathname==='/api/hosts/settings'){const h=fixture.state.hosts.find(h=>h.id===body.hostId);if(!h)return json(404,{error:'Unknown host'});h.settingsOverrides=body.replaceOverrides?{...body.settings}:{...h.settingsOverrides,...body.settings};h.settings={...defaults,...h.settingsOverrides};return json(200,h.settings);}
    if(url.pathname==='/api/logout'){fixture.authenticated=false;return json(200,{loggedOut:true});}
-   if(url.pathname==='/api/collector.zip'){res.writeHead(200,{'Content-Type':'application/zip','Content-Disposition':'attachment; filename="assessment-collector.zip"'});return res.end(Buffer.from('504b0506000000000000000000000000000000000000','hex'));}
+   if(url.pathname==='/api/collector/info')return json(200,{version:'1.5.0',filename:'assessment-collector-1.5.0.zip'});
+   if(url.pathname==='/api/collector.zip'){res.writeHead(200,{'Content-Type':'application/zip','Content-Disposition':'attachment; filename="assessment-collector-1.5.0.zip"'});return res.end(Buffer.from('504b0506000000000000000000000000000000000000','hex'));}
    return json(404,{error:'Unexpected fixture endpoint '+url.pathname});
   }
   const name=url.pathname==='/'?'index.html':url.pathname.slice(1);
-  if(!['index.html','version.js','styles.css','dashboard.css','dashboard.js','app.js','enrollment.js','enrollment.css'].includes(name)){res.writeHead(404);return res.end();}
+  if(!['index.html','access.js','access.css','version.js','styles.css','dashboard.css','dashboard.js','app.js','enrollment.js','enrollment.css','environments.js','environments.css'].includes(name)){res.writeHead(404);return res.end();}
   res.writeHead(200,{'Content-Type':name.endsWith('.js')?'application/javascript':name.endsWith('.css')?'text/css':'text/html','Cache-Control':'no-store'});res.end(fs.readFileSync(path.join(webRoot,name)));
  });
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));fixture.base='http://127.0.0.1:'+server.address().port;fixture.close=()=>new Promise(resolve=>server.close(resolve));return fixture;

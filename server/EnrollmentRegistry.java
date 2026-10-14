@@ -45,13 +45,21 @@ final class EnrollmentRegistry {
                 if(!"active".equals(h.get("status")))throw new Failure(403,"Collector credential has been revoked");return h;
             }
             if(num(e.get("usedCount"))>=num(e.get("maxUses")))throw new Failure(409,"Enrollment usage limit reached");
-            if(store.scalar("SELECT count(*) FROM identities")>=MAX_HOSTS)throw new Failure(409,"Registered machine limit reached (1,000 in Beta)");
+            if(store.scalar("SELECT count(*) FROM identities WHERE coalesce(json_extract(payload,'$.deleted'),0) <> 1")>=MAX_HOSTS)throw new Failure(409,"Registered machine limit reached (1,000)");
             Map<String,Object> h=AssessmentServer.map("hostId","host-"+UUID.randomUUID(),"agentToken",token(),"status","active","installationId",installationId,"enrollmentId",e.get("id"),"createdAt",AssessmentServer.now(),"metadata",metadata,"settings",e.get("settings"),"autoCollect",e.get("autoCollect"),"environmentId",str(e.get("environmentId")));
             store.put("identities",h);e.put("usedCount",num(e.get("usedCount"))+1);store.put("enrollments",e);return h;
         });
     }
     String authenticate(String code){if(code.length()<4||code.length()>256)return null;List<Map<String,Object>> rows=store.rows("SELECT id FROM identities WHERE token_hash=? AND status='active' LIMIT 1",InventoryStore.hash(code));return rows.isEmpty()?null:str(rows.get(0).get("id"));}
     String credentialStatus(String id){List<Map<String,Object>> rows=store.rows("SELECT status FROM identities WHERE id=?",id);return rows.isEmpty()?"unknown":str(rows.get(0).get("status"));}
+    /** Preserve only the information needed to reject old tokens and installation retries. */
+    void retainDeletedIdentity(String id){
+        List<Map<String,Object>> rows=store.rows("SELECT token_hash,installation_id,payload FROM identities WHERE id=?",id);
+        if(rows.isEmpty())throw new Failure(409,"Machine identity is missing; administrator recovery is required before deletion");
+        Map<String,Object> row=rows.get(0),previous=obj(Json.parse(str(row.get("payload"))));
+        Map<String,Object> tombstone=AssessmentServer.map("hostId",id,"status","revoked","tokenHash",str(row.get("token_hash")),"installationId",str(row.get("installation_id")),"enrollmentId",str(previous.get("enrollmentId")),"deleted",true);
+        store.put("identities",tombstone);
+    }
     void revokeHost(String id)throws IOException{store.transaction(()->{Map<String,Object> h=store.get("identities",id);if(h==null)throw new Failure(404,"Host not found");h.put("status","revoked");h.put("revokedAt",AssessmentServer.now());store.put("identities",h);return null;});}
     void revokeEnrollment(String id)throws IOException{store.transaction(()->{Map<String,Object> e=store.get("enrollments",id);if(e==null)throw new Failure(404,"Enrollment not found");e.put("status","revoked");store.put("enrollments",e);return null;});}
 }

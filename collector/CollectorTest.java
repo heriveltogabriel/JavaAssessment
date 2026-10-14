@@ -12,7 +12,7 @@ public final class CollectorTest {
     static File temp(String name) throws Exception {
         File path = File.createTempFile(name, "-collector-test");
         if (!path.delete() || !path.mkdir()) throw new IOException("Cannot create fixture directory");
-        return path;
+        return path.getCanonicalFile();
     }
     static void remove(File file) {
         File[] files = file.listFiles(); if (files != null) for (File child : files) remove(child);

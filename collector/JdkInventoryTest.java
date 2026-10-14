@@ -29,7 +29,7 @@ public final class JdkInventoryTest {
             text(new File(standalone, "release"), "JAVA_VERSION=\"1.6.0_45\"\n");
             text(new File(standalone, "lib/deep/derby.jar"), "must not scan JRE internals");
             AssessmentScan ignored = scanner();
-            check(add(ignored, standalone, true, "1.6.0_45") == null, "An in-use standalone JRE must not enter JDK inventory");
+            check(add(ignored, standalone, false, "1.6.0_45") == null, "An unused standalone JRE remains outside application inventory");
             ignored.walk(standalone, 0);
             check(ignored.runtimes.isEmpty() && ignored.filesVisited == 1 && ignored.bytesRead == 0,
                 "Standalone JRE is skipped without walking internals or reading metadata");
@@ -62,8 +62,10 @@ public final class JdkInventoryTest {
             ProcessLaunchTest.process(proc, "98766001", new File(standalone, "bin/java").getPath(), "org.apache.catalina.startup.Bootstrap", "start");
             ProcessLaunchTest.process(proc, "98766002", new File(nested, "bin/java").getPath(), "com.example.Service");
             AssessmentScan scan = scanner(); scan.discoverProcesses(proc);
-            check(scan.runtimes.size() == 1 && scan.processes.size() == 2 && scan.applications.size() == 2 && scan.servers.size() == 1,
-                "Ignoring JRE inventory must retain its process, application and Tomcat server");
+            check(scan.runtimes.size() == 2 && scan.processes.size() == 2 && scan.applications.size() == 2 && scan.servers.size() == 1,
+                "An observed JRE is retained together with its process, application and Tomcat server");
+            check("JRE".equals(scan.runtimes.get(standalone.getPath()).get("kind")) && Boolean.TRUE.equals(scan.runtimes.get(standalone.getPath()).get("inUse")),
+                "Application runtime is counted without requiring javac");
             Map jreProcess = (Map)scan.processes.get(0), jreApplication = (Map)scan.applications.get(0);
             check(standalone.getPath().equals(jreProcess.get("javaHome")) && standalone.getPath().equals(jreApplication.get("javaHome")),
                 "Process/application Java home evidence must not depend on inventory inclusion");
@@ -86,8 +88,11 @@ public final class JdkInventoryTest {
                 "jdbcDataSources", Arrays.asList(AssessmentScan.map("name", "Ds", "driverName", "Example JDBC", "driverVersion", "1.0")))));
             Properties config = new Properties(); config.setProperty("snapshotRoot", root.getCanonicalPath());
             AssessmentScan scan = new AssessmentScan(config, "fixture-host", "fixture-host", AssessmentScan.map()); scan.reuseWebLogicSnapshot();
-            check(scan.runtimes.isEmpty() && scan.servers.size() == 1 && scan.datasources.size() == 1 && scan.libraries.size() == 1,
-                "Snapshot JRE omission must retain WebLogic and JDBC observations");
+            check(scan.runtimes.size() == 1 && scan.servers.size() == 1 && scan.datasources.size() == 1 && scan.libraries.size() == 1,
+                "Snapshot runtime observation retains Java, WebLogic and JDBC evidence");
+            Map observed = (Map)scan.runtimes.values().iterator().next();
+            check("JRE".equals(observed.get("kind")) && "2001-01-01T00:00:00.000Z".equals(observed.get("observedAt")),
+                "Runtime snapshot keeps its original observation time");
         } finally { CollectorTest.remove(root); }
     }
     static void privateCollectorRuntime() throws Exception {
@@ -135,8 +140,33 @@ public final class JdkInventoryTest {
             check(observed.runtimes.size() == 1, "Later filesystem discovery must preserve the in-use private JDK without duplication");
         } finally { CollectorTest.remove(root); }
     }
+    static void externalPrivateRuntime() throws Exception {
+        File root = CollectorTest.temp("external-private-runtime").getCanonicalFile();
+        try {
+            File jar = new File(root, "java-assessment-collector/collector.jar"); text(jar, "fixture");
+            File jdk = home(root, "java-assessment-runtime/jdk6", true), nested = home(jdk, "jre", false);
+            AssessmentScan scan = scanner(jar);
+            scan.walk(jdk, 0);
+            check(scan.filesVisited == 0 && scan.runtimes.isEmpty() && !scan.partial, "Dedicated external runtime excluded before budgets");
+            check(add(scan, nested, false, "1.6.0_45") == null, "Own JVM metadata does not re-add external runtime");
+            File proc = new File(root, "proc"), helper = new File(root, "java-assessment-update/helper.jar");
+            ProcessLaunchTest.process(proc, "98766101", new File(jdk, "bin/java").getPath(), "-cp", helper.getPath(), "assessment.AgentUpdateWorker");
+            ProcessLaunchTest.process(proc, "98766102", new File(jdk, "bin/java").getPath(), "-cp", jar.getPath(), "assessment.AgentUpdateProbe", "heartbeat");
+            scan.discoverProcesses(proc);
+            check(scan.processes.isEmpty() && scan.runtimes.isEmpty(), "Updater processes are not customer applications");
+            ProcessLaunchTest.process(proc, "98766103", new File(nested, "bin/java").getPath(), "com.example.RealApplication");
+            scan.discoverProcesses(proc);
+            check(scan.processes.size() == 1 && scan.runtimes.size() == 1 && Boolean.TRUE.equals(scan.runtimes.get(jdk.getPath()).get("inUse")), "Real application on private runtime remains inventoried");
+            File other = home(root, "java-assessment-runtime-extra/jdk", true);
+            check(add(scan, other, false, "17") != null, "External private root respects path boundaries");
+            ProcessLaunch external = ProcessLaunch.parse(new String[]{"java", "-cp", new File(root, "app/helper.jar").getPath(), "assessment.AgentUpdateWorker"}, root);
+            check(!scan.collectorTool(external), "Same class outside protected tool paths is not hidden");
+            File elsewhere = new File(root, "another-installation/collector.jar"); text(elsewhere, "fixture");
+            check(AssessmentScan.externalRuntimeRoot(elsewhere) == null, "Only canonical system installation implies dedicated runtime");
+        } finally { CollectorTest.remove(root); }
+    }
     public static void main(String[] args) throws Exception {
-        inventory(); processEvidence(); snapshotEvidence(); privateCollectorRuntime();
-        System.out.println("JDK_INVENTORY_TESTS=PASS JRE-skip Java6-normalization JDK17 JDK21 process-links snapshot-evidence collector-private-runtime shared-JDK-preservation");
+        inventory(); processEvidence(); snapshotEvidence(); privateCollectorRuntime(); externalPrivateRuntime();
+        System.out.println("JDK_INVENTORY_TESTS=PASS unused-JRE-skip observed-JRE Java6-normalization JDK17 JDK21 process-links snapshot-evidence collector-private-runtime shared-JDK-preservation");
     }
 }

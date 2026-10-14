@@ -39,6 +39,8 @@
 *.class
 /build/
 /target/
+/tools/
+/release/.dashboard-release.lock
 __pycache__/
 *.py[cod]
 .venv/

@@ -10,6 +10,9 @@ if test "$(/usr/bin/id -u)" = 0; then
   . "$ROOT/launcher-common.sh"
 fi
 # Shell lock covers event retry and log rotation; Java also locks the scan itself.
+# The independent updater sends its own version heartbeat while this durable
+# journal blocks collection. A lost network ACK must not dispatch a new scan.
+if test "$ROOT" = /opt/java-assessment-collector && test -f /opt/java-assessment-update/journal.json; then exit 0; fi
 INSTALL_LOCK=$ROOT/collector-spool/.install-lock
 if test -d "$INSTALL_LOCK"; then
   INSTALL_PID=''

@@ -82,6 +82,10 @@ if $MANAGED; then
   DEST=/opt/java-assessment-collector
   if $ROOT_MANAGED; then
     test "$(id -u)" = 0 && test "$SOURCE" = "$DEST" || { echo 'Root managed mode requires the prepared system package.' >&2; exit 2; }
+    test "$(readlink /proc/$$/fd/9)" = /opt/java-assessment-lifecycle.lock && flock -n 9 || { echo 'Root managed mode requires the administrative lifecycle lock.' >&2; exit 2; }
+    for update_state in /opt/java-assessment-update/journal.json "$DEST/collector-spool/update-request.json"; do
+      test ! -e "$update_state" && test ! -L "$update_state" || { echo 'Agent update is pending; installation refused.' >&2; exit 1; }
+    done
     /bin/sh "$DEST/root-trust.sh" package "$DEST"
     $NO_CRON || { echo 'Root polling is configured by the service installer.' >&2; exit 2; }
   else

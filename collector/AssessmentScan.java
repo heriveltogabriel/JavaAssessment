@@ -14,7 +14,7 @@ public final class AssessmentScan {
     final Properties config;
     final Map settings;
     final String hostId, hostname, timestamp;
-    final String collectorInstallationRoot, collectorPrivateRuntimeRoot;
+    final String collectorInstallationRoot, collectorPrivateRuntimeRoot, collectorExternalRuntimeRoot;
     final long start = System.currentTimeMillis();
     final long cpuStart = processCpu();
     final long deadline;
@@ -34,8 +34,10 @@ public final class AssessmentScan {
     final List<String> excluded = new ArrayList<String>();
     final List<String> networkMounts = new ArrayList<String>();
     final Set<String> visited = new HashSet<String>();
+    MessageDigest visitedDigest;
     final List<File> deferredArchives = new ArrayList<File>();
     final ArchiveMetadata archiveMetadata = new ArchiveMetadata(this);
+    final ServerDataSources serverDataSources = new ServerDataSources(this);
     int restrictedProcesses, restrictedArtifacts;
 
     public AssessmentScan(Properties config, String hostId, String hostname, Map settings) {
@@ -45,6 +47,7 @@ public final class AssessmentScan {
         this.config = config; this.hostId = hostId; this.hostname = hostname; this.settings = settings;
         collectorInstallationRoot = installationRoot(codeLocation);
         collectorPrivateRuntimeRoot = privateRuntimeRoot(codeLocation);
+        collectorExternalRuntimeRoot = externalRuntimeRoot(codeLocation);
         timestamp = now();
         deadline = start + number(settings.get("maxDurationSeconds"), 120, 10, 900) * 1000L;
         maxFiles = number(settings.get("maxFiles"), 10000, 100, 50000);
@@ -79,6 +82,31 @@ public final class AssessmentScan {
             // A symlink into a shared Java directory is not a private runtime.
             return root.equals(resolved) ? resolved.getPath() : null;
         } catch (IOException e) { return null; }
+    }
+
+    static String externalRuntimeRoot(File codeLocation) {
+        String installation = installationRoot(codeLocation);
+        if (installation == null || !"java-assessment-collector".equals(new File(installation).getName())) return null;
+        try {
+            File root = new File(new File(installation).getParentFile(), "java-assessment-runtime");
+            return root.equals(root.getCanonicalFile()) ? root.getPath() : null;
+        } catch (IOException e) { return null; }
+    }
+    boolean privateRuntime(String path) {
+        return collectorPrivateRuntimeRoot != null && under(path, collectorPrivateRuntimeRoot)
+            || collectorExternalRuntimeRoot != null && under(path, collectorExternalRuntimeRoot);
+    }
+
+    String visitedKey(String path) {
+        try {
+            if (visitedDigest == null) visitedDigest = MessageDigest.getInstance("SHA-256");
+            byte[] digest = visitedDigest.digest(path.getBytes("UTF-8"));
+            char[] key = new char[digest.length * 2]; String hex = "0123456789abcdef";
+            for (int i = 0; i < digest.length; i++) {
+                int value = digest[i] & 255; key[i * 2] = hex.charAt(value >>> 4); key[i * 2 + 1] = hex.charAt(value & 15);
+            }
+            return new String(key);
+        } catch (Exception e) { throw new IllegalStateException("Cannot identify visited path", e); }
     }
 
     static Map map(Object... pairs) {
@@ -169,7 +197,7 @@ public final class AssessmentScan {
         Map host = host();
         discoverProcesses();
         // Enrich any application-observed use of the private runtime, while a
-        // collector-only copy remains outside the application JDK inventory.
+        // collector-only copy remains outside the application Java inventory.
         addRuntime(new File(System.getProperty("java.home")), false, "Collector runtime properties; collector alone is excluded from application usage", timestamp,
             System.getProperty("java.version"), System.getProperty("java.vendor"), System.getProperty("os.arch"));
         Object includes = settings.get("includePaths");
@@ -277,18 +305,20 @@ public final class AssessmentScan {
     }
 
     void walk(File file, int depth) {
-        String path;
+        String path, key;
         try {
             path = file.getCanonicalPath();
             // Sweep exclusions do not apply to explicit process-linked evidence.
             // Apply them before budgets: intentionally skipped trees are not gaps.
-            if (excluded(path) || (collectorInstallationRoot != null && under(path, collectorInstallationRoot)) || visited.contains(path)) return;
+            if (excluded(path) || (collectorInstallationRoot != null && under(path, collectorInstallationRoot)) || privateRuntime(path)) return;
+            key = visitedKey(path);
+            if (visited.contains(key)) return;
             if (!file.getAbsolutePath().equals(path)) { note("Symlink path skipped: " + file.getPath()); return; }
         } catch (IOException e) { warn("Cannot resolve path: " + file.getPath()); return; }
         if (!available()) return;
         if (filesVisited >= maxFiles) { fileLimitReached = true; warn("File count limit reached; remaining paths were not examined"); return; }
         if (depth > 12) { warn("Directory depth limit reached"); return; }
-        visited.add(path);
+        visited.add(key);
         filesVisited++;
         if (filesVisited % batchSize == 0 && pauseMillis > 0) try { Thread.sleep(pauseMillis); } catch (InterruptedException e) { Thread.currentThread().interrupt(); warn("Assessment interrupted"); return; }
         if (file.isDirectory()) {
@@ -298,10 +328,12 @@ public final class AssessmentScan {
             }
             String name = file.getName();
             if (Arrays.asList(".git", ".cache", "node_modules", "logs", "tmp", "temp").contains(name)) return;
-            File[] children = file.listFiles();
-            if (children == null) { warn("Directory is not readable: " + path); return; }
-            Arrays.sort(children);
-            for (File child : children) { if (!available() || fileLimitReached) break; walk(child, depth + 1); }
+            BoundedDirectory children = null;
+            try {
+                children = BoundedDirectory.open(file, deadline);
+                for (File child; available() && !fileLimitReached && (child = children.next()) != null;) walk(child, depth + 1);
+            } catch (IOException e) { warn("Directory enumeration incomplete (read or resource limit): " + path); }
+            finally { if (children != null) children.close(); }
             return;
         }
         String name = file.getName().toLowerCase(Locale.ENGLISH);
@@ -332,13 +364,14 @@ public final class AssessmentScan {
     Map addRuntime(File candidate, boolean used, String evidence, String observedAt, String version, String vendor, String arch) {
         try {
             String path = normalizeHome(candidate);
-            // Inventory only JDKs. A Java 6/8 nested jre has already been normalized
-            // to its containing JDK; standalone JREs need no metadata inspection.
-            if (!new File(path, "bin/javac").isFile()) return null;
+            // Application JVM evidence establishes a runtime without a compiler.
+            // Unused standalone runtimes remain outside the application inventory.
             Map existing = runtimes.get(path);
-            if (!used && existing == null && collectorPrivateRuntimeRoot != null && under(path, collectorPrivateRuntimeRoot)) return null;
+            boolean compiler = new File(path, "bin/javac").isFile();
+            if (!new File(path, "bin/java").isFile() || (!compiler && !used && existing == null)) return null;
+            if (!used && existing == null && privateRuntime(path)) return null;
             if (existing != null) {
-                if (used) { existing.put("inUse", Boolean.TRUE); existing.put("evidence", evidence); existing.put("observedAt", observedAt); }
+                if (used) { existing.put("inUse", Boolean.TRUE); existing.put("evidence", evidence + (existing.get("runtimeMetadataSource") == null ? "" : "; runtime metadata " + existing.get("runtimeMetadataSource"))); existing.put("observedAt", observedAt); }
                 if (version != null) existing.put("version", version);
                 if (vendor != null) existing.put("vendor", vendor);
                 if (arch != null) existing.put("architecture", arch);
@@ -355,11 +388,16 @@ public final class AssessmentScan {
                 }
                 evidence += "; release-file metadata";
             }
+            Map legacy = version == null || vendor == null ? LegacyJavaMetadata.read(this, new File(path)) : Collections.emptyMap();
+            if (version == null) version = (String) legacy.get("version");
+            if (vendor == null) vendor = (String) legacy.get("vendor");
+            if (legacy.get("runtimeMetadataSource") != null) evidence += "; runtime metadata " + legacy.get("runtimeMetadataSource");
             String elfArch = executableArchitecture(new File(path, "bin/java"));
             if (elfArch != null) arch = elfArch;
             Map row = map("id", id("runtime", hostId + path), "hostId", hostId, "javaHome", path,
-                "version", version, "vendor", vendor, "architecture", arch, "kind", "JDK",
+                "version", version, "vendor", vendor, "architecture", arch, "kind", compiler ? "JDK" : "JRE",
                 "inUse", Boolean.valueOf(used), "evidence", evidence, "observedAt", observedAt);
+            if (legacy.get("runtimeMetadataSource") != null) row.put("runtimeMetadataSource", legacy.get("runtimeMetadataSource"));
             runtimes.put(path, row); return row;
         } catch (IOException e) { warn("Cannot resolve Java installation: " + candidate); return null; }
     }
@@ -387,17 +425,35 @@ public final class AssessmentScan {
         }
     }
 
+    boolean collectorTool(ProcessLaunch launch) {
+        if (!Arrays.asList("assessment.AssessmentCollector", "assessment.AgentTool", "assessment.UninstallWorker", "assessment.JavaProbe", "assessment.AgentUpdateWorker", "assessment.AgentUpdateProbe").contains(launch.mainClass)) return false;
+        String helperRoot = collectorInstallationRoot == null ? "/opt/java-assessment-uninstall" :
+            new File(new File(collectorInstallationRoot).getParentFile(), "java-assessment-uninstall").getPath();
+        String updateRoot = new File(new File(helperRoot).getParentFile(), "java-assessment-update").getPath();
+        for (String entry : launch.classpath) {
+            if ((collectorInstallationRoot != null && under(entry, collectorInstallationRoot)) || under(entry, helperRoot) || under(entry, updateRoot)) return true;
+        }
+        return false;
+    }
+
     void discoverProcesses() { discoverProcesses(new File("/proc")); }
     void discoverProcesses(File procRoot) {
-        File[] proc = procRoot.listFiles();
-        if (proc == null) { warn("Process discovery requires readable Linux /proc"); return; }
+        List<File> directories = new ArrayList<File>(); BoundedDirectory proc = null;
         String ownPid = ManagementFactory.getRuntimeMXBean().getName().split("@")[0];
-        Arrays.sort(proc); int inspected = 0;
-        for (File directory : proc) {
+        try {
+            proc = BoundedDirectory.open(procRoot, deadline);
+            for (File directory; available() && (directory = proc.next()) != null;) {
+                String pid = directory.getName();
+                if (!pid.matches("[0-9]+") || pid.equals(ownPid)) continue;
+                if (directories.size() == 4096) { warn("Process metadata limit reached"); break; }
+                directories.add(directory);
+            }
+        } catch (IOException e) { warn("Process directory enumeration incomplete (read or resource limit)"); }
+        finally { if (proc != null) proc.close(); }
+        Collections.sort(directories);
+        for (File directory : directories) {
             if (!available()) break;
             String pid = directory.getName();
-            if (!pid.matches("[0-9]+") || pid.equals(ownPid)) continue;
-            if (++inspected > 4096) { warn("Process metadata limit reached"); break; }
             File exe = null, cwd = null;
             try { File candidate = new File(directory, "exe"), resolved = candidate.getCanonicalFile(); if (!resolved.equals(candidate.getAbsoluteFile()) && ProcessLaunch.javaExecutable(resolved.getPath())) exe = resolved; }
             catch (IOException e) { }
@@ -412,6 +468,7 @@ public final class AssessmentScan {
             try { File candidate = new File(directory, "cwd"), resolved = candidate.getCanonicalFile(); if (!resolved.equals(candidate.getAbsoluteFile())) cwd = resolved; }
             catch (IOException e) { }
             ProcessLaunch launch = ProcessLaunch.parse(args, cwd);
+            if (collectorTool(launch)) continue;
             File processHome = null;
             String runtimeEvidence = "Live /proc/" + pid + "/exe; collector process excluded";
             if (exe != null) processHome = exe.getParentFile().getParentFile();
@@ -426,8 +483,7 @@ public final class AssessmentScan {
             }
             String javaHome = null;
             if (processHome != null) {
-                // Process and application evidence remains useful even when its JRE
-                // is intentionally omitted from the installation inventory.
+                // The observed Java home is inventoried even without a compiler.
                 try { javaHome = normalizeHome(processHome); }
                 catch (IOException e) { warn("Cannot resolve Java process home: " + processHome); }
                 addRuntime(processHome, true, runtimeEvidence, timestamp, null, null, null);
@@ -478,9 +534,10 @@ public final class AssessmentScan {
     }
     boolean visitLinked(File file) {
         if (!available()) return false;
-        if (visited.contains(file.getPath())) return true;
+        String key = visitedKey(file.getPath());
+        if (visited.contains(key)) return true;
         if (filesVisited >= maxFiles) { warn("File count limit reached; remaining process artifacts were not examined"); return false; }
-        visited.add(file.getPath()); filesVisited++;
+        visited.add(key); filesVisited++;
         if (filesVisited % batchSize == 0 && pauseMillis > 0) try { Thread.sleep(pauseMillis); } catch (InterruptedException e) { Thread.currentThread().interrupt(); warn("Assessment interrupted"); return false; }
         return true;
     }
@@ -493,10 +550,12 @@ public final class AssessmentScan {
         File root = linkedPath(source); if (root == null || !available()) return;
         if (!root.isDirectory() || !root.canRead()) { if (root.exists()) restrictedArtifacts++; return; }
         if (!visitLinked(root)) return;
-        File[] files = root.listFiles(); if (files == null) { restrictedArtifacts++; return; }
-        Arrays.sort(files);
-        // Product/runtime/JDBC metadata precedes arbitrary application archives.
-        for (int pass = 0; pass < 2; pass++) for (File child : files) {
+        // Product/runtime/JDBC metadata precedes arbitrary application archives; each pass streams.
+        for (int pass = 0; pass < 2; pass++) {
+        BoundedDirectory files = null;
+        try {
+        files = BoundedDirectory.open(root, deadline);
+        for (File child; (child = files.next()) != null;) {
             if (!available() || filesVisited >= maxFiles) return;
             File canonical = linkedPath(child); if (canonical == null || !canonical.getPath().equals(child.getAbsolutePath())) continue;
             String name = child.getName().toLowerCase(Locale.ENGLISH);
@@ -510,9 +569,13 @@ public final class AssessmentScan {
             if ((known || !knownOnly) && (name.endsWith(".jar") || name.endsWith(".war") || name.endsWith(".ear"))) linkedFile(canonical, context);
             else visitLinked(canonical);
         }
+        } catch (IOException e) { warn("Process-linked directory enumeration incomplete (read or resource limit): " + root.getPath()); }
+        finally { if (files != null) files.close(); }
+        }
     }
     void discoverLinked(ProcessContext context) {
         ProcessLaunch launch = context.launch;
+        serverDataSources.discover(context);
         if (launch.jarPath != null) linkedFile(new File(launch.jarPath), context);
         if (launch.serverHome != null) {
             File home = new File(launch.serverHome);
@@ -530,7 +593,7 @@ public final class AssessmentScan {
                     }
                 }
                 linkedTree(new File(home, "bin"), 0, context, true);
-                File base = launch.serverBase != null && !launch.serverBase.equals(launch.serverHome) ? new File(launch.serverBase) : new File(home, "standalone");
+                File base = launch.serverBase != null && (launch.serverBaseExplicit || !launch.serverBase.equals(launch.serverHome)) ? new File(launch.serverBase) : new File(home, "standalone");
                 linkedTree(new File(base, "deployments"), 3, context, false);
             }
         }

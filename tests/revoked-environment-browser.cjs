@@ -1,0 +1,25 @@
+/* Regression: a revoked collector can be detached before deleting its environment.
+ * Only loopback and disposable UserAccessUiFixture accounts/inventory are used. */
+const assert=require('node:assert/strict'),path=require('node:path'),fs=require('node:fs');
+const {spawn}=require('node:child_process'),{once}=require('node:events'),{chromium}=require('playwright');
+(async()=>{
+ const cwd=path.resolve(__dirname,'..'),out=path.join(cwd,'output/revoked-environment-check');fs.mkdirSync(out,{recursive:true});
+ const server=spawn(process.env.BETA_JAVA||'java',['-Xmx384m','-cp',process.env.BETA_CLASSPATH||'output/dashboard-releases/1.5.6/build/server:lib/*','assessment.UserAccessUiFixture',path.join(cwd,'web')],{cwd,stdio:['pipe','pipe','pipe']});
+ let browser,diagnostics='';server.stderr.on('data',data=>diagnostics+=data);
+ try{
+  const base=await new Promise((resolve,reject)=>{let output='';const timer=setTimeout(()=>reject(Error('Fixture timeout '+diagnostics)),30000);server.stdout.on('data',data=>{output+=data;const match=output.match(/USER_ACCESS_UI_URL=(\S+)/);if(match){clearTimeout(timer);resolve(match[1]);}});server.on('exit',code=>{clearTimeout(timer);reject(Error('Fixture exited '+code+' '+diagnostics));});});
+  browser=await chromium.launch({channel:'chrome',headless:true});const context=await browser.newContext({viewport:{width:1366,height:950}});
+  const errors=[],blocked=[];await context.route('**/*',route=>new URL(route.request().url()).origin===base?route.continue():(blocked.push(route.request().url()),route.abort()));
+  let response=await context.request.post(base+'/api/auth/bootstrap',{data:{currentPassword:'legacy-fixture-secret',name:'Fixture Admin',email:'fixture@example.com',password:'Admin42!'}});assert.equal(response.status(),200);const session=await response.json();const headers={'X-CSRF-Token':session.csrfToken};
+  response=await context.request.post(base+'/api/hosts/revoke',{headers,data:{hostId:'ui-host'}});assert.equal(response.status(),200);
+  response=await context.request.delete(base+'/api/environments',{headers,data:{environmentId:'hm',confirmationName:'Homologação'}});assert.equal(response.status(),409,'revocation retains environment membership');
+  const page=await context.newPage();page.setDefaultTimeout(10000);page.on('pageerror',error=>errors.push(error.message));await page.goto(base);
+  await page.locator('.machine-title[data-machine="ui-host"]').click();const change=page.locator('.machine-meta [data-assign-environment="ui-host"]');await change.waitFor();assert.equal(await change.isVisible(),true,'Change is visible for revoked machine');
+  await page.screenshot({path:path.join(out,'revoked-machine-change.png')});await change.click();assert.equal(await page.locator('#environment-form [name=environmentId]').inputValue(),'hm');await page.locator('#environment-form [name=environmentId]').selectOption('');await page.locator('#environment-submit').click();await page.locator('#environment-dialog').waitFor({state:'hidden'});
+  await page.waitForFunction(()=>document.querySelector('.machine-environment')?.textContent.includes('Unassigned'));
+  response=await context.request.get(base+'/api/state');let state=await response.json();const host=state.hosts.find(h=>h.id==='ui-host');assert.equal(host.environmentId,'');assert.equal(host.credentialStatus,'revoked');assert.equal(state.summary.runtimes,1,'inventory preserved after detach');
+  await page.locator('#environment-filter').selectOption('');await page.locator('#side-nav [data-tab=environments]').click();await page.locator('[data-edit-environment="hm"]').click();await page.locator('#environment-dialog [data-delete-environment="hm"]').click();await page.locator('#environment-form [name=confirmationName]').fill('Homologação');await page.locator('#environment-submit').click();await page.locator('#environment-dialog').waitFor({state:'hidden'});
+  response=await context.request.get(base+'/api/state');state=await response.json();assert.equal(state.environments.length,0);assert.equal(state.hosts.length,1);assert.equal(state.summary.runtimes,1);assert.equal(state.hosts[0].credentialStatus,'revoked');const inventory=await (await context.request.get(base+'/api/state?view=runtimes')).json();assert.equal(inventory.runtimes[0].id,'ui-java');assert.deepEqual(errors,[]);assert.deepEqual(blocked,[]);
+  const report={status:'PASS',version:(await (await context.request.get(base+'/health')).json()).version,checks:['revoking preserves environment membership','populated environment delete is blocked409','Change visible on revoked machine','Unassigned saves empty environmentId','empty environment deletion succeeds from UI','host and inventory history preserved','credential stays revoked','no JavaScript errors'],remoteOperationsExecuted:false};fs.writeFileSync(path.join(out,'validation.json'),JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report));
+ }finally{await browser?.close();server.stdin.end();if(server.exitCode===null)await once(server,'exit');}
+})().catch(error=>{console.error(error);process.exitCode=1;});

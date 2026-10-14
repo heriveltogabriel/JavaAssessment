@@ -45,7 +45,7 @@ case "${1:-}" in
     trap 'rmdir "$START_LOCK" 2>/dev/null || true' 0
     rm -f "$STOP_FILE" "$PID_FILE"
     rotate_service_log
-    nohup /bin/sh "$ROOT/root-service.sh" loop >> "$ROOT/logs/service.log" 2>&1 < /dev/null &
+    nohup /bin/sh "$ROOT/root-service.sh" loop 9>&- >> "$ROOT/logs/service.log" 2>&1 < /dev/null &
     SERVICE_PID=$!
     printf '%s\n' "$SERVICE_PID" > "$PID_FILE"
     sleep 1

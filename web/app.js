@@ -13,20 +13,25 @@
     ['servers','Java servers','Java servers discovered during the assessment are listed in the table.'],
     ['libraries','Java libraries','Java libraries and JDBC drivers discovered by the collector are listed with their evidence.'],
     ['schedule','Scheduled tasks','Manage when assessments run and set limits on collection work.'],
-    ['jobs','Work requests','Track queued, running and completed assessments for your fleet.']
+    ['jobs','Work requests','Acompanhe coletas e atualizações de agentes, por ambiente e por máquina.']
   ];
   let rawData=null, environmentData=null, environmentScope=AssessmentEnvironments.stored(), contextKind='root';
   let data = null, csrf = '', current = 'overview', query = '', hostFilter = '', page = 1, size = 20;
-  let dateFrom = '', dateTo = '', modalHandler = null, toastTimer, pollTimer, refreshing = false;
+  let dateFrom = '', dateTo = '', modalHandler = null, toastTimer, pollTimer, refreshing = false, manualRefresh = null;
   let machineId = '', versionMode = 'family', versionFocus = '', inventorySubset = '';
+  let workRequestId='',workRequestType='';
   const columnVisibility = {};
   const narrowNavigation = window.matchMedia('(max-width:850px)');
   let desktopNavigationOpen = true;
   let renderedHash='',requestRevision=0,stateController=null,requestKey='',detailRevision=0;
   const count=(key)=>AssessmentDashboard.count(data || {},key);
-  function stateParams(){return new URLSearchParams({environmentId:environmentScope,hostId:contextKind==='machine'?machineId:'',view:current==='schedule'?'hosts':current==='properties'?'settings':current,page:String(page),pageSize:String(size),q:query,from:dateFrom,to:dateTo,subset:inventorySubset,version:versionFocus,versionMode});}
-  function exportParams(){const params=stateParams();params.delete('page');params.delete('pageSize');return params.toString();}
+  function stateParams(){
+    // History owns its scope, including snapshots whose machine is no longer in live inventory.
+    if(current==='jobs')return new URLSearchParams({view:'jobs',page:'1',pageSize:'20'});
+    return new URLSearchParams({environmentId:environmentScope,hostId:contextKind==='machine'?machineId:'',view:current==='schedule'?'hosts':current==='properties'?'settings':current,page:String(page),pageSize:String(size),q:query,from:dateFrom,to:dateTo,subset:inventorySubset,version:versionFocus,versionMode});
+  }
 
+  const allowedView=id=>AssessmentAccess.isAdmin()||!['properties','schedule','administration'].includes(id);
   const isView=id=>tabs.some(t=>t[0]===id)&&id!=='environments';
   const routeView=()=>current==='machine'?'overview':current;
   function readRoute() {
@@ -39,9 +44,12 @@
       if(machineId){contextKind='machine';hostFilter=machineId;const view=params.get('view') || 'overview';current=isView(view)?view:'overview';if(current==='overview')current='machine';}
     }else if(path.startsWith('environment/')){contextKind='environment';const view=path.slice(12);current=isView(view)?view:'overview';}
     else if(path==='environments')current='environments';
+    else if(path==='administration')current='administration';
     else if(isView(path)){current=path;contextKind=path==='overview'?'root':'environment';}
+    if(path==='jobs'){environmentScope=params.has('env')?environmentScope:'';const id=params.get('host')||'';if(id){contextKind='machine';machineId=id;hostFilter=id;}}
     const subset=params.get('subset');inventorySubset=(subset==='runtime'&&current==='servers'||subset==='datasources'&&current==='libraries')?subset:'';
     versionMode=params.get('group')==='exact'?'exact':'family';versionFocus=params.get('version') || '';
+    workRequestId=current==='jobs'?(params.get('request')||''):'';workRequestType=workRequestId&&params.get('requestType')==='ASSESSMENT'?'ASSESSMENT':workRequestId?'AGENT_UPDATE':'';
     renderedHash=location.hash;
   }
   function routeHash() {
@@ -49,17 +57,20 @@
     let path=current;
     if(contextKind==='machine'){path='machine/'+encodeURIComponent(machineId);params.set('view',routeView());}
     else if(contextKind==='environment')path='environment/'+routeView();
+    if(current==='jobs'){path='jobs';params.delete('view');if(contextKind==='machine'&&machineId)params.set('host',machineId);}
     if(inventorySubset)params.set('subset',inventorySubset);
     if(current==='versions'){if(versionMode==='exact')params.set('group','exact');if(versionFocus)params.set('version',versionFocus);}
+    if(current==='jobs'&&workRequestId){params.set('request',workRequestId);params.set('requestType',workRequestType||'AGENT_UPDATE');}
     return '#'+path+'?'+params.toString();
   }
   function writeRoute(replace=false) {
     const hash=routeHash(),state={contextKind,view:routeView(),environmentId:environmentScope,machineId,inventorySubset};
     history[replace||location.hash===hash?'replaceState':'pushState'](state,'',hash);renderedHash=hash;
   }
-  function resetTransient() {query='';inventorySubset='';versionFocus='';dateFrom='';dateTo='';page=1;$('search').value='';$('global-search').value='';}
+  function resetTransient() {query='';inventorySubset='';versionFocus='';dateFrom='';dateTo='';workRequestId='';workRequestType='';page=1;$('search').value='';$('global-search').value='';}
   function projectData() {
     if(!rawData){environmentData=null;data=null;return;}
+    if(current==='jobs'){environmentData=rawData;data=rawData;hostFilter=contextKind==='machine'?machineId:'';return;}
     environmentScope=AssessmentEnvironments.validScope(rawData,environmentScope);
     AssessmentEnvironments.persist(environmentScope);
     if(rawData.scoped){const scope=rawData.scope || {},id=scope.machineId || scope.hostId || '',machine=(rawData.hosts || []).find(h=>h.id===id);rawData.scope={...scope,unassigned:scope.unassigned || scope.environmentId==='__unassigned__',machineId:id,machineName:machine?.hostname || machine?.fqdn || id,name:AssessmentEnvironments.label(rawData,environmentScope)};environmentData=rawData;data=rawData;hostFilter=contextKind==='machine'?machineId:'';return;}
@@ -68,18 +79,43 @@
     hostFilter=contextKind==='machine'?machineId:'';
     data=contextKind==='machine'?AssessmentDashboard.scoped(environmentData,machineId):environmentData;
   }
-  function finishNavigation(replace=false) {closeActions();hostFilter=contextKind==='machine'?machineId:'';closeMobileNavigation();closeDrawer();writeRoute(replace);data=null;render();loadState(false);window.scrollTo({top:0,behavior:'instant'});}
+  function finishNavigation(replace=false) {if(!AssessmentAccess.canInventory())return;if(!allowedView(current)){current='overview';contextKind='root';}closeActions();AssessmentAccess.closeMenu();AssessmentMachines.clear();AssessmentAgentUpdates.clear();AssessmentWorkRequests.clear({preserveFilters:true});hostFilter=contextKind==='machine'?machineId:'';closeMobileNavigation();closeDrawer();writeRoute(replace);data=null;render();loadState(false);window.scrollTo({top:0,behavior:'instant'});}
+  function openWorkHistory(){contextKind='environment';current='jobs';environmentScope='';machineId='';hostFilter='';resetTransient();finishNavigation();}
+  function openWorkRequest(id='',type='AGENT_UPDATE') {
+    if(!AssessmentAccess.canInventory())return;
+    if(current==='jobs'){workRequestId=id;workRequestType=id?type:'';writeRoute();render();return;}
+    if(contextKind==='root')contextKind='environment';current='jobs';resetTransient();workRequestId=id;workRequestType=id?type:'';finishNavigation();
+  }
   function closeActions(restoreFocus=false) {
     const wasOpen=!$('actions-menu').hidden;
     $('actions-menu').hidden=true;$('actions-toggle').setAttribute('aria-expanded','false');
     if(wasOpen&&restoreFocus)$('actions-toggle').focus();
   }
+  function openAgentUpdates() {
+    if(!AssessmentAccess.isAdmin()||!data)return;
+    closeActions();
+    AssessmentAgentUpdates.open(contextKind==='machine'?{hostId:machineId,label:hostName(machineId)}:{environmentId:environmentScope,label:AssessmentEnvironments.label(rawData,environmentScope)});
+  }
+  function renderMachineUpdateAction() {
+    if(!AssessmentAccess.isAdmin()||!data||current!=='hosts'||contextKind==='machine')return;
+    const button=document.createElement('button');
+    button.type='button';button.className='button';button.dataset.updateEnvironment='';button.dataset.adminOnly='';
+    button.textContent=environmentScope==='__unassigned__'?'Atualizar agentes sem ambiente':environmentScope?'Atualizar agentes do ambiente':'Atualizar agentes';
+    const actions=$('view-actions').querySelector('.enrollment-actions')||$('view-actions');
+    actions.prepend(button);
+  }
   function renderActions() {
-    $('run-assessment').hidden=data?.scoped?count('hosts')===0:!(data?.hosts || []).some(h=>h.credentialStatus!=='revoked');
+    $('run-assessment').hidden=!AssessmentAccess.isAdmin()||(data?.scoped?count('hosts')===0:!(data?.hosts || []).some(h=>h.credentialStatus!=='revoked'));
+    if(contextKind==='machine'){const selected=host(machineId);if(selected?.agentLifecycle==='uninstalled'||selected?.credentialStatus==='revoked'||['WAITING','UNINSTALLING','UNCONFIRMED'].includes(selected?.uninstall?.status))$('run-assessment').hidden=true;}
     const machine=contextKind==='machine',environment=!!environmentScope&&environmentScope!=='__unassigned__',defaults=contextKind==='root'&&!environmentScope;
-    $('open-settings').hidden=!data||!(machine||environment||defaults);
+    $('uninstall-agent').hidden=!AssessmentAccess.isAdmin()||!data||!machine;
+    $('open-settings').hidden=!AssessmentAccess.isAdmin()||!data||!(machine||environment||defaults);
     $('open-settings').textContent=machine?'Machine settings':environment?'Environment settings':'Default assessment settings';
-    $('actions-menu').querySelector('[data-enrollment-list]').hidden=!data||machine;
+    $('actions-menu').querySelector('[data-enrollment-list]').hidden=!AssessmentAccess.isAdmin()||!data||machine;
+    $('open-install-guide').hidden=!AssessmentAccess.isAdmin();
+    $('open-agent-updates').hidden=!AssessmentAccess.isAdmin()||!data;
+    const updateBusy=contextKind==='machine'&&AssessmentAgentUpdates.active(host(machineId));if(updateBusy)$('run-assessment').hidden=true;
+    $('uninstall-agent').disabled=!!updateBusy;$('uninstall-agent').title=updateBusy?'Aguarde a atualização do agente ser resolvida.':'';
   }
   readRoute();
   const icon = (name) => '<svg aria-hidden="true"><use href="#i-'+name+'"/></svg>';
@@ -142,7 +178,7 @@
     const hostCol = column('host','Managed instance',(r) => hostLink(r.hostId));
     const last = column('observedAt','Last reported',(r) => timeCell(r.observedAt));
     switch(current) {
-      case 'hosts': return [column('hostname','Host / FQDN',r=>link('hosts',r.id,r.hostname || r.fqdn,r.fqdn !== r.hostname ? r.fqdn : '')),column('environment','Environment',r=>value(r.environmentId?r.environmentName || r.environmentId:'Unassigned')),column('os','Operating system',r=>value(r.distribution || r.osName)),column('ip','IP addresses',r=>(r.ipAddresses || []).map(esc).join('<br>') || value(null)),column('architecture','Architecture',r=>value(r.architecture)),column('collector','Collector Java',r=>value(r.collectorJavaVersion)),column('connection','Collector contact',r=>{const p=AssessmentDashboard.collectorPresence(data,r);return '<span class="presence '+esc(p.state)+'"><i></i>'+esc(p.label)+'</span>'; }),column('lastSeen','Last seen',r=>timeCell(r.lastSeen))];
+      case 'hosts': return [column('hostname','Host / FQDN',r=>link('hosts',r.id,r.hostname || r.fqdn,r.fqdn !== r.hostname ? r.fqdn : '')),column('environment','Environment',r=>value(r.environmentId?r.environmentName || r.environmentId:'Unassigned')),column('os','Operating system',r=>value(r.distribution || r.osName)),column('ip','IP addresses',r=>(r.ipAddresses || []).map(esc).join('<br>') || value(null)),column('architecture','Architecture',r=>value(r.architecture)),column('agentVersion','Versão do agente',r=>'<span class="collector-version-cell">'+value(r.collectorVersion)+'</span>'),column('collector','JVM do agente',r=>value(r.collectorJavaVersion)),column('connection','Collector contact',r=>{const p=AssessmentDashboard.collectorPresence(data,r);return '<span class="presence '+esc(p.state)+'"><i></i>'+esc(p.label)+'</span>'; }),column('lastSeen','Last seen',r=>timeCell(r.lastSeen)),...(AssessmentAccess.isAdmin()?[column('machineActions','Ações',r=>'<div class="machine-row-actions">'+AssessmentMachines.trigger(r)+'</div>')]:[])];
       case 'runtimes': return [column('version','Runtime version',r=>link('runtimes',r.id,r.version,'',r.hostId)),column('vendor','Vendor',r=>value(r.vendor)),column('kind','Runtime',r=>value(r.kind)),column('inUse','In use',r=>r.inUse === true ? badge('Confirmed') : r.inUse === false ? '<span class="muted">Not observed</span>' : value(null)),hostCol,column('javaHome','Installation path',r=>pathCell(r.javaHome)),last];
       case 'servers': return [column('name','Server',r=>link('servers',r.id,r.type || r.name,r.type && r.name !== r.type ? r.name : '',r.hostId)),column('version','Version',r=>value(r.version)),column('applications','Associated applications',r=>{const n=data.scoped?r.applicationCount:(data.applications || []).filter(a=>a.hostId === r.hostId && a.serverName && a.serverName === r.name).length;return n ? String(n) : '<span class="unknown" title="No application relationship has been reported">—</span>';}),hostCol,column('state','Evidence',observationCell),last];
       case 'applications': return [column('name','Application',r=>link('applications',r.id,r.name,'',r.hostId)),column('type','Type',r=>value(r.applicationType || r.type)),column('version','Application version',r=>value(r.version)),column('frameworkVersion','Framework version',r=>value(r.frameworkVersion)),column('server','Java server',r=>value(r.serverName)),hostCol,column('state','Evidence',observationCell),last];
@@ -169,20 +205,28 @@
     $('toast').textContent=message; $('toast').classList.toggle('error',!!error); $('toast').hidden=false;
     clearTimeout(toastTimer); toastTimer=setTimeout(()=>$('toast').hidden=true,6500);
   }
-  async function api(path, options={}) {
-    const opts={credentials:'same-origin',cache:'no-store',...options,headers:{Accept:'application/json',...options.headers}};
-    if (options.body !== undefined) {opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(options.body);}
-    if (options.method && options.method !== 'GET' && csrf) opts.headers['X-CSRF-Token']=csrf;
-    const response=await fetch('/api/'+path,opts);
-    let result;try {result=await response.json();} catch (_) {result={error:response.ok ? 'Unexpected server response.' : 'The server could not complete the request.'};}
-    if (!response.ok) { if (response.status===401) showLogin(); throw new Error(result.error || 'Request failed ('+response.status+').'); }
-    return result;
-  }
+  async function api(path,options={}) { return AssessmentAccess.request(path,options); }
   async function downloadPackage(path,body){
+    if(!AssessmentAccess.isAdmin())throw new Error('Esta ação requer um administrador.');
+    const accessRevision=AssessmentAccess.getRevision();
     const response=await fetch('/api/'+path,{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json','Accept':'application/zip','X-CSRF-Token':csrf},body:JSON.stringify(body)});
     if(!response.ok){let message='The package could not be downloaded.';try{message=(await response.json()).error || message;}catch(_){}if(response.status===401)showLogin();throw new Error(message);}
+    if(accessRevision!==AssessmentAccess.getRevision())throw new Error('A sessão mudou. Faça o download novamente.');
     if(!(response.headers.get('Content-Type') || '').includes('application/zip'))throw new Error('The server returned an unexpected package format.');
-    const disposition=response.headers.get('Content-Disposition') || '';const match=disposition.match(/filename="([^"]+)"/i);return {blob:await response.blob(),filename:match?match[1]:'assessment-environment.zip'};
+    return {blob:await response.blob(),filename:downloadFilename(response)};
+  }
+  function downloadFilename(response){
+    const match=(response.headers.get('Content-Disposition') || '').match(/filename="([^"\r\n]+)"/i);
+    if(!match||!match[1]||/[\\/]/.test(match[1]))throw new Error('The server did not provide a valid download filename.');
+    return match[1];
+  }
+  async function downloadGet(path,{signal,accept}={}){
+    const accessRevision=AssessmentAccess.getRevision();
+    const response=await fetch('/api/'+path,{credentials:'same-origin',cache:'no-store',signal,headers:{Accept:accept || 'application/octet-stream'}});
+    if(!response.ok){let message='Não foi possível baixar o arquivo.';try{message=(await response.json()).error || message;}catch(_){}if(response.status===401)showLogin();throw new Error(message);}
+    if(accessRevision!==AssessmentAccess.getRevision())throw new Error('A sessão mudou. Faça o download novamente.');
+    if(accept&&!(response.headers.get('Content-Type') || '').toLowerCase().includes(accept.toLowerCase()))throw new Error('O servidor retornou um formato de arquivo inesperado.');
+    return {blob:await response.blob(),filename:downloadFilename(response)};
   }
   function selectEnvironment(id,options={}) {
     environmentScope=AssessmentEnvironments.validScope(rawData,id);machineId='';hostFilter='';resetTransient();
@@ -191,21 +235,59 @@
     if(options.machineId){openMachine(options.machineId);return;}
     finishNavigation();
   }
-  function showLogin() { requestRevision++;stateController?.abort();closeActions();AssessmentEnvironments.clear();AssessmentEnrollment.clear();clearInterval(pollTimer);$('login-layer').hidden=false;$('logout').hidden=true;setTimeout(()=>$('password').focus(),50); }
+  function clearSession() {
+    requestRevision++;detailRevision++;stateController?.abort();closeActions();closeDrawer();AssessmentMachines.clear();AssessmentAgentUpdates.clear();AssessmentWorkRequests.clear();AssessmentEnvironments.clear();AssessmentEnrollment.clear();clearInterval(pollTimer);csrf='';rawData=null;environmentData=null;data=null;refreshing=false;manualRefresh=null;
+    if($('modal').open)$('modal').close();$('modal-body').replaceChildren();$('drawer-content').replaceChildren();$('special-view').replaceChildren();$('inventory-table').querySelector('tbody').replaceChildren();$('view-actions').replaceChildren();updateRefreshState();clearTimeout(toastTimer);$('toast').hidden=true;$('toast').textContent='';
+  }
+  function showLogin(){AssessmentAccess.showLogin('Sua sessão terminou. Entre novamente.');}
+  function updateRefreshState() {
+    const busy=refreshing||!!manualRefresh;
+    $('refresh').classList.toggle('spin',busy);$('refresh').disabled=!!manualRefresh;
+    $('refresh').setAttribute('aria-busy',String(busy));
+    $('refresh').setAttribute('aria-label',busy?'Atualizando dados':'Atualizar dados');
+    if(busy)$('main-content').setAttribute('aria-busy','true');else $('main-content').removeAttribute('aria-busy');
+  }
   async function loadState(quiet) {
-    const key=stateParams().toString();if(quiet&&refreshing&&key===requestKey)return;
-    const revision=++requestRevision;requestKey=key;stateController?.abort();stateController=new AbortController();refreshing=true;$('refresh').classList.add('spin');$('main-content').setAttribute('aria-busy','true');
-    try {const next=await api('state?'+key,{signal:stateController.signal});if(revision!==requestRevision)return;rawData=next;page=next.pagination?.page || page;projectData();writeRoute(true);render();if(!quiet)$('last-refresh').textContent='Updated '+new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});}
-    catch(e){if(revision===requestRevision&&e.name!=='AbortError'){notify(e.message,true);if(!data){$('special-view').innerHTML='<div class="dash-empty" role="alert">Unable to load this view. Use Refresh to try again.</div>';$('empty-description').textContent='Unable to load this view. Use Refresh to try again.';}}}
-    finally {if(revision===requestRevision){refreshing=false;$('refresh').classList.remove('spin');$('main-content').removeAttribute('aria-busy');}}
+    if(!AssessmentAccess.canInventory())return false;
+    const key=current==='administration'?'administration':stateParams().toString();if(quiet&&refreshing&&key===requestKey)return;
+    const revision=++requestRevision;requestKey=key;stateController?.abort();stateController=new AbortController();refreshing=true;updateRefreshState();
+    try {
+      if(current==='administration')return await AssessmentAccess.refreshAdministration(quiet);
+      const next=await api('state?'+key,{signal:stateController.signal,headers:quiet?{'X-Assessment-Background':'1'}:{}});
+      if(revision!==requestRevision)return false;
+      rawData=next;page=next.pagination?.page || page;projectData();writeRoute(true);render();
+      if(!quiet&&!manualRefresh)$('last-refresh').textContent='Updated '+new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
+      return true;
+    } catch(e){
+      if(revision===requestRevision&&e.name!=='AbortError'){notify(e.message,true);if(!data){$('special-view').innerHTML='<div class="dash-empty" role="alert">Unable to load this view. Use Refresh to try again.</div>';$('empty-description').textContent='Unable to load this view. Use Refresh to try again.';}}
+      return false;
+    } finally {if(revision===requestRevision){refreshing=false;updateRefreshState();}}
   }
-  async function startSession() {
-    try {const session=await api('session');if(!session.authenticated){showLogin();return;}csrf=session.csrfToken || ''; $('login-layer').hidden=true;$('logout').hidden=false;await loadState(false);clearInterval(pollTimer);pollTimer=setInterval(()=>{if(!document.hidden)loadState(true);},15000);}
-    catch(_){showLogin();}
+  async function refreshCurrentView() {
+    if(!AssessmentAccess.canInventory()||manualRefresh)return;
+    const token={access:AssessmentAccess.getRevision(),route:renderedHash,params:stateParams().toString()};manualRefresh=token;updateRefreshState();
+    const stillCurrent=()=>manualRefresh===token&&token.access===AssessmentAccess.getRevision()&&token.route===renderedHash&&token.params===stateParams().toString();
+    try {
+      const updated=await loadState(false);
+      if(!stillCurrent())return;
+      const workUpdated=current==='administration'?true:await AssessmentWorkRequests.refresh(false);
+      if(!stillCurrent())return;
+      if(updated&&workUpdated){$('last-refresh').textContent='Atualizado às '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});notify('Dados atualizados.');}
+      else notify('Não foi possível atualizar todos os dados. O último estado conhecido foi mantido.',true);
+    } catch(error){if(stillCurrent())notify(error.message||'Não foi possível atualizar os dados.',true);}
+    finally {if(manualRefresh===token){manualRefresh=null;updateRefreshState();}}
   }
-  function goRoot(id='overview') {contextKind='root';current=id==='environments'?'environments':'overview';machineId='';hostFilter='';resetTransient();finishNavigation();}
+  async function startSession(session) {
+    csrf=session.csrfToken || '';if(!allowedView(current)){current='overview';contextKind='root';machineId='';}setNavigation(narrowNavigation.matches?false:desktopNavigationOpen);render();await loadState(false);clearInterval(pollTimer);pollTimer=setInterval(()=>{if(!document.hidden)loadState(true);},15000);
+  }
+  async function afterMachineChange({hostId:changedId}) {
+    if(contextKind==='machine'&&machineId===changedId){contextKind='environment';machineId='';hostFilter='';current='hosts';resetTransient();writeRoute(true);}
+    await loadState(false);
+  }
+  function goRoot(id='overview') {contextKind='root';current=['environments','administration'].includes(id)&&allowedView(id)?id:'overview';machineId='';hostFilter='';resetTransient();finishNavigation();}
   function setTab(id,options={}) {
-    if(id==='environments'){goRoot(id);return;}
+    if(!allowedView(id))return;
+    if(['environments','administration'].includes(id)){goRoot(id);return;}
     if(!isView(id))return;
     if(contextKind==='root')contextKind='environment';
     if(options.machineId){if(!rawData?.scoped&&!(environmentData?.hosts || []).some(h=>h.id===options.machineId))return;contextKind='machine';machineId=options.machineId;}
@@ -229,28 +311,35 @@
     $('context-kicker').textContent=contextKind==='machine'?'MACHINE WORKSPACE':'ENVIRONMENT WORKSPACE';
     $('context-title').textContent=machine?.hostname || machine?.fqdn || (contextKind==='machine'?machineId:environmentName);
     const hosts=count('hosts'),runtimes=count('runtimes');
-    $('context-description').textContent=(contextKind==='machine'?environmentName+' · ':'')+hosts+' machine'+(hosts===1?'':'s')+' · '+runtimes+' Java installation'+(runtimes===1?'':'s')+' · All views and exports use this scope';
+    $('context-description').textContent=(contextKind==='machine'?environmentName+' · ':'')+hosts+' machine'+(hosts===1?'':'s')+' · '+runtimes+' Java installation'+(runtimes===1?'':'s')+' · Inventory views use this scope';
     $('context-back').textContent=contextKind==='machine'?'← '+environmentName:'← Environments';
     $('context-back').dataset.contextBack=contextKind==='machine'?'environment':'root';
   }
   function render() {
+    AssessmentMachines.sync();
+    document.body.classList.toggle('work-requests-page',current==='jobs');
+    AssessmentWorkRequests.sync({enabled:!!data&&AssessmentAccess.canInventory()&&contextKind!=='root'&&current!=='administration',view:current,environmentId:environmentScope,hostId:contextKind==='machine'?machineId:'',environments:rawData?.environments||[],requestId:workRequestId,requestType:workRequestType});
+    document.body.classList.toggle('administration-view',current==='administration');
+    $('admin-view').hidden=current!=='administration';
+    if(current==='administration'){$('side-nav').querySelectorAll('[data-tab]').forEach(item=>{item.classList.toggle('active',item.dataset.tab==='administration');if(item.dataset.tab==='administration')item.setAttribute('aria-current','page');else item.removeAttribute('aria-current');});AssessmentAccess.renderAdministration();return;}
     renderActions();
     document.body.classList.toggle('summary-view',['overview','environments','versions','machine'].includes(current));
-    $('tabs').hidden=contextKind==='root';
-    $('tabs').innerHTML=tabs.filter(([id])=>id!=='environments').map(([id,title])=>{const active=routeView()===id,label=id==='properties'?(contextKind==='machine'?'Machine properties':'Environment properties'):title;return '<button type="button" class="'+(active?'active':'')+'" data-tab="'+id+'" aria-current="'+(active?'page':'false')+'">'+label+'</button>';}).join('');
-    $('side-nav').querySelectorAll('[data-tab]').forEach(item=>{const active=contextKind==='root'&&item.dataset.tab===current;item.classList.toggle('active',active);if(active)item.setAttribute('aria-current','page');else item.removeAttribute('aria-current');});
+    $('tabs').hidden=contextKind==='root'||current==='jobs';
+    $('tabs').innerHTML=tabs.filter(([id])=>!['environments','jobs'].includes(id)&&allowedView(id)).map(([id,title])=>{const active=routeView()===id,label=id==='properties'?(contextKind==='machine'?'Machine properties':'Environment properties'):title;return '<button type="button" class="'+(active?'active':'')+'" data-tab="'+id+'" aria-current="'+(active?'page':'false')+'">'+label+'</button>';}).join('');
+    $('side-nav').querySelectorAll('[data-tab]').forEach(item=>{const active=item.dataset.tab==='jobs'?current==='jobs':contextKind==='root'&&item.dataset.tab===current;item.classList.toggle('active',active);if(active)item.setAttribute('aria-current','page');else item.removeAttribute('aria-current');});
     renderContext();
     const selected=tabs.find(t=>t[0]===current) || ['machine','Machine overview','Resources and Java inventory for this host.'];$('view-title').textContent=current==='properties'?(contextKind==='machine'?'Machine properties':'Environment properties'):selected[1];$('view-description').textContent=selected[2];
-    $('standard-view').hidden=['overview','environments','versions','machine','properties','schedule'].includes(current);$('special-view').hidden=!$('standard-view').hidden;
+    $('standard-view').hidden=['overview','environments','versions','machine','properties','schedule','jobs'].includes(current);$('special-view').hidden=current==='jobs'||!$('standard-view').hidden;
     if(!$('standard-view').hidden)$('special-view').innerHTML='';
     $('view-actions').innerHTML='';
     if(!data){$('special-view').innerHTML='<div class="dash-empty" role="status">Loading inventory…</div>';$('inventory-table').querySelector('tbody').innerHTML='';$('table-footer').hidden=true;$('result-count').textContent='';$('empty-description').textContent='Loading inventory…';$('empty-assessment').hidden=true;$('inventory-table').querySelector('thead').innerHTML='<tr>'+columns().map(c=>'<th>'+c.label+'</th>').join('')+'</tr>';$('empty-state').hidden=false;return;}
-    $('fleet-name').textContent=data.fleet?.name || 'Java assessment';$('fleet-description').textContent=data.fleet?.description || 'Java estate assessment pilot';
+    $('fleet-name').textContent=data.fleet?.name || 'Java assessment';$('fleet-description').textContent=data.fleet?.description || 'Java estate inventory';
     const status=data.coverage?.status || 'pending';$('fleet-status').textContent=status==='complete'?'Assessed':AssessmentDashboard.assessmentStatus(status,true);$('fleet-status').className='badge '+(status==='partial'?'assessment-ready':status==='failed'?'error':status==='complete'?'':'neutral');
     const warnings=data.coverage?.warnings || [];let heading,description;
     if(status==='pending'){heading='Waiting for the first assessment';description='Run a bounded assessment on a connected host to populate verified inventory.';}
     else if(status==='partial'){heading='Assessment ready';description=AssessmentDashboard.coverageDescription(data.coverage)+(warnings.length?' '+warnings.length+' coverage '+(warnings.length===1?'note is':'notes are')+' available.':'');}
     else if(status==='failed'){heading='Assessment failed';description='The assessment could not complete. Open Work requests to review the error.';}
+    else if(!AssessmentAccess.isAdmin()){heading='Assessment coverage';description='Inventory reflects the evidence reported by connected collectors.';}
     else if(!data.settings?.inspectArchives){heading='Archive inspection is not enabled';description='Inventory uses configured paths and process metadata. Enable archive inspection in Assessment settings when deeper library discovery is needed.';}
     else {heading='Assessment coverage is complete';description='Configured paths were assessed within the collection limits. Inventory reflects the evidence available to the collector.';}
     $('notice-title').textContent=heading;$('notice-text').textContent=description;$('coverage-notice').classList.toggle('complete',status==='complete' && !!data.settings?.inspectArchives);$('coverage-notice').classList.toggle('notes',status==='partial');
@@ -259,12 +348,15 @@
     $('host-filter').innerHTML='<option value="">All machines in this environment scope</option>'+(environmentData?.hosts || []).map(h=>'<option value="'+esc(h.id)+'">'+esc(h.hostname || h.fqdn || h.id)+'</option>').join('');$('host-filter').value=hostFilter;if(data.scoped){$('host-filter').innerHTML='<option value="">All machines in this environment scope</option>'+(hostFilter?'<option value="'+esc(hostFilter)+'">'+esc(hostName(hostFilter))+'</option>':'')+'<option value="__browse__">Find a machine…</option>';$('host-filter').value=hostFilter;}
     $('clear-filters').hidden=!query&&!inventorySubset;
     $('subset-filter').hidden=!inventorySubset;$('subset-filter').textContent=inventorySubset==='runtime'?'Runtime evidence only':'JDBC datasources only';
-    if(current==='overview')$('special-view').innerHTML=AssessmentDashboard.overview(data);else if(current==='versions')$('special-view').innerHTML=AssessmentDashboard.versions(data,versionMode,versionFocus);else if(current==='machine')$('special-view').innerHTML=AssessmentDashboard.machine(data,machineId);else if(current==='properties')renderProperties();else if(current==='schedule')$('special-view').innerHTML=AssessmentEnvironments.schedule(data);else if(current!=='environments')renderTable();
+    if(current==='overview')$('special-view').innerHTML=AssessmentDashboard.overview(data);else if(current==='versions')$('special-view').innerHTML=AssessmentDashboard.versions(data,versionMode,versionFocus);else if(current==='machine')$('special-view').innerHTML=AssessmentDashboard.machine(data,machineId);else if(current==='properties')renderProperties();else if(current==='schedule')$('special-view').innerHTML=AssessmentEnvironments.schedule(data);else if(!['environments','jobs'].includes(current))renderTable();
     AssessmentEnrollment.render(data,current,machineId);
     AssessmentEnvironments.render(rawData,current,machineId,environmentScope,data);
+    renderMachineUpdateAction();
+    AssessmentAccess.applyPermissions();renderActions();
     $('last-refresh').textContent=data.serverTime?'As of '+new Date(data.serverTime).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false}):'Inventory loaded';
   }
   function renderTable() {
+    AssessmentMachines.sync();
     if(!data)return;
     const all=matchedRows(), cols=columns().filter(c=>columnVisibility[current]?.[c.key]!==false),total=data.scoped?Number(data.pagination?.total || 0):all.length;
     const pages=data.scoped?Math.max(1,data.pagination?.pages || 1):Math.max(1,Math.ceil(total/size));page=data.scoped?(data.pagination?.page || page):Math.min(page,pages);
@@ -273,7 +365,7 @@
     $('inventory-table').querySelector('tbody').innerHTML=visible.map(r=>'<tr>'+cols.map(c=>'<td>'+c.render(r)+'</td>').join('')+'</tr>').join('');
     $('empty-state').hidden=visible.length>0;$('table-footer').hidden=total===0;
     const noData=!query&&!dateFrom&&!dateTo&&!inventorySubset&&total===0;$('empty-description').textContent=noData ? current==='jobs'?'No assessments have been requested yet. Run an assessment on a connected host.':'No matching inventory has been reported. Run an assessment and review the configured paths and coverage.' : 'Search again using different filters, a wider date range, or another managed instance.';
-    $('empty-assessment').hidden=!noData;$('result-count').textContent=total ? total+' '+(total===1?'item':'items') : '';
+    $('empty-assessment').hidden=!AssessmentAccess.isAdmin()||!noData;$('result-count').textContent=total ? total+' '+(total===1?'item':'items') : '';
     $('row-summary').textContent=total ? ((page-1)*size+1)+'–'+Math.min((page-1)*size+visible.length,total)+' of '+total+' items' : '';
     $('page-label').textContent='Page '+page+' of '+pages;$('prev-page').disabled=page<=1;$('next-page').disabled=page>=pages;
   }
@@ -281,7 +373,7 @@
   function renderProperties() {
     const f=data.fleet || {},coverage=data.coverage || {},stats=coverage.stats || {};
     const selectedEnvironment=(rawData.environments || []).find(e=>e.id===environmentScope),selectedMachine=contextKind==='machine'?host(machineId):null;
-    const information=selectedMachine?[['Hostname',value(selectedMachine.hostname || selectedMachine.fqdn)],['Environment',value(selectedMachine.environmentId?selectedMachine.environmentName || selectedMachine.environmentId:'Unassigned')],['Operating system',value(selectedMachine.distribution || selectedMachine.osName)],['Architecture',value(selectedMachine.architecture)]]:selectedEnvironment?[['Name',value(selectedEnvironment.name)],['Description',value(selectedEnvironment.description)],['Created',timeCell(selectedEnvironment.createdAt)],['Product','Independent Java assessment pilot']]:[['Scope',value(AssessmentEnvironments.label(rawData,environmentScope))],['Fleet',value(f.name)],['Region',value(f.region)],['Product','Independent Java assessment pilot']];
+    const information=selectedMachine?[['Hostname',value(selectedMachine.hostname || selectedMachine.fqdn)],['Environment',value(selectedMachine.environmentId?selectedMachine.environmentName || selectedMachine.environmentId:'Unassigned')],['Operating system',value(selectedMachine.distribution || selectedMachine.osName)],['Architecture',value(selectedMachine.architecture)]]:selectedEnvironment?[['Name',value(selectedEnvironment.name)],['Description',value(selectedEnvironment.description)],['Created',timeCell(selectedEnvironment.createdAt)],['Product','Java Assessment']]:[['Scope',value(AssessmentEnvironments.label(rawData,environmentScope))],['Fleet',value(f.name)],['Region',value(f.region)],['Product','Java Assessment']];
     $('special-view').innerHTML='<div class="overview-totals">'+[['Managed instances',count('hosts')],['Java runtimes',count('runtimes')],['Java servers',count('servers')],['Java libraries',count('libraries')]].map(([label,n])=>'<div class="overview-total"><span>'+label+'</span><strong>'+n+'</strong></div>').join('')+'</div><div class="property-grid"><section class="property-card"><h3>'+(selectedMachine?'Machine information':'Environment information')+'</h3>'+details(information)+'</section><section class="property-card"><h3>Assessment coverage</h3>'+details([['Status',badge(coverage.status || 'pending',true)],['Last assessment',timeCell(coverage.lastAssessmentAt)],['Files visited',value(stats.filesVisited)],['Duration',stats.durationMillis != null?esc((stats.durationMillis/1000).toFixed(1)+' seconds'):value(null)],['Archives',data.settings?.inspectArchives?'Enabled':'Not inspected']])+'<button class="text-button" data-coverage style="margin-top:14px">View coverage details</button></section><section class="property-card"><h3>Collection paths</h3>'+details([['Included',(data.settings?.includePaths || []).map(p=>'<div class="cell-path">'+esc(p)+'</div>').join('') || value(null)],['Excluded',(data.settings?.excludePaths || []).map(p=>'<div class="cell-path">'+esc(p)+'</div>').join('') || value(null)]])+'</section><section class="property-card"><h3>Assessment controls</h3><p class="muted">Assessments are bounded by time and file limits. A host runs one assessment at a time.</p><button class="button" data-settings>Assessment settings</button><p class="muted" style="font-size:12px">Discovery evidence is not a compatibility certification or a vulnerability assessment.</p></section></div>';
   }
   function renderSchedule() {
@@ -326,13 +418,36 @@
     modalHandler=handler;$('modal-title').textContent=title;$('modal-kicker').textContent=kicker;$('modal-body').innerHTML=body;$('modal-submit').textContent=submit;$('modal-submit').disabled=false;$('modal-error').hidden=true;$('modal').showModal();
   }
   function field(label,name,type,val,extra='',hint=''){return '<label class="field">'+esc(label)+'<input name="'+name+'" type="'+type+'" value="'+esc(val??'')+'" '+extra+'>'+ (hint?'<small>'+esc(hint)+'</small>':'')+'</label>';}
+  const uninstallLabels={WAITING:'Aguardando conexão',UNINSTALLING:'Desinstalando',SUCCEEDED:'Agente desinstalado',FAILED:'Falha na desinstalação',UNCONFIRMED:'Conclusão não confirmada',CANCELLED:'Solicitação cancelada',EXPIRED:'Solicitação expirada'};
+  function uninstallAgent() {
+    if(!AssessmentAccess.isAdmin())return;
+    if(AssessmentAgentUpdates.active(host(machineId))){notify('Aguarde a atualização do agente ser resolvida.',true);return;}
+    closeActions();const h=host(machineId);if(!h)return;const r=h.uninstall,name=h.hostname || h.id;
+    let body='<p>Máquina: <strong>'+esc(name)+'</strong></p><p>Somente o serviço e os arquivos próprios do coletor serão removidos. O último inventário fica no histórico; JVMs e aplicações são preservadas.</p>';
+    if(r){body+='<p role="status"><strong>'+esc(uninstallLabels[r.status] || r.status)+'</strong></p><p>Solicitado em '+esc(r.createdAt)+' · validade: '+esc(r.expiresAt)+'</p><ul>'+(r.audit || []).map(e=>'<li>'+esc(e.time)+' · '+esc(uninstallLabels[e.status] || e.status)+'</li>').join('')+'</ul>';}
+    if(r?.status==='WAITING'){
+      openModal('Desinstalação do agente','AGENTE · HISTÓRICO',body+'<p>O pedido pode ser cancelado até o agente iniciar a remoção.</p>','Cancelar solicitação',async()=>{await api('hosts/uninstall/cancel',{method:'POST',body:{hostId:h.id,requestId:r.id}});notify('Solicitação cancelada.');await loadState(false);});return;
+    }
+    if(['UNINSTALLING','UNCONFIRMED','SUCCEEDED'].includes(r?.status)){
+      openModal('Desinstalação do agente','AGENTE · HISTÓRICO',body+(r.status==='UNCONFIRMED'?'<p>A ausência de heartbeat não confirma a remoção. O executor repete a confirmação durante até 24 horas; depois é necessária inspeção local.</p>':''),'Fechar',async()=>{});return;
+    }
+    if(h.uninstallCapability!=='uninstall-v1'||h.credentialStatus!=='active'){
+      openModal('Atualização do agente necessária','DESINSTALAÇÃO NÃO COMPATÍVEL',body+'<p>Este agente precisa do pacote atualizado em modo serviço root (systemd ou SysV). Instalações com cron ou execução manual não suportam remoção remota.</p>','Fechar',async()=>{});return;
+    }
+    const requestKey=crypto.randomUUID();
+    body+='<p>O pedido vale por 1 hora. O agente o recebe pelo canal HTTPS após terminar a coleta atual. Enquanto pendente, novas coletas ficam bloqueadas.</p>'+field('Digite exatamente o nome da máquina','confirmationName','text','','required autocomplete="off"');
+    openModal('Desinstalar agente','CONFIRMAÇÃO INDIVIDUAL',body,'Solicitar desinstalação',async(f)=>{if(f.get('confirmationName')!==name)throw new Error('Digite exatamente o nome da máquina.');await api('hosts/uninstall',{method:'POST',body:{hostId:h.id,confirmationName:f.get('confirmationName'),requestKey,expiresInMinutes:60}});notify('Desinstalação solicitada. Aguardando conexão do agente.');await loadState(false);});
+    $('modal-form').elements.confirmationName.addEventListener('input',()=>{$('modal-error').hidden=true;});
+  }
   function runAssessment() {
+    if(!AssessmentAccess.isAdmin())return;
     closeActions();const total=count('hosts');
     if(!total){openModal('Connect a collector','ASSESSMENT','<p>Create an environment, download its configured installer and run it on a machine. Registered machines appear automatically.</p>','Close',async()=>{});return;}
     const selectedMachine=contextKind==='machine',target=selectedMachine?hostName(machineId):AssessmentEnvironments.label(rawData,environmentScope);
     openModal('Run an assessment','ON-DEMAND COLLECTION','<p>Queue a bounded assessment for '+(selectedMachine?'<strong>'+esc(target)+'</strong>':'all <strong>'+total+' machines</strong> in '+esc(target))+'. Each machine uses its effective collection limits.</p><p>Machines with revoked access or an assessment already queued or running are skipped. Follow progress in Work requests.</p>','Queue assessment',async()=>{const result=await api('jobs/run-scope',{method:'POST',body:{environmentId:environmentScope,hostId:selectedMachine?machineId:''}});notify(result.queued+' assessment(s) queued'+(result.skipped?' · '+result.skipped+' skipped':'')+'.');setTab('jobs');});
   }
   function editSettings(hostId='') {
+    if(!AssessmentAccess.isAdmin())return;
     closeActions();
     if(hostId||contextKind==='machine'){AssessmentEnvironments.editHostSettings(hostId || machineId);return;}
     if(environmentScope&&environmentScope!=='__unassigned__'){AssessmentEnvironments.openEdit(environmentScope);return;}
@@ -354,9 +469,10 @@
   }
   document.addEventListener('click',async(event)=>{
     if(event.target.closest('#actions-menu button, #actions-menu a')||!event.target.closest('.menu-anchor'))closeActions();
+    if(event.target.closest('[data-update-environment]')){if(current==='hosts'&&contextKind!=='machine')openAgentUpdates();return;}
     if(event.target.closest('[data-environment-overview]')){environmentOverview();return;}
     const back=event.target.closest('[data-context-back]');if(back){back.dataset.contextBack==='environment'?environmentOverview():goRoot('environments');return;}
-    const tab=event.target.closest('[data-tab]');if(tab){event.preventDefault();if(tab.closest('#side-nav')||tab.classList.contains('brand'))goRoot(tab.dataset.tab);else setTab(tab.dataset.tab);return;}
+    const tab=event.target.closest('[data-tab]');if(tab){event.preventDefault();if(tab.dataset.tab==='jobs')tab.closest('#side-nav')?openWorkHistory():setTab('jobs');else if(tab.closest('#side-nav')||tab.classList.contains('brand'))goRoot(tab.dataset.tab);else setTab(tab.dataset.tab);return;}
     const machine=event.target.closest('[data-machine]');if(machine){openMachine(machine.dataset.machine);return;}
     const inventory=event.target.closest('[data-inventory]');if(inventory){setTab(inventory.dataset.inventory,{machineId:inventory.dataset.scope,subset:inventory.dataset.subset});return;}
     const versionGroup=event.target.closest('[data-version-group]');if(versionGroup){versionMode='family';setTab('versions',{machineId:versionGroup.dataset.scope,version:versionGroup.dataset.versionGroup});return;}
@@ -370,6 +486,8 @@
     if(event.target.closest('[data-settings]'))editSettings();if(event.target.closest('[data-run]'))runAssessment();if(event.target.closest('[data-coverage]'))openCoverage();
     const days=event.target.closest('[data-days]');if(days){const n=days.dataset.days, f=$('modal-form');if(n==='all'){f.elements.from.value='';f.elements.to.value='';}else{f.elements.to.value=new Date().toISOString().slice(0,10);f.elements.from.value=new Date(Date.now()-(Number(n)-1)*86400000).toISOString().slice(0,10);}}
   });
+  $('open-agent-updates').onclick=openAgentUpdates;
+  $('uninstall-agent').onclick=uninstallAgent;
   $('actions-toggle').onclick=()=>{const open=$('actions-menu').hidden;$('actions-menu').hidden=!open;$('actions-toggle').setAttribute('aria-expanded',String(open));};
   $('nav-toggle').onclick=()=>setNavigation($('side-nav').hidden,{focus:narrowNavigation.matches});
   $('nav-backdrop').onclick=()=>setNavigation(false,{restoreFocus:true});
@@ -380,12 +498,10 @@
   $('host-filter').onchange=()=>{const id=$('host-filter').value;if(id==='__browse__'){contextKind='environment';machineId='';hostFilter='';setTab('hosts');return;}contextKind=id?'machine':'environment';machineId=id;resetTransient();finishNavigation();};
   $('page-size').onchange=()=>{size=Number($('page-size').value);page=1;loadState(false);};$('prev-page').onclick=()=>{page--;loadState(false);};$('next-page').onclick=()=>{page++;loadState(false);};
   $('date-filter').onclick=dateDialog;$('column-settings').onclick=columnDialog;$('run-assessment').onclick=runAssessment;$('empty-assessment').onclick=runAssessment;$('open-settings').onclick=()=>editSettings();$('open-install-guide').onclick=()=>AssessmentEnvironments.openInstallGuide();$('view-coverage').onclick=openCoverage;
-  $('refresh').onclick=()=>loadState(false);$('close-drawer').onclick=closeDrawer;$('drawer-backdrop').onclick=closeDrawer;
+  $('refresh').onclick=refreshCurrentView;$('close-drawer').onclick=closeDrawer;$('drawer-backdrop').onclick=closeDrawer;
   $('close-modal').onclick=()=>{$('modal').close();};$('cancel-modal').onclick=()=>{$('modal').close();};
   $('modal-form').onsubmit=async(e)=>{e.preventDefault();if(!modalHandler)return;$('modal-submit').disabled=true;$('modal-error').hidden=true;try{await modalHandler(new FormData(e.target));$('modal').close();}catch(err){$('modal-error').textContent=err.message;$('modal-error').hidden=false;}finally{$('modal-submit').disabled=false;}};
-  $('login-form').onsubmit=async(e)=>{e.preventDefault();$('login-submit').disabled=true;$('login-error').hidden=true;try{const response=await api('login',{method:'POST',body:{password:$('password').value}});csrf=response.csrfToken || '';$('password').value='';await startSession();}catch(err){$('login-error').textContent=err.message;$('login-error').hidden=false;}finally{$('login-submit').disabled=false;}};
-  $('logout').onclick=async()=>{AssessmentEnvironments.clear();AssessmentEnrollment.clear();try{await api('logout',{method:'POST',body:{}});}catch(_){}csrf='';rawData=null;data=null;showLogin();};
-  $('about').onclick=()=>openDrawer('Java Assessment','Independent pilot','<p>This independent pilot inventories Java runtimes, application servers, libraries and JDBC configuration using evidence collected on registered hosts.</p><div class="evidence-box">This application is not Oracle Java Management Service. Discovery does not establish vendor certification, security status or software compatibility.</div><section class="detail-section"><h3>How the inventory works</h3><p>Each assessment is bounded by configured paths, time and file limits. Open any row to review its evidence and observation time. Missing values are shown as a dash.</p><p>Scheduled assessments are disabled until enabled in Assessment settings. Manual requests are tracked under Work requests.</p></section>');
+  $('about').onclick=()=>openDrawer('Java Assessment','Sobre o produto',details([['Versão',window.AssessmentRelease?esc(window.AssessmentRelease.version):'Version unavailable'],['Release built at',window.AssessmentRelease?timeCell(window.AssessmentRelease.builtAt):value(null)]])+'<p>Java Assessment inventories Java runtimes, application servers, libraries and JDBC configuration using evidence collected on registered hosts.</p><div class="evidence-box">This application is not Oracle Java Management Service. Discovery does not establish vendor certification, security status or software compatibility.</div><section class="detail-section"><h3>How the inventory works</h3><p>Each assessment is bounded by configured paths, time and file limits. Open any row to review its evidence and observation time. Missing values are shown as a dash.</p><p>Java installation counts include discovered JDKs and runtimes observed in application use. An observed runtime does not require a compiler. Several JVMs using the same Java home count as one installation.</p><p>Scheduled assessments are disabled until enabled in Assessment settings. Manual requests are tracked under Work requests.</p></section>');
   document.addEventListener('keydown',e=>{
     if(narrowNavigation.matches&&!$('side-nav').hidden){
       if(e.key==='Escape'){e.preventDefault();setNavigation(false,{restoreFocus:true});return;}
@@ -393,7 +509,11 @@
     }
     if(e.key==='Escape'){closeDrawer();closeActions(true);}
   });
-  AssessmentEnrollment.init({api,getData:()=>data,getEnrollmentData:()=>environmentData,refresh:loadState,notify,editHostSettings:editSettings,addMachine:()=>{if(environmentScope&&environmentScope!=='__unassigned__')AssessmentEnvironments.openPackage(environmentScope);else{goRoot('environments');notify('Choose or create an environment to download its configured agent.');}}});
-  AssessmentEnvironments.init({api,download:downloadPackage,exportParams,getRaw:()=>rawData,getScoped:()=>data,getScope:()=>environmentScope,select:selectEnvironment,refresh:loadState,notify,navigate:setTab});
-  setNavigation(!narrowNavigation.matches);render();startSession();
+  AssessmentEnrollment.init({isAdmin:AssessmentAccess.isAdmin,api,getData:()=>data,getEnrollmentData:()=>environmentData,refresh:loadState,notify,editHostSettings:editSettings,addMachine:()=>{if(environmentScope&&environmentScope!=='__unassigned__')AssessmentEnvironments.openPackage(environmentScope);else{goRoot('environments');notify('Choose or create an environment to download its configured agent.');}}});
+  AssessmentEnvironments.init({isAdmin:AssessmentAccess.isAdmin,api,download:downloadPackage,downloadGet,getExportContext:()=>({environmentId:environmentScope,hostId:contextKind==='machine'?machineId:'',hostName:host(machineId)?.hostname || host(machineId)?.fqdn || machineId}),getRaw:()=>rawData,getScoped:()=>data,getScope:()=>environmentScope,select:selectEnvironment,refresh:loadState,notify,navigate:setTab,afterMachineChange});
+  AssessmentMachines.init({isAdmin:AssessmentAccess.isAdmin,getRevision:AssessmentAccess.getRevision,api,getHost:id=>(data?.hosts||[]).find(h=>h.id===id),getEnvironments:()=>rawData?.environments||[],getScope:()=>environmentScope,move:AssessmentEnvironments.openAssignment,update:id=>AssessmentAgentUpdates.open({hostId:id,label:hostName(id)}),afterChange:afterMachineChange,notify,closeOtherMenus:()=>{closeActions();AssessmentAccess.closeMenu();}});
+  AssessmentWorkRequests.init({canRead:AssessmentAccess.canInventory,isAdmin:AssessmentAccess.isAdmin,getRevision:AssessmentAccess.getRevision,api,select:openWorkRequest,changeEnvironment:selectEnvironment,openAssessment:(id,hostId)=>showDetail('jobs',id,hostId),notify});
+  AssessmentAgentUpdates.init({isAdmin:AssessmentAccess.isAdmin,getRevision:AssessmentAccess.getRevision,api,refreshInventory:()=>{loadState(true);AssessmentWorkRequests.refresh(true);},openWorkRequest,notify,closeMenus:()=>{closeActions();AssessmentMachines.closeMenu();AssessmentAccess.closeMenu();}});
+  AssessmentAccess.init({onSession:startSession,onSignedOut:clearSession,notify});
+  setNavigation(!narrowNavigation.matches);render();AssessmentAccess.start();
 })();

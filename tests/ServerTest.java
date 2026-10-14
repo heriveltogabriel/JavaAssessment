@@ -17,8 +17,8 @@ public class ServerTest {
  }
  static Map state()throws Exception{Field f=AssessmentServer.class.getDeclaredField("state");f.setAccessible(true);return (Map)f.get(app);}
  static void start()throws Exception{app=new AssessmentServer(root);http=HttpServer.create(new InetSocketAddress("127.0.0.1",0),8);http.createContext("/",app);pool=Executors.newFixedThreadPool(4);http.setExecutor(pool);http.start();base="http://127.0.0.1:"+http.getAddress().getPort();cookie=null;csrf=null;}
- static void stop(){http.stop(0);pool.shutdownNow();}
- static void login()throws Exception{Object[] r=call("POST","/api/login",map("password","fixture-password"),false,false);check(r[0].equals(200),"login");csrf=(String)((Map)r[1]).get("csrfToken");}
+ static void stop(){if(http!=null){http.stop(0);pool.shutdownNow();app.close();http=null;}}
+ static void login()throws Exception{var r=TestAccounts.login(base);cookie=r.headers().firstValue("set-cookie").orElseThrow().split(";",2)[0];csrf=(String)((Map)Json.parse(r.body())).get("csrfToken");}
  static void erase(File f){if(f.isDirectory())for(File c:f.listFiles())erase(c);f.delete();}
  public static void main(String[] args)throws Exception{
   root=File.createTempFile("assessment-server-test-","");root.delete();new File(root,"conf").mkdirs();Properties p=new Properties();p.setProperty("adminSalt","fixture-salt");p.setProperty("adminPasswordSha256",hex(MessageDigest.getInstance("SHA-256").digest("fixture-saltfixture-password".getBytes("UTF-8"))));p.setProperty("agentToken","fixture-agent-token");p.setProperty("hostId","fixture-host");FileOutputStream out=new FileOutputStream(new File(root,"conf/server.properties"));p.store(out,"isolated fixtures");out.close();

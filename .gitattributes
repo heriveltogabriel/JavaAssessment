@@ -5,3 +5,5 @@
 lib/** -text -whitespace
 *.jar binary
 *.zip binary
+*.der binary
+*.sig binary

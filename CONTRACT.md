@@ -35,6 +35,8 @@ Overview contains at most six machine previews. Machine overview contains bounde
 
 `GET /api/export` exports all pages in the selected scope. Include the current view and filters to apply its table filter to that collection. Export contains no enrollment secrets or agent credentials.
 
+`GET /api/export.csv` exports a single CSV across all inventory categories, with one row per record. Only `environmentId` and optional `hostId` select the scope; table search, date, view and pagination parameters do not limit this export. Environment and machine ownership are validated. An empty scope returns the header. The authenticated response uses `text/csv; charset=utf-8`, a UTF-8 BOM, comma delimiters, CRLF and a quoted attachment filename. Explicit columns omit credentials and configuration objects; formula-like text is escaped. The Actions menu opens a scope selector for all environments, an environment, unassigned machines or the current machine. See `docs/VERSIONED_DOWNLOAD_CSV.md`.
+
 | Mutation | Effect |
 | --- | --- |
 | `POST /api/jobs {hostId}` | Queue one bounded assessment; reject overlapping queued/running jobs |
@@ -47,6 +49,8 @@ Overview contains at most six machine previews. Machine overview contains bounde
 | `POST /api/hosts/revoke` | Revoke one collector's credential |
 
 `GET /api/collector.zip` downloads a generic credential-free package. There is no arbitrary remote command endpoint.
+
+`GET /api/collector/info` returns the authenticated `{version,filename}` metadata for that ZIP; optional `environmentId` selects the environment filename. Version comes from the served ZIP's validated `DEPENDENCIES.json`, not the dashboard version. Downloads use `assessment-collector-<version>.zip` or `assessment-<environment-slug>-<version>.zip`. The download's `Content-Disposition` is authoritative when metadata changes between preview and download. Missing/invalid version metadata makes the package unavailable and is checked before creating an enrollment credential.
 
 ## Collector protocol (schema 1.0)
 
@@ -79,7 +83,7 @@ Snapshot shape:
 }
 ```
 
-Each inventory record has `id` and `hostId`; IDs need only be unique within the collection and machine. Evidence is retained with its original observation timestamp. Missing information is omitted or null. JRE-only records are excluded from inventory and job installation counts. Datasource configuration is distinguished from runtime evidence.
+Each inventory record has `id` and `hostId`; IDs need only be unique within the collection and machine. Evidence is retained with its original observation timestamp. Missing information is omitted or null. Java installation counts include discovered JDKs and runtimes without a compiler when observed in application use (`kind:JRE`, `inUse:true`); a running application does not require `javac`. Unused standalone JRE records remain excluded. Several JVMs using the same canonical Java home count as one installation. Historical runtime sources retain their original observation time. Datasource configuration is distinguished from runtime evidence.
 
 Results retry by `(hostId,jobId,eventId)` without duplicate inventory. A result arriving after a server restart or lease timeout may complete its original job; an older captured snapshot cannot replace newer machine inventory. Invalid ownership or a database error rejects the entire snapshot.
 
@@ -94,3 +98,20 @@ Results retry by `(hostId,jobId,eventId)` without duplicate inventory. A result 
 - The collector continues using existing protected JVM discovery, system service, bounded scans and HTTPS. Application directory permissions are not changed.
 
 See `docs/BETA_VALIDATION.md` for measured local load and the target-VM validation still required.
+
+## Individual remote uninstall (collector 1.5.0, review release)
+
+This is local review code; publishing requires explicit approval. New root service installs add an independent restricted uninstall executor; the collector service retains `ProtectSystem=full`. Cron/manual installations do not advertise support.
+
+- Heartbeat includes `uninstallCapability: "uninstall-v1"` only when the updated root service helper is installed. Missing capability clears prior support.
+- `POST /api/hosts/uninstall {hostId,confirmationName,requestKey,expiresInMinutes}` uses browser session + CSRF, requires the exact current hostname, and queues one `UNINSTALL_AGENT_V1`. Validity is 5–1,440 minutes, default 60. Duplicate `requestKey` for the same host returns the same record. No command/path fields are accepted.
+- `POST /api/hosts/uninstall/cancel {hostId,requestId}` cancels only `WAITING`. Cancellation and claim serialize in SQLite.
+- `GET /api/agent/actions?hostId=...&capability=uninstall-v1` returns `{action}` before pending results retry. New polls can also return `{jobId:null,action:{type,requestId,expiresMillis}}`. Old polls never receive typed actions. Pending uninstall blocks new assessments; a running assessment blocks claim/delivery.
+- `POST /api/agent/uninstall/claim {hostId,requestId}` requires the host's operational token. It commits `UNINSTALLING` and returns `{requestId,completionToken,confirmUntil}`. Retries recover the same credential. Cancelled/expired claims return `{requestId,executable:false}` without execution. Terminal/invalid claims are rejected.
+- `POST /api/agent/uninstall/complete {hostId,requestId,outcome,verification}` accepts only the exclusive completion credential. `SUCCEEDED` requires `OWN_FILES_AND_SCHEDULER_ABSENT_V1`. Commit atomically records the outcome, marks lifecycle `uninstalled` and revokes the operational token. Repeating the same confirmation remains valid until the 24-hour completion window expires, including after revocation/server restart. Conflicting outcomes are rejected.
+
+States: `WAITING`, `UNINSTALLING`, `SUCCEEDED`, `FAILED`, `UNCONFIRMED`, `CANCELLED`, `EXPIRED`. After 30 minutes without a result, a claimed request becomes `UNCONFIRMED`; it may still receive a result inside the completion window. Heartbeat absence never changes a request to success. Maintenance every 30 seconds expires pending actions and removes expired completion secrets.
+
+At most 100 records per machine and 20 audit entries per request are retained. Valid completion receipts are not evicted early; new requests are refused if retention is full. Public host views/exports contain the latest request and bounded audit, never completion credentials or request keys. `summary.activeAgents` counts active operational identities and excludes confirmed uninstalled agents. Host/inventory counts remain historical.
+
+The fixed remover rejects unknown files, symlinks, hardlinks, nested mounts, changed service units, systemd overrides, alternative scheduler files and collector entries in crontabs. It removes only inspected owned files; application JVMs and files are untouched. Existing administrator rollback directories outside `/opt/java-assessment-collector` are preserved. Nonempty internal backup directories require inspection. Helper identity/CA/completion state is removed after confirmation or its local 24-hour deadline. One bounded credential-free diagnostic record remains. See `docs/REMOTE_UNINSTALL_REVIEW.md` for validation and operational limits.

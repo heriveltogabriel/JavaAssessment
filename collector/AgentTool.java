@@ -42,7 +42,7 @@ public final class AgentTool {
         String hostId = AssessmentCollector.required(config, "hostId");
         Map ack = transport.request("POST", "/api/agent/heartbeat", Json.stringify(AssessmentScan.map(
             "hostId", hostId, "hostname", hostname(config), "javaVersion", System.getProperty("java.version"),
-            "collectorVersion", AgentTransport.VERSION)), AssessmentCollector.required(config, "agentToken"));
+            "collectorVersion", AgentTransport.VERSION, "updateCapability", AssessmentCollector.updateCapability(config))), AssessmentCollector.required(config, "agentToken"));
         if (!Boolean.TRUE.equals(ack.get("accepted"))) throw new IOException("Heartbeat was not acknowledged");
         return ack;
     }

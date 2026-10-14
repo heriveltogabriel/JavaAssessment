@@ -5,6 +5,11 @@ umask 077
 test "$(id -u)" = 0 || { echo 'Use sudo ./install.sh --system.' >&2; exit 2; }
 SOURCE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 DEST=/opt/java-assessment-collector
+. "$SOURCE/lifecycle-lock.sh"
+test ! -e "$DEST/conf/root-service-mode" || { echo 'Existing root service requires --system-root; account-mode conversion refused.' >&2; exit 1; }
+for lifecycle_state in /opt/java-assessment-update/journal.json /opt/java-assessment-uninstall/request.json "$DEST/collector-spool/update-request.json" "$DEST/collector-spool/uninstall-request.json"; do
+  test ! -e "$lifecycle_state" && test ! -L "$lifecycle_state" || { echo 'Agent lifecycle operation is pending; installation refused.' >&2; exit 1; }
+done
 ACCOUNT=java-assessment
 SERVER=''; CODE_FILE=''; JAVA_PATH=''; READ_GROUP=''; NO_CRON=false
 CONFIGURED_PACKAGE=false
@@ -112,7 +117,7 @@ for NAME in lib trust; do
   test "$(stat -c %u "$DEST/$NAME")" = 0 || { echo 'Package directory must be root-owned.' >&2; exit 1; }
   chmod 755 "$DEST/$NAME"
 done
-for NAME in install.sh system-install.sh run-once.sh agent-tool.sh launcher-common.sh bootstrap-config.sh poll.sh collector.jar; do
+for NAME in install.sh system-install.sh lifecycle-lock.sh run-once.sh agent-tool.sh launcher-common.sh bootstrap-config.sh poll.sh collector.jar; do
   if test "$SOURCE" != "$DEST"; then
     MODE=755; test "$NAME" != collector.jar || MODE=644
     atomic_copy "$SOURCE/$NAME" "$DEST/$NAME" "$MODE"

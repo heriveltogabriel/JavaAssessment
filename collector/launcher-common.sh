@@ -101,7 +101,7 @@ test -n "$ASSESSMENT_JAVA_BIN" || { echo 'Java not found; set ASSESSMENT_JAVA or
 assessment_execute() {
   ASSESSMENT_LIMIT=$1
   shift
-  nice -n 10 "$ASSESSMENT_JAVA_BIN" -Xms16m -Xmx64m -Djava.awt.headless=true -Djava.security.egd=file:/dev/./urandom -Dhttp.keepAlive=false \
+  nice -n 10 "$ASSESSMENT_JAVA_BIN" -Xms16m -Xmx96m -Djava.awt.headless=true -Djava.security.egd=file:/dev/./urandom -Dhttp.keepAlive=false \
     -cp "$ASSESSMENT_CP" "$@" &
   ASSESSMENT_PID=$!
   (

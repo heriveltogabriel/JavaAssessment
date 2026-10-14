@@ -1,6 +1,6 @@
-# Java Assessment 1.0 Beta
+# Java Assessment 2.0.2
 
-Esta versão usa SQLite local para manter o inventário. O dashboard consulta páginas e resumos no servidor, reduzindo o volume enviado ao navegador nas trocas de tela e filtros. A meta de validação é mil máquinas com aplicações e bibliotecas representativas; os tempos efetivamente medidos e o ambiente do teste devem acompanhar a entrega da versão.
+Esta versão usa SQLite local para manter o inventário. O dashboard consulta páginas e resumos no servidor, reduzindo o volume enviado ao navegador nas trocas de tela e filtros. A capacidade depende do volume de inventário e da frequência de coleta. Os testes locais não homologam automaticamente a capacidade ou todas as plataformas do cliente.
 
 ## Instalação nova
 
@@ -14,7 +14,7 @@ Os arquivos de programa pertencem a root e são somente leitura para o serviço.
 
 O banco fica em `data/inventory.sqlite`, com arquivos auxiliares `inventory.sqlite-wal` e `inventory.sqlite-shm` enquanto está em uso. O modo WAL permite consultar o inventário durante uma gravação. Não copie somente o arquivo `.sqlite` enquanto o serviço estiver rodando. Para uma cópia por arquivos, pare o serviço, guarde `data` e `conf` completos com seus proprietários e permissões, e reinicie o serviço. Guarde também a chave da CA e a senha inicial, mantidas separadamente em `/root`.
 
-O Java usa `-Xmx384m` e `-XX:+ExitOnOutOfMemoryError`. O systemd reinicia falhas com intervalo de três segundos e limita tentativas repetidas; o teto de memória do serviço é 768 MiB. Consulte `journalctl -u java-assessment-dashboard` para erros e `logs/gc.log` para atividade do coletor de lixo. `GET /health` é usado pelo instalador para confirmar a inicialização HTTPS.
+O Java usa `-Xms1536m -Xmx1536m` e `-XX:+ExitOnOutOfMemoryError`. O heap inicial e máximo é 1,5 GiB; ele não representa toda a memória do processo. O systemd reinicia falhas com intervalo de três segundos e limita tentativas repetidas; o teto de memória total do serviço é 2 GiB. Reserve memória adicional para o sistema operacional e para outros serviços. Consulte `journalctl -u java-assessment-dashboard` para erros e `logs/gc.log` para atividade do coletor de lixo. `GET /health` é usado pelo instalador para confirmar a inicialização HTTPS. Instalações existentes exigem o ajuste operacional separado; atualizar apenas os arquivos do dashboard preserva o launcher e a configuração do serviço.
 
 Para limitar o crescimento do histórico por máquina, `conf/server.properties` inclui `jobHistoryPerHost=100` (faixa de 10 a 1.000) e `receiptHistoryPerHost=200` (faixa de 200 a 2.000). O primeiro controla a retenção de tarefas finalizadas, preservando as que estão na fila ou em execução; o segundo, os registros usados para reconhecer resultados já recebidos. Ajustes exigem reiniciar o serviço. Guarde esses parâmetros junto com a configuração no backup.
 
@@ -22,7 +22,7 @@ O SQLite usa `data/native` para extrair a biblioteca nativa; esse diretório é 
 
 ## Atualização de uma instalação existente
 
-Este ZIP instala um dashboard novo e recusa substituir uma instalação existente. A atualização da máquina atual é uma etapa separada, executada somente após autorização. Antes dela, é necessário guardar uma cópia consistente dos dados e da configuração e preparar o retorno à versão anterior. Os JSON legados devem ser preservados para recuperação após a importação inicial; não exclua esses arquivos manualmente durante a validação da Beta.
+Este ZIP instala um dashboard novo e recusa substituir uma instalação existente. A atualização da máquina atual é uma etapa separada, executada somente após autorização. Antes dela, é necessário guardar uma cópia consistente dos dados e da configuração e preparar o retorno à versão anterior. Os JSON legados devem ser preservados para recuperação após a importação inicial; não exclua esses arquivos manualmente durante a validação da versão.
 
 O pacote de instalação contém fontes, recursos estáticos, bibliotecas e o coletor genérico. Identidades de agentes, tokens de cadastro, senhas, chaves privadas e dados de uma instalação existente não fazem parte dele.
 

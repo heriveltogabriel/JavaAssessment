@@ -30,7 +30,7 @@ assert.match(dash.machine(silentData,'live'),/missing heartbeat does not establi
 assert.match(dash.machine(silentData,'live'),/Coverage notes ↗/);
 assert.match(dash.machines(silentData),/machine-card silent/);
 assert.equal(dash.assessmentStatus('PARTIAL',true),'Assessment ready');
-assert.equal(dash.assessmentStatus('PARTIAL'),'Completed with notes');
+assert.equal(dash.assessmentStatus('PARTIAL'),'Coleta parcial');
 console.log('PASS: version groups, unique hosts, runtime vs installation counts, scoping, unknown versions, HTML escaping, empty state');
 
 const applications={...d,hosts:[{id:'a',hostname:'spring-host'},{id:'b',hostname:'tomcat-host'}],runtimes:[],servers:[{id:'tomcat',hostId:'b',name:'tomcat',type:'Tomcat',version:'9.0.122',state:null}],applications:[

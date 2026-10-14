@@ -27,7 +27,7 @@ public final class BetaServerTest {
     static Map<String,Object> ok(String method,String path,Object body,boolean admin,String token,int code)throws Exception{Response r=call(method,path,body,admin,token);check(r.code==code,path+" expected"+code+" got"+r);return r.body;}
     static void start()throws Exception{
         app=new AssessmentServer(root.toFile());http=HttpServer.create(new InetSocketAddress("127.0.0.1",0),32);pool=Executors.newFixedThreadPool(8);http.setExecutor(pool);http.createContext("/",app);http.start();base="http://127.0.0.1:"+http.getAddress().getPort();
-        var response=raw("POST","/api/login",map("password","fixture-password"),false,null);cookie=response.headers().firstValue("set-cookie").orElseThrow().split(";")[0];csrf=(String)obj(Json.parse(new String(response.body()))).get("csrfToken");
+        var response=TestAccounts.login(base);cookie=response.headers().firstValue("set-cookie").orElseThrow().split(";")[0];csrf=(String)obj(Json.parse(response.body())).get("csrfToken");
     }
     static void stop(){if(http!=null){http.stop(0);pool.shutdownNow();app.close();http=null;}}
     static Map<String,Object> registration(String installation){return map("installationId",installation,"hostname",installation,"collectorVersion","fixture","javaVersion","1.6.0_45","osName","Linux","architecture","x86_64");}
@@ -45,7 +45,7 @@ public final class BetaServerTest {
     public static void main(String[] args)throws Exception{
         root=Files.createTempDirectory("assessment-beta-functional-");Files.createDirectories(root.resolve("conf"));Files.createDirectories(root.resolve("dist"));
         Properties c=new Properties();c.setProperty("seedLegacyHost","false");c.setProperty("adminSalt","fixture-salt");c.setProperty("adminPasswordSha256",InventoryStore.hash("fixture-saltfixture-password"));c.setProperty("hostId","unused-fixture");c.setProperty("agentToken","unused-fixture");c.setProperty("publicUrl","https://fixture.invalid");try(var out=Files.newOutputStream(root.resolve("conf/server.properties"))){c.store(out,"isolated");}
-        try(var zip=new ZipOutputStream(Files.newOutputStream(root.resolve("dist/assessment-collector.zip")))){for(String name:List.of("install.sh","system-install.sh","bootstrap-config.sh","collector.jar","conf/ca.pem")){zip.putNextEntry(new ZipEntry(name));zip.write("fixture".getBytes());zip.closeEntry();}}
+        try(var zip=new ZipOutputStream(Files.newOutputStream(root.resolve("dist/assessment-collector.zip")))){for(String name:List.of("install.sh","system-install.sh","bootstrap-config.sh","collector.jar","conf/ca.pem","DEPENDENCIES.json")){zip.putNextEntry(new ZipEntry(name));zip.write((name.equals("DEPENDENCIES.json")?"{\"version\":\"1.5.0\"}":"fixture").getBytes());zip.closeEntry();}}
         try{
             start();check(call("GET","/api/state",null,false,null).code==401,"anonymous denied");String valid=csrf;csrf="wrong";check(call("POST","/api/environments",map("name","No"),true,null).code==403,"CSRF denied");csrf=valid;
             String env=(String)ok("POST","/api/environments",map("name","Desenv","settings",map("maxFiles",2500)),true,null,201).get("id"),other=(String)ok("POST","/api/environments",map("name","Homologa"),true,null,201).get("id");
@@ -57,10 +57,10 @@ public final class BetaServerTest {
             ok("PUT","/api/hosts/settings",map("hostId",h,"settings",map("batchSize",17)),true,null,200);var props=ok("GET","/api/state?view=settings&hostId="+h,null,true,null,200);check(((Number)obj(props.get("settings")).get("batchSize")).intValue()==17,"machine effective settings");
             String j=queue(h);check(call("POST","/api/jobs",map("hostId",h),true,null).code==409,"overlap denied");poll(h,token,j);stop();start();check("FAILED".equals(app.store.get("jobs",j).get("status")),"restart marks interrupted");
             String timestamp=AssessmentServer.now();Map<String,Object> snap=snapshot(h,j,"fixture-event-00001",timestamp);ok("POST","/api/agent/results",snap,false,token,200);check(Boolean.TRUE.equals(ok("POST","/api/agent/results",snap,false,token,200).get("duplicate")),"result idempotency");check(Boolean.TRUE.equals(app.store.get("jobs",j).get("lateResult")),"late result preserved");
-            check(String.valueOf(app.store.get("jobs",j).get("summary")).contains("1 Java installation(s)"),"job summary excludes JRE");
+            check(String.valueOf(app.store.get("jobs",j).get("summary")).contains("1 Java installation(s)"),"job summary excludes unused JRE");
             String j2=queue(h2);poll(h2,t2,j2);ok("POST","/api/agent/results",snapshot(h2,j2,"fixture-event-00002",timestamp),false,t2,200);
             check(list(ok("GET","/api/state?view=jobs&q=Completed",null,true,null,200).get("jobs")).size()==2,"search visible job status");
-            Map<String,Object> view=ok("GET","/api/state?view=runtimes&environmentId="+env,null,true,null,200);check(list(view.get("runtimes")).size()==1&&((Number)obj(view.get("pagination")).get("total")).intValue()==1,"scope and JRE omission");check("Java 6".equals(obj(list(view.get("javaGroups")).get(0)).get("name")),"major label");
+            Map<String,Object> view=ok("GET","/api/state?view=runtimes&environmentId="+env,null,true,null,200);check(list(view.get("runtimes")).size()==1&&((Number)obj(view.get("pagination")).get("total")).intValue()==1,"scope and unused JRE omission");check("Java 6".equals(obj(list(view.get("javaGroups")).get(0)).get("name")),"major label");
             check(call("GET","/api/state?view=machine&hostId="+h2+"&environmentId="+env,null,true,null).code==404,"scope mismatch denied");
             check(list(ok("GET","/api/state?view=versions&version=Java+6",null,true,null,200).get("runtimes")).size()==2,"major version filter");
             view=ok("GET","/api/state?view=libraries&environmentId="+env+"&pageSize=1",null,true,null,200);check(((Number)obj(view.get("pagination")).get("total")).intValue()==2&&list(view.get("libraries")).size()+list(view.get("datasources")).size()==1,"combined library pagination");

@@ -32,6 +32,8 @@ A autorização inicial não é copiada para a instalação operacional. Se o ZI
 
 Para **atualizar** uma instalação `--system-root`, baixe um novo ZIP do ambiente, extraia em outra pasta privada e execute novamente `sudo ./install.sh --system-root`. O instalador preserva a identidade, a credencial individual e o ambiente da máquina. Um pacote de outro ambiente não altera a associação; faça a mudança no dashboard. Confira `install.log`, registro e heartbeat após a atualização. Guarde o backup protegido criado pelo instalador até validar o novo ciclo.
 
+A atualização para **2.0.2** exige esse instalador completo uma vez, pois também corrige o executor de atualizações. O destino continua `/opt/java-assessment-collector`, independentemente da pasta de extração e do usuário administrativo. Depois, confira `Implementation-Version: 2.0.2` no manifesto de `collector.jar` e `update-v2` em `conf/update-capability`. O pacote não traz JVM nem modifica a JVM das aplicações. Não use `/opt/java-assessment-collector/runtime` para novas cópias privadas de Java: utilize uma localização separada e protegida, como `/opt/java-assessment-runtime`, e selecione-a com `--java`.
+
 Para **trocar por um dashboard novo**, o comando de atualização acima não serve: ele manteria o endereço e a credencial do dashboard antigo. Baixe um ZIP do ambiente no dashboard **novo**, extraia em uma pasta privada nova e execute:
 
 ```sh
@@ -46,7 +48,7 @@ Essa opção explícita faz um cadastro novo e cria uma identidade individual no
 O pacote genérico continua sem autorização embutida. Para esse caso, execute:
 
 ```sh
-./install.sh --server https://dashboard.example.com
+./install.sh --server https://dashboard.exemplo.com
 ```
 
 O código é solicitado sem eco no terminal, fora dos argumentos de processo. Para automação, grave somente o código em arquivo modo 600 e passe `--code-file /caminho/arquivo`; remova-o após o cadastro.
@@ -153,9 +155,9 @@ Nos modos usuário e `--system`, o cron consulta a fila a cada minuto. `--no-cro
 
 ## Rede, TLS e limites
 
-É necessária saída HTTPS para o dashboard. O pacote inclui Bouncy Castle 1.86 e a CA pública configurada pelo dashboard; valida cadeia e nome/IP do servidor. Não inclui chave SSH, JDK ou material privado TLS. CA corporativa exige configurar `tlsCaFile` com a CA autorizada. Proxy autenticado e atualização automática do coletor não estão implementados.
+É necessária saída HTTPS para o dashboard. O pacote inclui Bouncy Castle 1.86 e a CA pública configurada pelo dashboard; valida cadeia e nome/IP do servidor. Não inclui chave SSH, JDK ou material privado TLS. CA corporativa exige configurar `tlsCaFile` com a CA autorizada. Proxy autenticado não está implementado. Atualizações solicitadas pelo dashboard exigem o serviço root e o executor compatível, respeitando o manifesto assinado; não há atualização espontânea sem pedido.
 
-Baseline: Java 6 ou posterior compatível com o bytecode; a validação desta entrega usa Java 6 no RHEL 5 e Java 21. Outras combinações precisam de validação. O coletor roda separado da aplicação, com heap de 64 MiB e prioridade reduzida. A leitura de arquivos detecta instalações e drivers; confirmar datasources ativos requer fonte de runtime/JMX. O `snapshotRoot` da primeira VM é integração opcional específica daquele laboratório.
+Baseline: Java 6 ou posterior compatível com o bytecode; a validação local desta entrega usa JDK 17 de 64 bits no macOS ARM64, com fixtures para Linux e Java legado. Java 6 real e Linux/JVM de 32 bits ainda precisam de validação operacional. O coletor roda separado da aplicação, com heap máximo de 96 MiB e prioridade reduzida. A leitura de arquivos detecta instalações e drivers; confirmar datasources ativos requer fonte de runtime/JMX. O `snapshotRoot` da primeira VM é integração opcional específica daquele laboratório.
 
 ## Remoção
 
@@ -188,3 +190,9 @@ sudo rm -f /etc/init.d/java-assessment-collector
 Por último, remova o diretório dedicado com `sudo rm -rf -- /opt/java-assessment-collector`. Essa remoção não exclui o histórico da máquina no dashboard.
 
 O certificado HTTPS do dashboard tem validade definida na instalação. Sua renovação deve seguir o procedimento operacional do servidor. Não desative a verificação TLS para contornar um certificado expirado.
+
+## Desinstalação remota individual (pacote 1.5.0)
+
+O modo `--system-root` atualizado instala um executor independente para a ação **Desinstalar agente** no dashboard. O pedido exige o nome exato da máquina, tem validade e só pode ser cancelado antes de iniciar. Cron/manual e versões anteriores não recebem ações de remoção. Atualização administrativa do agente/dashboard depende da autorização de publicação; não há autoatualização.
+
+O executor recusa arquivos desconhecidos, links, overrides e agendamentos alternativos, preserva aplicações/JVMs e mantém o inventário no dashboard. Silêncio não confirma remoção. Se houver falha/conclusão não confirmada, inspecione o host e o diagnóstico sem credenciais `/var/log/java-assessment-uninstall-last.txt`; não declare sucesso só pela ausência de heartbeat. Backups administrativos fora da pasta do coletor são preservados. Veja `docs/REMOTE_UNINSTALL_REVIEW.md` no pacote de fontes para os limites e testes desta entrega.

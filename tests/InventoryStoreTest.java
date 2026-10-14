@@ -40,7 +40,7 @@ public final class InventoryStoreTest {
             check(store.get("hosts","unknown")==null,"missing documents return null");
             store.putInventory("runtimes","h1",List.of(runtime("h1","jdk6","1.6.0_45","JDK"),runtime("h1","jre8","1.8.0_452"," JRE ")));
             store.putInventory("runtimes","h2",List.of(runtime("h2","jdk17","17.0.20","JDK")));
-            check(store.scalar("SELECT COUNT(*) FROM inventory")==2,"standalone JRE filtered");
+            check(store.scalar("SELECT COUNT(*) FROM inventory")==2,"unused standalone JRE filtered");
             check(store.scalar("SELECT COUNT(*) FROM inventory WHERE major=? AND kind=?","6","runtimes")==1,"legacy Java major index");
             check(store.scalar("SELECT COUNT(*) FROM inventory WHERE search_text LIKE ?","%/opt/jdk6%")==1,"inventory search text");
             Map<String,Object> h=host("h1");h.put("environmentId","env-b");h.put("lastSeen","2026-10-13T11:00:00Z");h.put("lastAssessmentAt","2026-10-13T10:00:00Z");h.put("coverage",map("status","partial"));store.put("hosts",h);
@@ -80,7 +80,8 @@ public final class InventoryStoreTest {
     private static void migration(Path dir)throws Exception {
         Files.createDirectories(dir);
         Map<String,Object> h=host("legacy");h.remove("coverage");h.remove("environmentId");
-        Map<String,Object> state=map("fleet",map("name","Old fleet"),"settings",map("enabled",false),"hosts",List.of(h),"coverage",map("status","complete"),"jobs",List.of(map("id","j1","hostId","legacy","status","RUNNING","leaseExpires",123L)),"runtimes",List.of(runtime("legacy","jdk6","1.6.0_45","JDK"),runtime("legacy","jre6","1.6.0_45","JRE")),"eventIds",List.of("legacy:j1:event-one"),"scheduleRevision","rev1","lastScheduleSlot","rev1:2026-10-13","hostSchedules",map());
+        Map<String,Object> active=runtime("legacy","runtime21","21.0.12","JRE");active.put("inUse",true);
+        Map<String,Object> state=map("fleet",map("name","Old fleet"),"settings",map("enabled",false),"hosts",List.of(h),"coverage",map("status","complete"),"jobs",List.of(map("id","j1","hostId","legacy","status","RUNNING","leaseExpires",123L)),"runtimes",List.of(runtime("legacy","jdk6","1.6.0_45","JDK"),runtime("legacy","jre6","1.6.0_45","JRE"),active),"eventIds",List.of("legacy:j1:event-one"),"scheduleRevision","rev1","lastScheduleSlot","rev1:2026-10-13","hostSchedules",map());
         Map<String,Object> identity=map("hostId","legacy","installationId","installation-one","agentToken","fixture-secret","status","active");
         Map<String,Object> enrollment=map("id","e1","tokenHash",InventoryStore.hash("old-code"),"status","active","expiresMillis",100000L,"usedCount",1);
         write(dir.resolve("state.json"),state);write(dir.resolve("auth-registry.json"),map("hosts",map("legacy",identity),"enrollments",map("e1",enrollment)));
@@ -88,7 +89,7 @@ public final class InventoryStoreTest {
         try(InventoryStore store=new InventoryStore(dir.toFile(),map("hosts",List.of(host("ignored"))),"legacy","different-token")) {
             check(store.scalar("SELECT COUNT(*) FROM hosts")==1&&store.get("hosts","ignored")==null,"legacy state takes precedence over fallback");
             check(store.get("hosts","legacy").get("environmentId").equals("")&&((Map<?,?>)store.get("hosts","legacy").get("coverage")).get("status").equals("complete"),"host defaults migrated");
-            check(store.scalar("SELECT COUNT(*) FROM inventory")==1,"migration filters JRE");
+            check(store.scalar("SELECT COUNT(*) FROM inventory")==2,"migration retains observed runtime and filters unused JRE");
             check(store.scalar("SELECT COUNT(*) FROM receipts WHERE host_id=? AND job_id=? AND event_id=?","legacy","j1","event-one")==1,"receipt migration");
             check(store.rows("SELECT slot FROM schedules WHERE host_id=?","legacy").get(0).get("slot").equals("rev1::2026-10-13"),"legacy schedule normalized");
             check(store.get("identities","legacy").get("agentToken").equals("fixture-secret")&&store.get("enrollments","e1")!=null,"existing identities and enrollments retained");
@@ -147,7 +148,7 @@ public final class InventoryStoreTest {
         Path root=Files.createTempDirectory("inventory-store-test-");
         try {
             documentsAndRollback(root.resolve("documents"));migration(root.resolve("migration"));migrationFailure(root.resolve("failure"));concurrentSnapshot(root.resolve("concurrent"));
-            System.out.println("INVENTORY_STORE_TESTS=PASS persistence index-columns rollback nested-savepoints migration backups limits JRE-filter restart-late-retry WAL-readers read-snapshots permissions");
+            System.out.println("INVENTORY_STORE_TESTS=PASS persistence index-columns rollback nested-savepoints migration backups limits observed-JRE unused-JRE-filter restart-late-retry WAL-readers read-snapshots permissions");
         } finally {deleteTree(root);}
     }
 }
