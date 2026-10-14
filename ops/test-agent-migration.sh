@@ -30,7 +30,7 @@ output = root / 'tmp/agent-migration/classes'
 evidence = root / 'tmp/agent-migration/evidence'
 groups = {
     'legacy': ['LegacyAgentMigrationTest'],
-    'contracts': ['AgentBundleManifestTest', 'AgentUpdateRoutesTest'],
+    'contracts': ['AgentBundleManifestTest', 'AgentUpdateRoutesTest', 'AgentBootstrapHandoffTest'],
     'lifecycle': ['AgentBundleInstallerTest', 'AgentV3UninstallInventoryTest'],
     'server': ['AgentUpdateCoordinatorTest', 'AgentUpdateProfileFallbackTest', 'AgentUpdateMigrationHttpTest',
                'AgentUpdateHttpTest', 'WorkRequestsHttpTest', 'DashboardVersionHttpTest'],

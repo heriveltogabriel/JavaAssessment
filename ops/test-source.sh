@@ -9,7 +9,7 @@ mkdir -p tmp/source-classes tmp/source-evidence
 CP='tmp/source-classes:lib/*'
 for suite in ArchiveMetadataTest WebLogicVersionTest SpringDataSourceTest RuntimeInventoryTest \
   ProcessLaunchTest JdkInventoryTest BoundedDirectoryTest CollectorSweepTest \
-  CollectorTest AgentToolTest LegacyDiscoveryTest AgentBundleManifestTest; do
+  CollectorTest AgentToolTest LegacyDiscoveryTest AgentBundleManifestTest AgentBootstrapHandoffTest; do
   "$JAVA_HOME/bin/java" -Xmx96m -cp "$CP" "assessment.$suite"
 done
 "$JAVA_HOME/bin/java" -Xmx96m -cp "$CP" assessment.ServerDataSourcesTest \

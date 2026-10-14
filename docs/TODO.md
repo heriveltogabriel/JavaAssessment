@@ -4,14 +4,16 @@
 
 **Status:** implementação e regressões locais concluídas em 2026-10-14, com origem mínima 1.5.12. Bridge com binário original, pacote completo, operação lógica, recuperação, limpeza, desinstalação, empacotamento e assessment posterior integrados. Serviços/reboot em Linux real e os dois canários permanecem gates de release. O mecanismo em produção continua sendo o atual.
 
-**Candidato de laboratório:** 2.0.9, com bridge interno 2.0.8, preparado após a pré-verificação dos dois canários e a autorização do usuário para usar a primeira VM de teste sem snapshot. Pacotes e assinaturas finais conferidos; nenhuma VM foi atualizada nesta preparação. A execução do canário será iniciada pelo dashboard, uma máquina por vez. Isso não encerra os gates de Linux/Java 6, reinício/recuperação, segundo canário e evolução posterior.
+**Candidato de laboratório:** 2.0.9, com bridge interno 2.0.8, publicado pelo operador. A primeira tentativa pelo dashboard ocorreu em uma terceira máquina de laboratório, RHEL 9/Java 11, e ficou em `PREPARED`: o coletor antigo, protegido por `ProtectSystem=full`, não podia criar o serviço de recuperação em `/etc`. O bridge e os arquivos de recuperação já estavam preparados; a versão final não foi confirmada. Os dois canários originais 1.5.12 continuam sem migrar.
+
+**Correção em validação:** a próxima montagem deve iniciar o bootstrap systemd em um serviço independente criado pelo PID 1, preservando a proteção do coletor. Fonte corrigida e regressões locais passaram; os artefatos publicados 2.0.9 permanecem imutáveis. Foi preparado `ops/retomar-migracao.py` para retomar exclusivamente o pedido identificado, conferindo assinatura, origem e preservação da configuração. A execução pelo operador e a confirmação no Work request ainda estão pendentes. Isso não encerra os gates de Linux/Java 6, reinício/recuperação, segundo canário e evolução posterior.
 
 - [Desenho: migração, preservação, recuperação, limpeza e assessment](superpowers/specs/2026-10-14-full-agent-update-design.md)
 - [Plano com oito workflows e gates de validação](superpowers/plans/2026-10-14-full-agent-update.md)
 
 O primeiro gate usa o atualizador e os scripts originais 1.5.12, incluindo ACK, limpeza, locks e passagem para recuperação independente. Depois dos testes isolados, duas máquinas ainda em 1.5.12 serão canários em sequência. Uma segunda release que altere suporte/manager deverá comprovar a evolução posterior pelo painel.
 
-Na release atualmente publicada, a atualização remota substitui somente `collector.jar`. Os scripts, bibliotecas e o atualizador instalado precisam corresponder aos arquivos de suporte do manifesto assinado. Pular versões é permitido quando esses requisitos continuam compatíveis.
+No mecanismo anterior ao candidato 2.0.9, a atualização remota substitui somente `collector.jar`. Os scripts, bibliotecas e o atualizador instalado precisam corresponder aos arquivos de suporte do manifesto assinado. Pular versões é permitido quando esses requisitos continuam compatíveis.
 
 Nos pacotes publicados, 1.5.10 a 2.0.0 usam `update-v1`; a 2.0.1 passou a `update-v2` e alterou o atualizador; a 2.0.2 alterou o launcher para 96 MiB. Os arquivos de suporte da 2.0.2 e 2.0.3 são iguais. A compatibilidade de entregas futuras precisa ser verificada, não inferida apenas pelo número da versão.
 

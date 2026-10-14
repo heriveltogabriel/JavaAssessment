@@ -194,7 +194,25 @@ public final class AgentMigrationBootstrap {
     }
     static final class Production implements AgentBundleInstaller.Platform {
         final AgentInstallLayout layout;
-        Production(AgentInstallLayout layout) { this.layout = layout; }
+        final Commands commands;
+        // Object adapters remain package-private, never CLI/environment switches.
+        static class Commands {
+            boolean systemd(AgentInstallLayout layout) throws Exception {
+                String mode = new String(AgentInstallLayout.bytes(new File(layout.home, "scheduler"), 64), "UTF-8").trim();
+                AgentInstallLayout.require(mode.equals("systemd") || mode.equals("sysv"), "LOCAL_CHECK_FAILED");
+                if (!mode.equals("systemd")) return false;
+                AgentInstallLayout.require(new File("/run/systemd/system").isDirectory(), "LOCAL_CHECK_FAILED");
+                return true;
+            }
+            String executable(String name) throws Exception {
+                AgentInstallLayout.require(name.equals("systemd-run") || name.equals("systemctl"), "LOCAL_CHECK_FAILED");
+                File path = new File("/usr/bin", name); if (!path.canExecute()) path = new File("/bin", name);
+                AgentInstallLayout.require(path.isFile() && path.canExecute(), "SERVICE_FAILED"); return path.getPath();
+            }
+            int run(String[] arguments, long timeout) throws Exception { return AgentUpdateWorker.Production.process(arguments, timeout); }
+        }
+        Production(AgentInstallLayout layout) { this(layout, new Commands()); }
+        Production(AgentInstallLayout layout, Commands commands) { this.layout = layout; this.commands = commands; }
         File script(Map transaction) throws Exception {
             File script = AgentInstallLayout.child(layout.home, "bootstrap/update-bootstrap.sh");
             if (!script.isFile() && transaction != null) script = AgentInstallLayout.child(layout.transaction(AgentInstallLayout.text(transaction.get("operationId"))), AgentInstallLayout.text(transaction.get("preparedDirectory")) + "/bootstrap/update-bootstrap.sh");
@@ -211,7 +229,23 @@ public final class AgentMigrationBootstrap {
             }
             String operation = transaction == null ? "none" : AgentInstallLayout.text(transaction.get("operationId"));
             AgentInstallLayout.require(operation.equals("none") || AgentInstallLayout.uuid(operation), "INVALID_OPERATION");
-            AgentInstallLayout.require(AgentUpdateWorker.Production.process(new String[]{"/bin/sh", script.getPath(), action, operation}, 1700000) == 0, "SERVICE_FAILED");
+            if ("install-bootstrap".equals(action) && commands.systemd(layout)) {
+                AgentInstallLayout.require(AgentInstallLayout.uuid(operation), "INVALID_OPERATION");
+                // The original collector has ProtectSystem=full. Its children
+                // cannot create /etc/systemd/system recovery units. PID 1 must
+                // launch a separate SERVICE, without inheriting that namespace.
+                // These options are available in systemd 219 (RHEL 7); --scope,
+                // --wait, --collect and --no-block are deliberately not used.
+                String unit = "java-assessment-bootstrap-" + operation + ".service";
+                int result = commands.run(new String[]{commands.executable("systemd-run"), "--unit=" + unit,
+                    "--uid=root", "--gid=root", "--service-type=simple", "/bin/sh", script.getPath(), action, operation}, 60000);
+                // A repeated poll must not enqueue a second bootstrap or stop
+                // the first one. Failed/inactive jobs remain visible for review.
+                if (result != 0) result = commands.run(new String[]{commands.executable("systemctl"), "is-active", "--quiet", unit}, 30000);
+                AgentInstallLayout.require(result == 0, "SERVICE_FAILED");
+                return;
+            }
+            AgentInstallLayout.require(commands.run(new String[]{"/bin/sh", script.getPath(), action, operation}, 1700000) == 0, "SERVICE_FAILED");
         }
         public int probe(File code, String version, boolean heartbeat) throws Exception {
             AgentInstallLayout.require(code.getParentFile().equals(layout.releases) && AgentInstallLayout.identifier(code.getName()) && AgentUpdateWorker.version(version), "LOCAL_CHECK_FAILED");

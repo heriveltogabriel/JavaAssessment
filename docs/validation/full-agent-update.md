@@ -61,7 +61,7 @@ Em 2026-10-14 o operador executou `ops/validar-canarios.py` nas duas máquinas L
 
 Os hashes recebidos foram comparados aos ZIPs originais fixados em `agent-migration-baselines.json`: coletor, helper real, chave pública e os 23 arquivos de suporte conferiram em ambas. As sete classes `AgentUpdateWorker*` dos helpers 1.5.9 e 1.5.12 têm bytes idênticos; isso não substitui a execução da migração com as dependências e os serviços reais. Nenhum arquivo de operação pendente foi detectado e havia mais de 22 GiB disponíveis em cada máquina. Configuração, identidade, CA e seleção do Java tiveram seus hashes registrados privadamente para comparação posterior.
 
-Os endereços, hashes de identidades/configurações e relatórios completos ficam fora do Git, em `output/agent-canaries/`. Essa etapa confirma a origem instalada para preparar o teste; não fecha os gates de migração, recuperação, reboot, confirmação final ou assessment posterior. O dashboard publicado continua em 2.0.5 com o mecanismo anterior.
+Os endereços, hashes de identidades/configurações e relatórios completos ficam fora do Git, em `output/agent-canaries/`. Essa etapa confirma a origem instalada para preparar o teste; não fecha os gates de migração, recuperação, reboot, confirmação final ou assessment posterior. Na ocasião dessa pré-verificação, o dashboard publicado estava em 2.0.5 com o mecanismo anterior.
 
 ## Candidato de laboratório 2.0.9
 
@@ -74,3 +74,15 @@ Com a autorização do usuário para testar a primeira VM sem snapshot, foram re
 - A automação opcional de laboratório passou 16 testes offline: um único host, segredo somente em memória, assinatura/hash final, idempotência, retomada e reinício sem duplicação. A solicitação do primeiro teste real será feita pela interface, conforme preferência do operador.
 
 Pacotes e evidências estão em `output/dashboard-releases/2.0.9/`; fixtures e logs complementares em `tmp/full-update/canary-209-*`. Os gates de Linux real, Java 6/SysV, reinício/interrupção, segundo canário e evolução real continuam abertos.
+
+## Primeira tentativa nativa e correção do handoff systemd
+
+O operador publicou 2.0.9 e iniciou pelo painel uma migração em outra VM de laboratório, RHEL 9/Java 11. O diagnóstico recebido mostrou bridge 2.0.8, helper legado 1.5.8 conhecido pelo catálogo, pacote final preparado e journal em `PREPARED`. Bootstrap, selo de arquivos e backup da origem estavam presentes; a unidade de recuperação em `/etc/systemd/system` não existia. O coletor estava em estado `failed`, com `ProtectSystem=full`, e o timer permanecia ativo. Essa tentativa não validou a migração completa.
+
+A criação da unidade era executada por um filho do coletor e herdava seu namespace de arquivos protegido. A fonte passa a solicitar ao PID 1 um serviço independente com `systemd-run --service-type=simple`, com nome derivado exclusivamente do UUID da operação e caminho do bootstrap verificado. A proteção do coletor permanece ativa. O caminho SysV continua síncrono. São usadas opções presentes no systemd 219; não há fallback para escrita direta em `/etc` pelo coletor.
+
+`AgentBootstrapHandoffTest` passou 20 verificações de despacho, replay, falha, argumentos fixos, separação do namespace modelado e preservação do caminho SysV. A suíte de contratos e os 30 checks dos scripts de serviço passaram novamente. A compilação do produto mantém bytecode major 50. Essas provas usam adapters para o sistema operacional; a correção ainda exige execução nativa em uma próxima montagem, sem substituir silenciosamente os ZIPs publicados 2.0.9.
+
+Para a tentativa já preparada, `ops/retomar-migracao.py` verifica o candidato público final, a assinatura e o inventário remoto, a origem conhecida, a fase exata e os hashes de identidade/configuração. Ele executa somente o bootstrap assinado existente, a partir do shell administrativo do operador, e compara a preservação antes/depois. O caso privado com host e operação fica fora do Git. O resultado `HANDOFF_ONLY` confirma apenas a passagem para o recuperador; versão final e assessment ainda precisam aparecer no mesmo Work request. A execução remota dessa retomada permanece pendente; os testes locais não usam SSH real.
+
+O script de retomada passou 38 verificações offline, incluindo alvo/operação sintéticos, arquivo privado, assinatura pública, marcadores permitidos, espera pelo recuperador e timeout sem repetição automática. Uma prova adicional executou `verify_state()` inteiro em árvore temporária criada com os ZIPs públicos reais: staging e modos, bootstrap/selo, origem 1.5.12, helper 1.5.8 e journal sintético. OpenSSL real verificou a assinatura; arquivo de staging adulterado e diretório preparado diferente foram rejeitados. Somente identidade root/Linux/serviços foram simulados nessa prova, sem iniciar bootstrap ou SSH.

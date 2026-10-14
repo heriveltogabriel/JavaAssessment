@@ -88,4 +88,18 @@ Executar também reboot e interrupções controladas em VMs descartáveis system
 - Se houver falha local, conferir a restauração e o diagnóstico antes de criar novo pedido.
 - Se o perfil de suporte for desconhecido, usar o instalador completo configurado para o ambiente, preservando a identidade, após resolver a operação existente.
 
+### Retomada da tentativa de laboratório 2.0.9
+
+Uma tentativa nativa ficou em `PREPARED` porque o bootstrap herdou `ProtectSystem=full` do coletor antigo e não conseguiu criar a unidade em `/etc`. A correção de despacho independente está na fonte para uma próxima montagem; não substituir os artefatos 2.0.9 já publicados.
+
+Para esse único pedido identificado, preparar o caso privado `output/agent-canaries/recovery-case-2.0.9.json` e executar no Terminal do Mac:
+
+```sh
+python3 ops/retomar-migracao.py --host IP_DO_CASO_IDENTIFICADO
+```
+
+O script recusa outro host, operação, fase, origem ou arquivo divergente. Confere o pacote final e o bootstrap já existente, exige coletor sem processo ativo, preserva configuração/identidade/Java/CA e inicia o recuperador pelo script assinado. Não envia outro pacote, não edita journal nem reinicia a VM. Requer os artefatos públicos 2.0.9, a chave SSH já utilizada no diagnóstico, host conhecido e `sudo -n`. Não é um passo normal para todas as máquinas.
+
+`RESUME_COMPLETE=HANDOFF_ONLY` significa que o serviço de recuperação ficou ativo. Acompanhar o **mesmo** Work request até a confirmação de 2.0.9 e do assessment vinculado. Se houver `RESUME_STOP` ou conexão interrompida, conferir o relatório privado e diagnosticar novamente; não repetir cegamente nem criar outro pedido. Manter os demais canários intactos até essa tentativa estar estável.
+
 **Atenção: atualize também os agentes.** Publicar T não atualiza as máquinas automaticamente. A elegibilidade depende dos perfis assinados e da instalação protegida, além da versão declarada.
