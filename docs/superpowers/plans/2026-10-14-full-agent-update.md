@@ -10,7 +10,7 @@
 
 **Desenho de referência:** [Atualização completa a partir da 1.5.12](../specs/2026-10-14-full-agent-update-design.md).
 
-**Estado deste plano:** pronto para orientar implementação; nenhuma tarefa de produto abaixo foi executada. As análises dos artefatos atuais não comprovam a migração completa.
+**Estado deste plano:** código de WF1–WF5 implementado; prova local com binário original 1.5.12, instalação nova, evolução T→U, falhas de I/O, recuperação, desinstalação e coleta posterior aprovadas. WF6 tem regressões locais aprovadas e gates de serviços/reboot/Java 6 real ainda abertos. WF7 aguarda Linux real e os dois canários. Nenhuma release de produção reservada ou publicada. Consulte [as evidências](../../validation/full-agent-update.md).
 
 ## Regras de execução
 
@@ -50,13 +50,13 @@ Três frentes de execução após o contrato: agente A cuida de WF2; agente B de
 
 **Passos:**
 
-- [ ] Conferir checksums dos ZIPs originais 1.5.12 e dos demais perfis >=1.5.12; extrair em `tmp/agent-migration/legacy/`, sem executar arquivos extraídos como root no Mac.
-- [ ] Fixar as oito chaves do manifesto V1: `schema`, `type`, `version`, `format`, `minUpdater`, `sha256`, `bytes`, `requiredFiles`. Usar `minUpdater=1` na fixture de 1.5.12 e o inventário exato da origem.
-- [ ] Construir um bridge de teste com versão B e um JAR original de recuperação embutido. A rota fixa `(fromVersion, fromCollectorSha256, supportProfileId)`; o JAR final precisa continuar <=32 MiB e major 50.
+- [x] Conferir checksums dos ZIPs originais 1.5.12 e dos demais perfis >=1.5.12; extrair em `tmp/agent-migration/legacy/`, sem executar arquivos extraídos como root no Mac.
+- [x] Fixar as oito chaves do manifesto V1: `schema`, `type`, `version`, `format`, `minUpdater`, `sha256`, `bytes`, `requiredFiles`. Usar `minUpdater=1` na fixture de 1.5.12 e o inventário exato da origem.
+- [x] Construir um bridge de teste com versão B e um JAR original de recuperação embutido. A rota fixa `(fromVersion, fromCollectorSha256, supportProfileId)`; o JAR final precisa continuar <=32 MiB e major 50.
 - [ ] Executar o ciclo original completo: verificação → probe sem mutação → troca → heartbeat B → report SUCCEEDED → ACK exato → limpeza do journal/backup antigo → liberação efetiva do flock.
 - [ ] Demonstrar que o bridge só inicia bootstrap fora dos locks do ciclo e em serviço separado; o collector que inicia a preparação deve sair antes da parada do seu serviço.
-- [ ] Materializar, após o ACK, o JAR original embutido e uma cópia validada de suporte/helper/unidades antes de qualquer alteração. Conferir recuperação para a origem, e não apenas retorno ao bridge.
-- [ ] Repetir com ACK perdido, processo interrompido, suporte modificado, assinatura inválida e início duplicado do bootstrap. Nenhuma tentativa pode apagar configuração ou executar candidato inválido.
+- [x] Materializar, após o ACK, o JAR original embutido e uma cópia validada de suporte/helper/unidades antes de qualquer alteração. Conferir recuperação para a origem, e não apenas retorno ao bridge.
+- [x] Repetir com ACK perdido, processo interrompido, suporte modificado, assinatura inválida e início duplicado do bootstrap. Nenhuma tentativa pode apagar configuração ou executar candidato inválido.
 
 **Comandos de aceite após criar as fixtures:**
 
@@ -74,7 +74,7 @@ python3 -B tests/build-agent-migration-fixtures.py --from-version 1.5.12 --outpu
 **Arquivos:**
 
 - Criar `docs/AGENT_UPDATE_V3.md`: schemas e contratos definitivos, incluindo matriz origem/perfil/bridge/destino.
-- Criar `collector/AgentBundleManifest.java`: parser Java 6, inventário e verificações de pacote.
+- Criar `shared/AgentBundleManifest.java`: parser Java 6 compartilhado entre coletor e servidor, inventário e verificações de pacote.
 - Criar `server/AgentUpdateRoutes.java`: catálogo imutável de rotas e perfis assinados, sem depender de apenas uma versão corrente.
 - Modificar `ops/agent_update_signing.py`, `ops/unified_agent.py` e `dashboard-installer/build.py`: gerar/verificar bridge, bundle e catálogo, preservando os tipos V1 já publicados.
 - Adaptar também o builder operacional existente em `../jms-teste-macos/assessment-pilot/ops/build-dashboard-release.py` e as templates `ops/dashboard-release/update-dashboard.py` / `test-update-dashboard.py` desse workspace. Esses scripts operacionais não entram no Git público com configuração de laboratório; a entrega precisa embutir o catálogo novo e reconhecer operações pai ocupadas.
@@ -98,12 +98,12 @@ Novos endpoints ficam sob `/api/agent/update-v3/`: `action`, `claim`, `manifest`
 
 **Passos:**
 
-- [ ] Implementar e testar os formatos para pacote completo, catálogo e perfis, com assinatura/verificação da chave já confiável e requisitos explícitos de Java, plataforma e protocolo.
-- [ ] Gerar bridges por versão/hash/perfil conhecido, com baseline original embutida e prova de build reproduzível. Não aceitar origem desconhecida só porque declara a mesma versão.
-- [ ] Impor limites de 64 MiB transferidos, 128 MiB expandidos e 256 arquivos ao bundle, e 32 MiB ao bridge V1. Testar duplicidade, links, arquivos especiais, caminhos absolutos/`..` e divergências de tamanho/CRC/hash.
-- [ ] Separar defaults e código de identidade/configuração/CA. Falhar o build se um bundle completo contiver configuração ativa ou material privado.
-- [ ] Fixar a rota e os hashes no momento de criar a operação; downloads posteriores não consultam uma versão variável ou outra origem HTTP.
-- [ ] Documentar códigos de resultado, expiração de autorização, regras de retry e evolução de schema. Commitar contratos antes do trabalho paralelo.
+- [x] Implementar e testar os formatos para pacote completo, catálogo e perfis, com assinatura/verificação da chave já confiável e requisitos explícitos de Java, plataforma e protocolo.
+- [x] Gerar bridges por versão/hash/perfil conhecido, com baseline original embutida e prova de build reproduzível. Não aceitar origem desconhecida só porque declara a mesma versão.
+- [x] Impor limites de 64 MiB transferidos, 128 MiB expandidos e 256 arquivos ao bundle, e 32 MiB ao bridge V1. Testar duplicidade, links, arquivos especiais, caminhos absolutos/`..` e divergências de tamanho/CRC/hash.
+- [x] Separar defaults e código de identidade/configuração/CA. Falhar o build se um bundle completo contiver configuração ativa ou material privado.
+- [x] Fixar a rota e os hashes no momento de criar a operação; downloads posteriores não consultam uma versão variável ou outra origem HTTP.
+- [x] Documentar códigos de resultado, expiração de autorização, regras de retry e evolução de schema. Contratos compartilhados entre as frentes; commits de contrato precedem os commits de produto na entrega.
 
 **Aceite:**
 
@@ -124,29 +124,28 @@ O modo `contracts` executa `AgentBundleManifestTest` e `AgentUpdateRoutesTest`. 
 - Integrar `collector/AssessmentCollector.java`, `AgentUpdateProbe.java`, `AgentTransport.java` e `AgentTool.java`: início da continuação pelo bridge, probes legados compatíveis, transporte V3 limitado à origem autenticada e comando de diagnóstico. O verificador original de fixture permanece imutável.
 - Criar `collector/update-bootstrap.sh`: entrada fixa mínima, recuperação e escolha de manager validado.
 - Modificar `collector/update-install.sh`, `update-local.sh`, `update-service.sh`, `root-system-install.sh`, `install.sh`, `root-service.sh`, `root-trust.sh`, `launcher-common.sh`, `poll.sh`, `run-once.sh`, `agent-tool.sh`, `lifecycle-lock.sh`.
-- Criar `tests/AgentBundleInstallerTest.java`, `tests/agent-bundle-recovery-test.py`, `tests/agent-owned-cleanup-test.py`.
+- Criados `tests/AgentBundleInstallerTest.java` (recuperação, I/O, limpeza e evolução), `tests/AgentV3UninstallInventoryTest.java` e `tests/agent-bundle-service-test.py` (adapters declarados).
 - Estender testes existentes de instalação, serviço, migração, Java protegido e remoção.
 
 **Passos:**
 
-- [ ] Introduzir layout de releases/managers com ponteiros JSON e separação explícita entre código e estado. Leitura de ponteiros aceita somente IDs derivados de manifestos validados, sem symlinks nem `source` de dados remotos.
-- [ ] Implementar transporte de bundle com limites novos e allowlist dos endpoints V3, sem redirecionamento nem reutilização de credenciais em outra origem. Preservar a interface V1 usada pelo bridge e o comportamento dos clientes antigos.
-- [ ] Manter entradas fixas para serviço e diagnóstico. Implementar `sudo /bin/sh /opt/java-assessment-collector/agent-tool.sh version`, consultando a release ativa e o manager, para evitar leitura de versão a partir de um JAR legado que ainda aguarda limpeza.
-- [ ] Preservar configuração, installation-id, confiança apontada por `tlsCaFile`, Java selecionado, logs úteis e spool. Corrigir reinstalação de uma identidade existente para não sobrescrever a CA com a do ZIP genérico.
-- [ ] Instalar serviço de recuperação separado em systemd e supervisor/init próprio em SysV. Fazer recuperação preceder polling no boot.
-- [ ] Preparar candidato e recuperação em filesystem compatível com as trocas; verificar espaço, permissões e hashes antes de pausar o coletor.
-- [ ] Implementar o journal e todas as fronteiras duráveis definidas no desenho, com sequência monotônica, retomada idempotente e tratamento explícito de journal inválido.
-- [ ] Adquirir o lock global antes da troca; aguardar a saída dos locks/processos do coletor, sem sinalizar JVMs de aplicações.
-- [ ] Promover código e manager com fallback independente. Falha de serviço/probe restaura código, helper e unidades anteriores; falha apenas de rede mantém confirmação pendente.
-- [ ] Inventariar propriedade e implementar limpeza repetível: ativo + anterior funcional, dois managers, referências vivas/journal protegidas, um falho até sete dias e últimos dez resumos sanitizados.
-- [ ] Recusar limpeza de arquivos desconhecidos/alterados, runtime Java, confiança/configuração e diretórios externos. Registrar limpeza pendente sem desfazer sucesso.
+- [x] Introduzir layout de releases/managers com ponteiros JSON e separação explícita entre código e estado. Leitura de ponteiros aceita somente IDs derivados de manifestos validados, sem symlinks nem `source` de dados remotos.
+- [x] Implementar transporte de bundle com limites novos e allowlist dos endpoints V3, sem redirecionamento nem reutilização de credenciais em outra origem. Preservar a interface V1 usada pelo bridge e o comportamento dos clientes antigos.
+- [x] Manter entradas fixas para serviço e diagnóstico. Implementar `sudo /bin/sh /opt/java-assessment-collector/agent-tool.sh version`, consultando a release ativa e o manager, para evitar leitura de versão a partir de um JAR legado que ainda aguarda limpeza.
+- [x] Preservar configuração, installation-id, confiança apontada por `tlsCaFile`, Java selecionado, logs úteis e spool. Corrigir reinstalação de uma identidade existente para não sobrescrever a CA com a do ZIP genérico.
+- [x] Instalar serviço de recuperação separado em systemd e supervisor/init próprio em SysV. Fazer recuperação preceder polling no boot.
+- [x] Preparar candidato e recuperação em filesystem compatível com as trocas; verificar espaço, permissões e hashes antes de pausar o coletor.
+- [x] Implementar o journal e todas as fronteiras duráveis definidas no desenho, com sequência monotônica, retomada idempotente e tratamento explícito de journal inválido.
+- [x] Adquirir o lock global antes da troca; aguardar a saída dos locks/processos do coletor, sem sinalizar JVMs de aplicações.
+- [x] Promover código e manager com fallback independente. Falha de serviço/probe restaura código, helper e unidades anteriores; falha apenas de rede mantém confirmação pendente.
+- [x] Inventariar propriedade e implementar limpeza repetível: ativo + anterior funcional, dois managers, referências vivas/journal protegidas, um falho até sete dias e últimos dez resumos sanitizados.
+- [x] Recusar limpeza de arquivos desconhecidos/alterados, runtime Java, confiança/configuração e diretórios externos. Registrar limpeza pendente sem desfazer sucesso.
 
 **Aceite:**
 
 ```sh
 /bin/sh ops/test-agent-migration.sh --suite lifecycle
-python3 -B tests/agent-bundle-recovery-test.py
-python3 -B tests/agent-owned-cleanup-test.py
+python3 -B tests/agent-bundle-service-test.py
 python3 -B tests/root-migration-test.py
 python3 -B tests/root-java-discovery-test.py
 ```
@@ -173,16 +172,16 @@ O modo `lifecycle` executa `AgentBundleInstallerTest` com injeção de falha em 
 
 **Passos:**
 
-- [ ] Criar migração aditiva/reexecutável das tabelas e mapear histórico atual sem criar ações ou coletas retroativas.
-- [ ] Fazer prévia distinguir rota direta, migração conhecida com verificação local pendente e intervenção necessária. Validar mínimo 1.5.12, identidade, conflitos e requisitos.
-- [ ] Persistir seleção, opção de coleta, rota, artefatos, perfis e prazo no pedido. Mesmo requestKey com qualquer intenção diferente retorna 409.
-- [ ] Usar subpedidos legados isolados por máquina/perfil, preservando endpoints, ordem e ACK que o worker original espera. Não deixar falha de um perfil cancelar o lote pai como se fosse falha final.
-- [ ] Tentar o próximo perfil somente para incompatibilidade de suporte comprovada antes da troca; não fazer retry cego de assinatura/probe/serviço.
-- [ ] Manter o pai ocupado durante todo o bridge. Polling, coleta manual/agendada, nova atualização, remoção e avanço de lote consultam o pai, mesmo depois de o filho V1 terminar.
-- [ ] Validar autorização ativa em claim, downloads e antes da ativação. Retomada não concede autorização infinita; pedido expirado/revogado conserva recuperação e estado verificável.
-- [ ] Exigir confirmação final de T + bundle + manager/capacidade + heartbeat posterior ao claim; heartbeat B não conclui a operação.
-- [ ] Gravar resultado final e habilitação da intenção de coleta na mesma transação; report/ACK repetido retorna a mesma operação e vínculo.
-- [ ] Adaptar Work requests, aviso de agentes e guardas de publicação para pais ocupados e etapas internas. Não expor tokens/configuração em respostas ou eventos.
+- [x] Criar migração aditiva/reexecutável das tabelas e mapear histórico atual sem criar ações ou coletas retroativas.
+- [x] Fazer prévia distinguir rota direta, migração conhecida com verificação local pendente e intervenção necessária. Validar mínimo 1.5.12, identidade, conflitos e requisitos.
+- [x] Persistir seleção, opção de coleta, rota, artefatos, perfis e prazo no pedido. Mesmo requestKey com qualquer intenção diferente retorna 409.
+- [x] Usar subpedidos legados isolados por máquina/perfil, preservando endpoints, ordem e ACK que o worker original espera. Não deixar falha de um perfil cancelar o lote pai como se fosse falha final.
+- [x] Tentar o próximo perfil somente para incompatibilidade de suporte comprovada antes da troca; não fazer retry cego de assinatura/probe/serviço.
+- [x] Manter o pai ocupado durante todo o bridge. Polling, coleta manual/agendada, nova atualização, remoção e avanço de lote consultam o pai, mesmo depois de o filho V1 terminar.
+- [x] Validar autorização ativa em claim, downloads e antes da ativação. Retomada não concede autorização infinita; pedido expirado/revogado conserva recuperação e estado verificável.
+- [x] Exigir confirmação final de T + bundle + manager/capacidade + heartbeat posterior ao claim; heartbeat B não conclui a operação.
+- [x] Gravar resultado final e habilitação da intenção de coleta na mesma transação; report/ACK repetido retorna a mesma operação e vínculo.
+- [x] Adaptar Work requests, aviso de agentes e guardas de publicação para pais ocupados e etapas internas. Não expor tokens/configuração em respostas ou eventos.
 
 **Aceite:**
 
@@ -226,14 +225,14 @@ Na implementação, envolver `CREATE` no mecanismo reexecutável de migração e
 
 **Passos:**
 
-- [ ] Criar intenção por operação se a opção estiver true. Não criar intenção em histórico antigo e não habilitar job durante bridge.
-- [ ] Habilitar intenção na confirmação final transacional de WF3; dispatcher executa na manutenção/poll antes do agendamento normal.
-- [ ] Reutilizar job QUEUED cujo lease ocorrerá após T ou criar apenas um job `post-update`, ligando ambos atomicamente. Coleta que iniciou antes da confirmação não conta como coleta posterior.
-- [ ] Resolver configuração efetiva atual no lease, inclusive quando o agendamento estiver desligado; preservar janela/frequência/slot das coletas agendadas.
-- [ ] Aplicar uma coleta vinculada por ambiente e duas globais, dez segundos entre inícios por ambiente, com controle durável de autorização do lease. Não dormir segurando a transação SQLite.
-- [ ] Expirar após 24h a intenção que não iniciou; novas atualizações suspendem sua entrega e vinculam/substituem a intenção anterior pela coleta após a versão mais recente. Revogação/remoção cancela a intenção.
-- [ ] Manter sucesso do upgrade independente do resultado da coleta. Retry de report, reinício ou falha de resposta não cria outro job; repetir coleta exige ação explícita.
-- [ ] Preservar estado/resumo da relação após `trimJobs`; expor links bidirecionais e acompanhar relações pendentes mesmo com upgrade concluído.
+- [x] Criar intenção por operação se a opção estiver true. Não criar intenção em histórico antigo e não habilitar job durante bridge.
+- [x] Habilitar intenção na confirmação final transacional de WF3; dispatcher executa na manutenção/poll antes do agendamento normal.
+- [x] Reutilizar job QUEUED cujo lease ocorrerá após T ou criar apenas um job `post-update`, ligando ambos atomicamente. Coleta que iniciou antes da confirmação não conta como coleta posterior.
+- [x] Resolver configuração efetiva atual no lease, inclusive quando o agendamento estiver desligado; preservar janela/frequência/slot das coletas agendadas.
+- [x] Aplicar uma coleta vinculada por ambiente e duas globais, dez segundos entre inícios por ambiente, com controle durável de autorização do lease. Não dormir segurando a transação SQLite.
+- [x] Expirar após 24h a intenção que não iniciou; novas atualizações suspendem sua entrega e vinculam/substituem a intenção anterior pela coleta após a versão mais recente. Revogação/remoção cancela a intenção.
+- [x] Manter sucesso do upgrade independente do resultado da coleta. Retry de report, reinício ou falha de resposta não cria outro job; repetir coleta exige ação explícita.
+- [x] Preservar estado/resumo da relação após `trimJobs`; expor links bidirecionais e acompanhar relações pendentes mesmo com upgrade concluído.
 
 **Aceite:**
 
@@ -249,11 +248,11 @@ O modo `assessment` executa `PostUpdateAssessmentsTest` e `PostUpdateAssessmentH
 
 **Passos:**
 
-- [ ] Exibir opção de assessment marcada nos novos pedidos; congelar booleano junto do payload após submissão e preservar escolha durante refresh/seleção/retry.
-- [ ] Mostrar por máquina o caminho direto/migração/intervenção, com motivo. Compatibilidade local ainda não verificada deve ficar explícita.
-- [ ] Apresentar etapas internas no mesmo Work request, mantendo T como alvo. B aparece apenas como etapa de transição, sem sucesso final antecipado.
-- [ ] Mostrar seção de assessment com estado e link; no job, mostrar origem e link para a atualização. Falha/parcial de coleta mantém “Atualização concluída”.
-- [ ] Manter acompanhamento de coletas vinculadas pendentes, limites de linhas/eventos, acessibilidade e layout desktop/mobile. Leitura não recebe ações administrativas.
+- [x] Exibir opção de assessment marcada nos novos pedidos; congelar booleano junto do payload após submissão e preservar escolha durante refresh/seleção/retry.
+- [x] Mostrar por máquina o caminho direto/migração/intervenção, com motivo. Compatibilidade local ainda não verificada deve ficar explícita.
+- [x] Apresentar etapas internas no mesmo Work request, mantendo T como alvo. B aparece apenas como etapa de transição, sem sucesso final antecipado.
+- [x] Mostrar seção de assessment com estado e link; no job, mostrar origem e link para a atualização. Falha/parcial de coleta mantém “Atualização concluída”.
+- [x] Manter acompanhamento de coletas vinculadas pendentes, limites de linhas/eventos, acessibilidade e layout desktop/mobile. Leitura não recebe ações administrativas.
 
 **Aceite:**
 
@@ -268,7 +267,7 @@ Usar Chrome/Playwright local e a fixture HTTP/SQLite; restringir rede à origem 
 
 ## WF6 — Integração, recuperação e evolução posterior
 
-**Arquivos novos:** `tests/AgentFullUpdateEndToEndTest.java`, `tests/agent-full-update-faults-test.py`, `docs/validation/full-agent-update.md`. Estender `ops/test-source.sh`, build e testes do instalador para incluir as suítes novas.
+**Arquivos novos:** `tests/AgentFullUpdateEndToEndTest.java`, `tests/AgentV3UninstallInventoryTest.java`, `docs/validation/full-agent-update.md`. Estender `ops/test-source.sh`, build e testes do instalador para incluir as suítes novas.
 
 - [ ] Executar 1.5.12 original → B → T, incluindo serviços e helper originais. Comparar hashes de identidade, configuração, CA, Java e resultados pendentes antes/depois.
 - [ ] Testar instalação nova diretamente em T e atualização completa T → U, em que U muda JAR, pelo menos um script/biblioteca e o manager. Isso comprova evolução posterior, além da ponte inicial.
@@ -276,14 +275,14 @@ Usar Chrome/Playwright local e a fixture HTTP/SQLite; restringir rede à origem 
 - [ ] Simular rede indisponível, disco cheio, escrita/sync com falha, pacote corrompido, serviço que não inicia, coleta em andamento, uninstall concorrente, customizações desconhecidas e arquivos/links inesperados.
 - [ ] Executar serviços e reboot em Linux isolado com systemd e SysV; validar Java 6 e Java moderno. Comparar processos de aplicação e provar que nenhum foi parado/sinalizado.
 - [ ] Medir memória, espaço de pico, tempo de pausa e consumo sem tarefas. Conservar o heap do coletor em 96 MiB nesta geração e impedir JVM residente de atualização quando estiver ociosa.
-- [ ] Confirmar uma coleta pós-update por intenção, escopo preservado e throughput limitado entre ambientes; falha da coleta não restaura binário.
-- [ ] Registrar comandos, versões e resultados reais. Não rotular testes simulados como prova de reboot/energia ou de 32 bits.
+- [x] Confirmar uma coleta pós-update por intenção, escopo preservado e throughput limitado entre ambientes; falha da coleta não restaura binário.
+- [x] Registrar comandos, versões e resultados locais, com adapters identificados. Não rotular testes simulados como prova de reboot/energia ou de 32 bits.
 
 **Aceite:**
 
 ```sh
 /bin/sh ops/test-agent-migration.sh --suite integration
-python3 -B tests/agent-full-update-faults-test.py
+/bin/sh ops/test-agent-migration.sh --suite lifecycle
 /bin/sh ops/test-source.sh
 python3 -B tests/agent-update-installer-test.py
 python3 -B tests/dashboard_installer_test.py
@@ -318,3 +317,16 @@ O modo `integration` executa `AgentFullUpdateEndToEndTest` com fixtures reais e 
 ## Revisão do plano
 
 Foram confrontados o worker original, os scripts atuais, os locks, o ACK/cleanup legado, a retenção de jobs, os gates de polling e o catálogo atual. A separação de workflows evita editar simultaneamente os mesmos arquivos comuns. A principal prova pendente é o ciclo completo da migração original, definido como primeiro gate; as análises de viabilidade feitas para este plano não o substituem.
+
+
+## Registro da execução local
+
+- Baselines públicas: 10 ZIPs verificados pelos recibos; seis origens >=1.5.12 e dois grupos distintos de arquivos de suporte. Helpers anteriores só são aceitos se seus hashes vierem de ZIPs conhecidos e pin idêntico.
+- Worker original 1.5.12: 1.338 verificações. O trecho de flock/serviços reais de WF0 permanece aberto; adapters não o encerram.
+- Lifecycle: 4.362 verificações em heap de 96 MiB; instalação nova, T→U com JAR/manager/script/biblioteca diferentes e bootstrap preservado, interrupções em dez fases, escrita/fsync/rename/cópia e disco insuficiente.
+- Desinstalação: 2.896 verificações; CA de 48 KiB, remoção parcial, intent atômico e shim explícito após primeiro rollback.
+- Scripts: 30 verificações com caminhos/serviços de teste. Backend e navegadores usam HTTP/SQLite reais em loopback, sem execução de serviços Linux.
+- Empacotamento público: 13 testes; assembly offline: 16; publicação: 63. As chaves das fixtures são exclusivas de teste.
+- A regressão de fontes passou. Os resultados consolidados e os limites ficam em `docs/validation/full-agent-update.md`.
+
+Os passos de WF2 marcados referem-se à implementação e às provas locais; instalação/serviços/reboot no SO real continuam em WF6/WF7. Não publicar nem declarar compatibilidade de produção até fechar esses gates. O commit de contratos é separado para revisão; desenvolvimento foi coordenado pelas frentes antes da consolidação final dos commits.

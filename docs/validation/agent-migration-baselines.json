@@ -1,0 +1,120 @@
+{
+  "schema": 1,
+  "purpose": "Public, immutable baseline pins for isolated migration tests; no production private key or machine identity",
+  "baselines": {
+    "1.5.12": {
+      "packageManifestSha256": "b089b001b09287e892696a0d1c7def8b88bd290c528b9bb67106930b8e3423cc",
+      "artifacts": {
+        "assessment-collector-1.5.12.zip": {
+          "sha256": "f68ef5dcc265167d87555ef79d6068ab68b0ce353d5df6096bbe2150bcfc0c8e",
+          "bytes": 7587322
+        },
+        "assessment-dashboard-runtime-1.5.12.zip": {
+          "sha256": "23078be32aac10ec3255f313c06df024cf9877042efadfdc644c6d323f210a6f",
+          "bytes": 28578079
+        }
+      },
+      "collectorJarSha256": "f9aba1161d5c997be2beeac149bb78caa56d2eec7172ced98800fd18ae8d95b2",
+      "collectorJarBytes": 97771,
+      "workerClassSha256": "a25d45a8333ebbc6131b8e7a472afbf866356b095a3f30b447c8ae82ff09afb8",
+      "classfileMajor": 50,
+      "manifestSha256": "ad2c5c207bdb8c5848799eb7cd2111b112e17f005e3742bace6701723b9d4f4f",
+      "signatureSha256": "2962d8a6c69c40a2c386e0df78d162f68b4b2bf792b89ba2370f0ace2e099f9f",
+      "publicKeySha256": "d5911883d9aa35e0b0e8c8ea6b6f971f70566282ee9a7816d500a79e897130b8",
+      "supportProfileId": "legacy-support-sha256:603fd1b0f80b6b5da5b550c7b6d6d0492296c542ede850c45a19f98b3ef6ea27",
+      "supportFiles": 23,
+      "minUpdater": 1,
+      "format": "collector-jar-v1"
+    }
+  },
+  "testLimitations": [
+    "The bridge fixture is a Java 6 bytecode marker with an embedded original collector, not a production bridge",
+    "The isolated legacy harness simulates platform probes and service actions; it does not prove Linux service handoff, reboot durability or real Java 6 execution",
+    "Only update-public.der is replaced in the copied legacy support inventory; all other support bytes remain original",
+    "A passing local fixture does not authorize a production compatibility claim or close the Linux handoff gate"
+  ],
+  "reviewedPackagePins": [
+    {
+      "version": "1.5.8",
+      "sha256": "dbb081c0d14d02a9b8ff0d1a61e852f87c1c81babc7bc546ecbfd76a7cef381f",
+      "bytes": 7576340,
+      "migrationOrigin": false
+    },
+    {
+      "version": "1.5.9",
+      "sha256": "046d9282d0fcdc6cf9cbbf59b32128beb27e52af0d8a65863d2300d30bf66987",
+      "bytes": 7576339,
+      "migrationOrigin": false
+    },
+    {
+      "version": "1.5.10",
+      "sha256": "508c3901ad1cad3196d58a397856345f8ec893357b89367814c2d133b7ed223e",
+      "bytes": 7576346,
+      "migrationOrigin": false
+    },
+    {
+      "version": "1.5.11",
+      "sha256": "4229fd196f9ba2426ff9fb263049e63c862a0c6c4f28d674fae5ce1e1ebff09f",
+      "bytes": 7576351,
+      "migrationOrigin": false
+    },
+    {
+      "version": "1.5.12",
+      "sha256": "f68ef5dcc265167d87555ef79d6068ab68b0ce353d5df6096bbe2150bcfc0c8e",
+      "bytes": 7587322,
+      "migrationOrigin": true
+    },
+    {
+      "version": "1.5.13",
+      "sha256": "c7d64ede5334b8dbd6acff4f2c58ca616c5c5f5230822a6f2cfcc5b3a35307d7",
+      "bytes": 7596421,
+      "migrationOrigin": true
+    },
+    {
+      "version": "2.0.0",
+      "sha256": "43dfe39e0ddc0d30f1ed52e9bfadb602f4983a4c7c601e454ddc291171736517",
+      "bytes": 7596416,
+      "migrationOrigin": true
+    },
+    {
+      "version": "2.0.2",
+      "sha256": "5af99f1532b1a737cab688f54baf81641288862604a7f39fcf732d5532c7332b",
+      "bytes": 7603112,
+      "migrationOrigin": true
+    },
+    {
+      "version": "2.0.3",
+      "sha256": "8e90c875c766f8ec35a2df6ce492a1eda6610c9173d91e2abc75f343b47f2943",
+      "bytes": 7605999,
+      "migrationOrigin": true
+    },
+    {
+      "version": "2.0.5",
+      "sha256": "43bd58318078694fb45b69a80a9933084285c5727bb53e5ac1d692d5c2570f69",
+      "bytes": 7606013,
+      "migrationOrigin": true
+    }
+  ],
+  "reviewedSupportGroups": [
+    {
+      "versions": [
+        "1.5.8",
+        "1.5.9",
+        "1.5.10",
+        "1.5.11",
+        "1.5.12",
+        "1.5.13",
+        "2.0.0"
+      ],
+      "verification": "public ZIP receipts, exact script/library/pin hashes; not OS execution"
+    },
+    {
+      "versions": [
+        "2.0.2",
+        "2.0.3",
+        "2.0.5"
+      ],
+      "verification": "public ZIP receipts, exact script/library/pin hashes; not OS execution"
+    }
+  ]
+}
