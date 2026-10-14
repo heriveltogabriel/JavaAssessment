@@ -54,3 +54,11 @@ Linux/Java de 32 bits permanecem sem teste real, conforme limitação já inform
 Acesso remoto por shell não foi usado nesta execução. O [runbook de canários](../runbooks/agent-update-1512-canary.md) descreve a execução necessária no laboratório. Não substituir essas provas por adapters locais nem contornar restrições de acesso remoto.
 
 Detalhes adicionais: [desinstalação V3](agent-v3-uninstall.md) e [escolha sequencial de perfis](agent-profile-fallback.md). A montagem offline passou 16 verificações e o instalador completo passou 13 testes com a fixture final. O builder operacional validou seis origens de migração e dez baselines de helper, sem assinatura de produção.
+
+## Pré-verificação dos dois canários
+
+Em 2026-10-14 o operador executou `ops/validar-canarios.py` nas duas máquinas Linux, em sequência. Ambas informaram o coletor original 1.5.12, instalação `system-root`, capability `update-v1`, timer ativo e helper em execução. Uma usa RHEL 8/Java 17 com helper 1.5.12; a outra RHEL 7/Java 11 com helper 1.5.9. O serviço de coleta inativo entre disparos do timer não indica falha por si só.
+
+Os hashes recebidos foram comparados aos ZIPs originais fixados em `agent-migration-baselines.json`: coletor, helper real, chave pública e os 23 arquivos de suporte conferiram em ambas. As sete classes `AgentUpdateWorker*` dos helpers 1.5.9 e 1.5.12 têm bytes idênticos; isso não substitui a execução da migração com as dependências e os serviços reais. Nenhum arquivo de operação pendente foi detectado e havia mais de 22 GiB disponíveis em cada máquina. Configuração, identidade, CA e seleção do Java tiveram seus hashes registrados privadamente para comparação posterior.
+
+Os endereços, hashes de identidades/configurações e relatórios completos ficam fora do Git, em `output/agent-canaries/`. Essa etapa confirma a origem instalada para preparar o teste; não fecha os gates de migração, recuperação, reboot, confirmação final ou assessment posterior. O dashboard publicado continua em 2.0.5 com o mecanismo anterior.

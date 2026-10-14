@@ -9,6 +9,14 @@ Objetivo: validar duas instalações originais, uma por vez, antes de entregar o
 3. Confirmar ausência de coleta RUNNING, atualização ou desinstalação pendente. Registrar um inventário antes do teste.
 4. Guardar checksums da configuração, identidade, CA efetivamente indicada e `java.path` em pasta privada de evidência. Não colar a configuração ou token em logs/chats.
 
+Para coletar essa pré-verificação pelo Terminal do Mac, na raiz do projeto:
+
+```sh
+python3 ops/validar-canarios.py
+```
+
+Informar os IPs de até duas máquinas. O script usa por padrão `~/OneDrive/id_rsa`; `--identity` e `--user` permitem outra chave e usuário. Para uma máquina RHEL 5 que exija algoritmos SSH antigos, executar separadamente com `--legacy`. A coleta usa `sudo -n`, exige a chave de host conhecida ou confirmada no Terminal e salva relatórios privados em `output/agent-canaries/`. Ela não instala, reinicia ou executa o coletor. É necessário conferir o resultado e as operações atuais no dashboard antes do teste de migração.
+
 Na máquina, comandos de leitura:
 
 ```sh
