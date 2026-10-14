@@ -1,6 +1,6 @@
 # Evidências da atualização completa
 
-Data: 2026-10-14. Implementação consolidada na branch `codex/full-agent-update-plan`. Nenhuma release de produção foi reservada ou assinada por esta validação; constantes do produto continuam em 2.0.5.
+Data: 2026-10-14. Implementação consolidada na branch `codex/full-agent-update-plan`. As primeiras provas abaixo foram executadas com constantes do produto em 2.0.5. Posteriormente foi preparado o candidato exclusivo de laboratório 2.0.9, descrito ao final; nenhuma publicação ou migração real foi executada pelo agente nesta preparação.
 
 ## Validações locais
 
@@ -62,3 +62,15 @@ Em 2026-10-14 o operador executou `ops/validar-canarios.py` nas duas máquinas L
 Os hashes recebidos foram comparados aos ZIPs originais fixados em `agent-migration-baselines.json`: coletor, helper real, chave pública e os 23 arquivos de suporte conferiram em ambas. As sete classes `AgentUpdateWorker*` dos helpers 1.5.9 e 1.5.12 têm bytes idênticos; isso não substitui a execução da migração com as dependências e os serviços reais. Nenhum arquivo de operação pendente foi detectado e havia mais de 22 GiB disponíveis em cada máquina. Configuração, identidade, CA e seleção do Java tiveram seus hashes registrados privadamente para comparação posterior.
 
 Os endereços, hashes de identidades/configurações e relatórios completos ficam fora do Git, em `output/agent-canaries/`. Essa etapa confirma a origem instalada para preparar o teste; não fecha os gates de migração, recuperação, reboot, confirmação final ou assessment posterior. O dashboard publicado continua em 2.0.5 com o mecanismo anterior.
+
+## Candidato de laboratório 2.0.9
+
+Com a autorização do usuário para testar a primeira VM sem snapshot, foram reservados B=2.0.8 e T=2.0.9. A reserva anterior 2.0.6/2.0.7 foi consumida por uma falha de sandbox ao abrir o servidor HTTP local do teste e não foi reutilizada. O pacote final está marcado `candidateOnly: true`, preserva a chave instalada e permanece sem publicação nesta preparação. O builder operacional usa `--lab-canary`; o marcador persiste no ledger, recibos e documentação embutida. O candidato não equivale à liberação para o cliente.
+
+- As regressões executadas pelo builder passaram, incluindo descoberta, JDBC, autenticação, Work requests, instaladores e publicação.
+- `ops/verify-full-agent-candidate.py` conferiu os cinco artefatos finais, assinaturas/pin, bundle, bootstrap, bytecode major 50, seis rotas e helpers conhecidos 1.5.12/1.5.9, sem ler chave privada. O teste negativo adicional passou dez verificações.
+- A suíte completa de migração foi repetida com catálogo de teste separado B=2.0.8/T=2.0.9 e evolução U=2.0.10. Passaram origem original, contratos, lifecycle, desinstalação, perfis, servidor, assessment e integração. As ações do SO continuam sendo adapters explícitos.
+- Chrome com API/SQLite reais locais confirmou o fluxo do painel 2.0.9, etapas internas, confirmação final, um assessment vinculado, opção desmarcada e layout desktop/mobile; nenhuma resposta de API foi simulada.
+- A automação opcional de laboratório passou 16 testes offline: um único host, segredo somente em memória, assinatura/hash final, idempotência, retomada e reinício sem duplicação. A solicitação do primeiro teste real será feita pela interface, conforme preferência do operador.
+
+Pacotes e evidências estão em `output/dashboard-releases/2.0.9/`; fixtures e logs complementares em `tmp/full-update/canary-209-*`. Os gates de Linux real, Java 6/SysV, reinício/interrupção, segundo canário e evolução real continuam abertos.

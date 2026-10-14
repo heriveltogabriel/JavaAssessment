@@ -1,5 +1,5 @@
 {
-  "version": "2.0.5",
+  "version": "2.0.9",
   "releases": [
     {
       "version": "1.0.1-beta",
@@ -100,6 +100,34 @@
       "version": "2.0.5",
       "builtAt": "2026-10-14T19:28:56.395359+00:00",
       "status": "prepared"
+    },
+    {
+      "version": "2.0.6",
+      "builtAt": "2026-10-14T22:31:10.888628+00:00",
+      "status": "bridge-reserved",
+      "kind": "agent-bridge",
+      "targetVersion": "2.0.7"
+    },
+    {
+      "version": "2.0.7",
+      "builtAt": "2026-10-14T22:31:10.888628+00:00",
+      "status": "failed",
+      "bridgeVersion": "2.0.6",
+      "candidateOnly": true
+    },
+    {
+      "version": "2.0.8",
+      "builtAt": "2026-10-14T22:32:09.901380+00:00",
+      "status": "bridge-prepared",
+      "kind": "agent-bridge",
+      "targetVersion": "2.0.9"
+    },
+    {
+      "version": "2.0.9",
+      "builtAt": "2026-10-14T22:32:09.901380+00:00",
+      "status": "prepared",
+      "bridgeVersion": "2.0.8",
+      "candidateOnly": true
     }
   ]
 }

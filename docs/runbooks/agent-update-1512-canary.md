@@ -1,11 +1,13 @@
 # Canários de atualização a partir da 1.5.12
 
-Objetivo: validar duas instalações originais, uma por vez, antes de entregar o mecanismo ao cliente. A release final T e o bridge B só serão reservados após os testes locais e de serviços Linux. Os números usados nas fixtures não são versões publicáveis.
+Objetivo: validar duas instalações originais, uma por vez, antes de entregar o mecanismo ao cliente. Os números usados nas fixtures não são versões publicáveis.
+
+Atualização operacional de 2026-10-14: o usuário confirmou que o primeiro canário é uma VM de teste, dispensou snapshot e autorizou o teste com reinício. Preparar B/T reais como **candidato exclusivo de laboratório**, depois das regressões locais e antes da prova Linux nessa VM. Não usar fixtures nem trocar a chave de confiança instalada. A publicação para o cliente e a declaração de compatibilidade de produção continuam bloqueadas pelos testes Linux, Java 6, recuperação e segundo canário. Uma falha consome a reserva B/T; nunca reutilizar os números.
 
 ## Preparação
 
 1. Identificar no dashboard as duas máquinas que ainda informam 1.5.12. Conferir hostname, ambiente e ID; não deduzir isso de uma lista antiga de IPs.
-2. Fazer snapshot recuperável da VM. Confirmar espaço para pacote, extração, geração ativa/anterior e recuperação. Não apagar backups para ganhar espaço durante a prova.
+2. Em máquinas que exijam recuperação externa, fazer snapshot recuperável. O usuário dispensou essa etapa no primeiro canário de laboratório; preservar os backups locais do mecanismo. Confirmar espaço para pacote, extração, geração ativa/anterior e recuperação. Não apagar backups para ganhar espaço durante a prova.
 3. Confirmar ausência de coleta RUNNING, atualização ou desinstalação pendente. Registrar um inventário antes do teste.
 4. Guardar checksums da configuração, identidade, CA efetivamente indicada e `java.path` em pasta privada de evidência. Não colar a configuração ou token em logs/chats.
 
@@ -43,6 +45,10 @@ sudo /bin/sh /opt/java-assessment-update/update-service.sh status
 Registrar os processos das aplicações antes/depois, incluindo PID e horário de início. Não registrar argumentos completos: podem conter segredos da aplicação.
 
 ## Publicar e executar o canário A
+
+O fluxo principal é pelo painel. No Mac, executar somente o `deployment/publish-dashboard.py` do candidato preparado para disponibilizar a nova versão do dashboard. Em seguida selecionar a primeira máquina em **Máquinas → Ações → Atualizar agente**, manter **Executar assessment após atualizar** marcado e abrir **Work requests**. Não executar um instalador manual no canário 1.5.12 antes dessa prova, pois isso trocaria a origem que queremos validar.
+
+`ops/testar-atualizacao-canario.py` é uma automação opcional de laboratório para solicitar a mesma operação autenticada pela API e conferir preservação/retomada; não é requisito para atualizar agentes. Só reinicia a VM quando receber `--reiniciar`, após a atualização e a coleta confirmadas. O operador optou por solicitar a primeira migração diretamente pela interface.
 
 1. Preparar a release T com seu B interno e origens fixadas por checksum. Validar o instalador e o catálogo público do pacote. Publicar somente o dashboard e conferir saúde/versão.
 2. Abrir **Revisar agentes**, selecionar somente A e confirmar **migração com verificação local pendente**. Manter **Executar assessment após atualizar** marcado.

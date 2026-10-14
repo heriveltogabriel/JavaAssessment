@@ -4,6 +4,8 @@
 
 **Status:** implementação e regressões locais concluídas em 2026-10-14, com origem mínima 1.5.12. Bridge com binário original, pacote completo, operação lógica, recuperação, limpeza, desinstalação, empacotamento e assessment posterior integrados. Serviços/reboot em Linux real e os dois canários permanecem gates de release. O mecanismo em produção continua sendo o atual.
 
+**Candidato de laboratório:** 2.0.9, com bridge interno 2.0.8, preparado após a pré-verificação dos dois canários e a autorização do usuário para usar a primeira VM de teste sem snapshot. Pacotes e assinaturas finais conferidos; nenhuma VM foi atualizada nesta preparação. A execução do canário será iniciada pelo dashboard, uma máquina por vez. Isso não encerra os gates de Linux/Java 6, reinício/recuperação, segundo canário e evolução posterior.
+
 - [Desenho: migração, preservação, recuperação, limpeza e assessment](superpowers/specs/2026-10-14-full-agent-update-design.md)
 - [Plano com oito workflows e gates de validação](superpowers/plans/2026-10-14-full-agent-update.md)
 

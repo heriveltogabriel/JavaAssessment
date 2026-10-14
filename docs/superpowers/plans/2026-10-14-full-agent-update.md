@@ -12,6 +12,8 @@
 
 **Estado deste plano:** código de WF1–WF5 implementado; prova local com binário original 1.5.12, instalação nova, evolução T→U, falhas de I/O, recuperação, desinstalação e coleta posterior aprovadas. WF6 tem regressões locais aprovadas e gates de serviços/reboot/Java 6 real ainda abertos. WF7 aguarda Linux real e os dois canários. Nenhuma release de produção reservada ou publicada. Consulte [as evidências](../../validation/full-agent-update.md).
 
+**Ajuste operacional autorizado pelo usuário em 2026-10-14:** o primeiro canário é uma VM de teste e pode reiniciar, sem exigência de snapshot externo. Preparar uma reserva B/T exclusiva de laboratório para executar a prova Linux real nessa VM após as regressões locais. Essa reserva não encerra WF6/WF7 nem autoriza entrega ao cliente; os gates de produção seguem abertos. Preservar as cópias locais de recuperação e não reutilizar números em caso de falha. Não instalar fixtures com pin de teste sobre o agente existente.
+
 ## Regras de execução
 
 - Não ampliar a compatibilidade para versões inferiores à 1.5.12.

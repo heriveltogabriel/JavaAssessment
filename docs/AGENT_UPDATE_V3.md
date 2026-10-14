@@ -2,7 +2,7 @@
 
 O fluxo V3 substitui código, scripts, bibliotecas e manager como uma geração assinada. A configuração e a identidade ficam fora do pacote. O dashboard mantém uma operação por máquina, incluindo a transição de agentes antigos e a coleta posterior.
 
-Esta implementação ainda exige os gates de Linux e canários registrados em [validação](validation/full-agent-update.md). A versão de produto não foi incrementada nem publicada durante os testes.
+Esta implementação ainda exige os gates de Linux e canários registrados em [validação](validation/full-agent-update.md). O candidato 2.0.9 foi preparado exclusivamente para laboratório; sua preparação não confirma migração em Linux nem compatibilidade de produção.
 
 ## Caminhos de atualização
 
@@ -14,6 +14,8 @@ Esta implementação ainda exige os gates de Linux e canários registrados em [v
 | Sem serviço root, suporte customizado ou perfil desconhecido | Reparação explícita pelo instalador completo |
 
 A prévia identifica a migração como **verificação local pendente**. O número da versão identifica perfis candidatos; o atualizador antigo confere os arquivos e o probe confere o binário real antes da troca. Hashes e assinatura continuam obrigatórios.
+
+O operador solicita a migração pelo próprio dashboard em **Máquinas → Ações → Atualizar agente**, mantém a opção de assessment se desejada e acompanha **Work requests**. O mecanismo já instalado baixa e aplica as etapas assinadas; não é necessário SCP, reinstalação manual ou chave SSH para essa atualização do agente. O publicador do dashboard e os diagnósticos de laboratório são operações separadas. Reiniciar a VM é um teste opcional de retomada, não uma etapa automática da migração.
 
 O bridge tem número interno B, maior que as origens e menor que o destino T. O número exibido como alvo continua T. O sucesso de B não conclui o pedido nem permite uma coleta. B/T são reservados uma única vez; um bridge não é uma release de dashboard.
 
