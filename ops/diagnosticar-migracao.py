@@ -12,12 +12,30 @@ EXTRA = r'''
 echo MIGRATION_DIAG_BEGIN
 for unit in java-assessment-collector.service java-assessment-update.service java-assessment-recovery.service; do
   printf 'SANDBOX_UNIT=%s\n' "$unit"
-  systemctl show "$unit" -p ProtectSystem -p ReadOnlyPaths -p ReadWritePaths -p Result -p ExecMainCode -p ExecMainStatus -p MainPID 2>/dev/null || true
+  systemctl show "$unit" --all --no-pager -p LoadState -p ActiveState -p SubState -p ProtectSystem -p ReadOnlyPaths -p ReadWritePaths -p Result -p ExecMainCode -p ExecMainStatus -p MainPID -p ControlPID -p Job -p KillMode -p ControlGroup 2>/dev/null || true
 done
 python3 - <<'DIAG_PY'
-import json, pathlib, re, hashlib
+import json, pathlib, re, hashlib, subprocess, stat
 root=pathlib.Path('/opt/java-assessment-collector')
 home=pathlib.Path('/opt/java-assessment-update')
+stop=home/'stop'
+try:
+    info=stop.lstat()
+    print('LEGACY_STOP_MARKER='+('REGULAR' if stat.S_ISREG(info.st_mode) else 'UNEXPECTED_TYPE'))
+    print('LEGACY_STOP_MARKER_UID='+str(info.st_uid))
+    print('LEGACY_STOP_MARKER_MODE='+format(stat.S_IMODE(info.st_mode),'o'))
+    print('LEGACY_STOP_MARKER_BYTES='+str(info.st_size))
+except FileNotFoundError: print('LEGACY_STOP_MARKER=ABSENT')
+except OSError: print('LEGACY_STOP_MARKER=UNREADABLE')
+for label,base in [('V2','/sys/fs/cgroup'),('V1','/sys/fs/cgroup/systemd')]:
+    path=pathlib.Path(base)/'system.slice/java-assessment-update.service/cgroup.procs'
+    try:
+        with path.open('rb') as stream: raw=stream.read(8193)
+        if len(raw)>8192 or not re.fullmatch(rb'(?:[0-9]+\s*)*',raw): value='UNKNOWN'
+        else: value='EMPTY' if not raw.split() else 'PIDS_PRESENT_'+str(len(raw.split()))
+    except FileNotFoundError: value='ABSENT'
+    except OSError: value='UNREADABLE'
+    print('LEGACY_CGROUP_'+label+'='+value)
 def read(path):
     if path.is_symlink() or not path.is_file() or path.stat().st_size>2*1024*1024: return None
     try:
@@ -36,6 +54,21 @@ for name,relative in [('LEGACY','journal.json'),('V3','state/transaction.json')]
         if re.fullmatch(r'[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}',operation) and re.fullmatch(r'prepared-[0-9]{1,3}',prepared):
             script=home/'transactions'/operation/prepared/'bootstrap/update-bootstrap.sh'
             if script.is_file() and not script.is_symlink(): print('PREPARED_BOOTSTRAP_SHA256='+hashlib.sha256(script.read_bytes()).hexdigest())
+            unit='java-assessment-bootstrap-'+operation+'.service'
+            print('TRANSIENT_UNIT='+unit)
+            try:
+                result=subprocess.run(['systemctl','show',unit,'-p','LoadState','-p','ActiveState','-p','SubState','-p','MainPID','-p','Result','-p','ExecMainCode','-p','ExecMainStatus','-p','ProtectSystem'],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=10)
+                for line in result.stdout.decode('ascii','replace').splitlines():
+                    if re.fullmatch(r'(LoadState|ActiveState|SubState|MainPID|Result|ExecMainCode|ExecMainStatus|ProtectSystem)=[A-Za-z0-9_-]{0,80}',line): print('TRANSIENT_'+line)
+                log=subprocess.run(['journalctl','-b','-u',unit,'--no-pager','-n','50','-o','cat'],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=10).stdout[-32768:].decode('utf-8','replace')
+                for code in re.findall(r'\b(AGENT_[A-Z_]{1,64}=[A-Z0-9_.-]{1,96})\b',log)[-10:]: print('TRANSIENT_DIAGNOSTIC='+code)
+                for text,label in [('Another agent lifecycle operation is active.','LIFECYCLE_LOCK_BUSY'),('Read-only file system','READ_ONLY_FILESYSTEM'),('Permission denied','PERMISSION_DENIED'),('Failed at step','EXECUTION_STEP_FAILED'),('Dependency failed','DEPENDENCY_FAILED')]:
+                    if text in log: print('TRANSIENT_DIAGNOSTIC='+label)
+            except (OSError,subprocess.TimeoutExpired): print('TRANSIENT_DIAGNOSTIC=READ_UNAVAILABLE')
+try:
+    version=subprocess.run(['systemd-run','--version'],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=5).stdout.decode('ascii','replace').splitlines()
+    if version and re.fullmatch(r'systemd [0-9]{1,4}(?:[ .()][A-Za-z0-9_.+() -]*)?',version[0]): print('SYSTEMD_RUN_VERSION='+version[0])
+except (OSError,subprocess.TimeoutExpired): print('SYSTEMD_RUN_VERSION=UNAVAILABLE')
 for label,path in [('BOOTSTRAP',home/'bootstrap/update-bootstrap.sh'),('BOOTSTRAP_SEAL',home/'bootstrap/bootstrap-owned.json'),
                    ('ORIGIN_RECORD',home/'state/origin/origin.json'),('RECOVERY_TEMPLATE',home/'bootstrap/recovery.service'),
                    ('RECOVERY_UNIT_IN_ETC',pathlib.Path('/etc/systemd/system/java-assessment-recovery.service')),

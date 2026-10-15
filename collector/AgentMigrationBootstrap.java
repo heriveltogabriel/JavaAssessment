@@ -193,10 +193,56 @@ public final class AgentMigrationBootstrap {
         return true;
     }
     static final class Production implements AgentBundleInstaller.Platform {
+        static final String LEGACY_SERVICE = "java-assessment-update.service";
+        static final String RECOVERY_SERVICE = "java-assessment-recovery.service";
+        static final String LEGACY_WAS_ACTIVE = "bootstrapLegacyHelperWasActive";
         final AgentInstallLayout layout;
         final Commands commands;
+        static final class ServiceState {
+            final String load, active, sub;
+            final long mainPid, controlPid, job;
+            ServiceState(String load, String active, String sub, long mainPid, long controlPid, long job) {
+                this.load = load; this.active = active; this.sub = sub;
+                this.mainPid = mainPid; this.controlPid = controlPid; this.job = job;
+            }
+            boolean running() { return "loaded".equals(load) && ("active".equals(active) || "reloading".equals(active)) && mainPid > 0; }
+            boolean stopped() { return ("loaded".equals(load) || "not-found".equals(load))
+                && ("inactive".equals(active) || "failed".equals(active)) && mainPid == 0 && controlPid == 0 && job == 0; }
+            static ServiceState parse(String raw, int status) throws Exception {
+                AgentInstallLayout.require(raw != null && raw.length() <= 8192, "SERVICE_STATE_UNKNOWN");
+                Map fields = new LinkedHashMap(); String[] lines = raw.split("\\n");
+                for (int i = 0; i < lines.length; i++) {
+                    String line = lines[i]; if (line.length() == 0) continue;
+                    int split = line.indexOf('=');
+                    AgentInstallLayout.require(split > 0 && !fields.containsKey(line.substring(0, split)), "SERVICE_STATE_UNKNOWN");
+                    fields.put(line.substring(0, split), line.substring(split + 1));
+                }
+                AgentInstallLayout.require(fields.keySet().equals(new HashSet(Arrays.asList(new String[]{"LoadState", "ActiveState", "SubState", "MainPID", "ControlPID", "Job"}))), "SERVICE_STATE_UNKNOWN");
+                String load = AgentInstallLayout.text(fields.get("LoadState")), active = AgentInstallLayout.text(fields.get("ActiveState")), sub = AgentInstallLayout.text(fields.get("SubState"));
+                AgentInstallLayout.require(load.matches("loaded|not-found|error|masked|stub|merged")
+                    && active.matches("active|reloading|inactive|failed|activating|deactivating") && sub.matches("[a-z-]{1,64}")
+                    && (status == 0 || (status == 1 || status == 4) && "not-found".equals(load)), "SERVICE_STATE_UNKNOWN");
+                String[] counters = {"MainPID", "ControlPID", "Job"}; long[] values = new long[3];
+                for (int i = 0; i < counters.length; i++) {
+                    String value = AgentInstallLayout.text(fields.get(counters[i]));
+                    // systemctl219/239 may print an explicitly empty Job=
+                    // instead of Job=0. A missing property is still rejected
+                    // by the exact field inventory above.
+                    if (i == 2 && value.length() == 0) { values[i] = 0; continue; }
+                    AgentInstallLayout.require(value.matches("[0-9]{1,10}"), "SERVICE_STATE_UNKNOWN"); values[i] = Long.parseLong(value);
+                    AgentInstallLayout.require(values[i] <= 4294967295L, "SERVICE_STATE_UNKNOWN");
+                }
+                ServiceState result = new ServiceState(load, active, sub, values[0], values[1], values[2]);
+                AgentInstallLayout.require(status == 0 || "not-found".equals(load) && "inactive".equals(active) && result.stopped(), "SERVICE_STATE_UNKNOWN");
+                return result;
+            }
+        }
         // Object adapters remain package-private, never CLI/environment switches.
         static class Commands {
+            static final class Captured {
+                final String text; final int status;
+                Captured(String text, int status) { this.text = text; this.status = status; }
+            }
             boolean systemd(AgentInstallLayout layout) throws Exception {
                 String mode = new String(AgentInstallLayout.bytes(new File(layout.home, "scheduler"), 64), "UTF-8").trim();
                 AgentInstallLayout.require(mode.equals("systemd") || mode.equals("sysv"), "LOCAL_CHECK_FAILED");
@@ -205,14 +251,128 @@ public final class AgentMigrationBootstrap {
                 return true;
             }
             String executable(String name) throws Exception {
-                AgentInstallLayout.require(name.equals("systemd-run") || name.equals("systemctl"), "LOCAL_CHECK_FAILED");
+                AgentInstallLayout.require(name.equals("systemd-run") || name.equals("systemctl") || name.equals("stat"), "LOCAL_CHECK_FAILED");
                 File path = new File("/usr/bin", name); if (!path.canExecute()) path = new File("/bin", name);
                 AgentInstallLayout.require(path.isFile() && path.canExecute(), "SERVICE_FAILED"); return path.getPath();
             }
             int run(String[] arguments, long timeout) throws Exception { return AgentUpdateWorker.Production.process(arguments, timeout); }
+            ServiceState status(String unit) throws Exception {
+                String prefix = "java-assessment-bootstrap-", suffix = ".service";
+                AgentInstallLayout.require(LEGACY_SERVICE.equals(unit) || RECOVERY_SERVICE.equals(unit)
+                    || unit.startsWith(prefix) && unit.endsWith(suffix)
+                        && AgentInstallLayout.uuid(unit.substring(prefix.length(), unit.length() - suffix.length())), "INVALID_OPERATION");
+                Captured output = read(new String[]{executable("systemctl"), "show", "--all", "--no-pager", unit,
+                    "-p", "LoadState", "-p", "ActiveState", "-p", "SubState", "-p", "MainPID", "-p", "ControlPID", "-p", "Job"});
+                return ServiceState.parse(output.text, output.status);
+            }
+            String fileMetadata(File marker) throws Exception {
+                Captured output = read(new String[]{executable("stat"), "-c", "%u:%a:%h:%f", marker.getPath()});
+                AgentInstallLayout.require(output.status == 0 && output.text.length() <= 128, "LOCAL_CHECK_FAILED"); return output.text.trim();
+            }
+            Captured read(String[] arguments) throws Exception {
+                ProcessBuilder builder = new ProcessBuilder(arguments);
+                builder.redirectErrorStream(true); builder.environment().put("LC_ALL", "C"); builder.environment().put("SYSTEMD_LOG_LEVEL", "err");
+                final Process process = builder.start(); final ByteArrayOutputStream output = new ByteArrayOutputStream();
+                final boolean[] invalid = new boolean[1];
+                Thread drain = new Thread(new Runnable() { public void run() {
+                    try {
+                        InputStream input = process.getInputStream();
+                        try { byte[] block = new byte[1024]; int count;
+                            while ((count = input.read(block)) != -1) {
+                                if (output.size() + count > 8192) { invalid[0] = true; process.destroy(); break; }
+                                output.write(block, 0, count);
+                            }
+                        } finally { input.close(); }
+                    } catch (IOException failure) { invalid[0] = true; }
+                }}); drain.setDaemon(true); drain.start();
+                try {
+                    process.getOutputStream().close(); long deadline = System.currentTimeMillis() + 15000L;
+                    while (true) {
+                        try {
+                            int result = process.exitValue(); drain.join(1000L);
+                            AgentInstallLayout.require(!drain.isAlive() && !invalid[0], "SERVICE_STATE_UNKNOWN");
+                            return new Captured(new String(output.toByteArray(), "UTF-8"), result);
+                        } catch (IllegalThreadStateException running) {
+                            AgentInstallLayout.require(System.currentTimeMillis() < deadline, "SERVICE_STATE_UNKNOWN"); Thread.sleep(100L);
+                        }
+                    }
+                } finally { process.destroy(); try { process.getInputStream().close(); } catch (IOException ignored) {} }
+            }
         }
         Production(AgentInstallLayout layout) { this(layout, new Commands()); }
         Production(AgentInstallLayout layout, Commands commands) { this.layout = layout; this.commands = commands; }
+        void preparedIdentity(Map transaction) throws Exception {
+            AgentInstallLayout.require(transaction != null && AgentInstallLayout.uuid(AgentInstallLayout.text(transaction.get("operationId")))
+                && "PREPARED".equals(transaction.get("phase")) && transaction.get("previousPointer") == null
+                && AgentInstallLayout.text(transaction.get("preparedDirectory")).matches("prepared-[0-9]{1,8}")
+                && !AgentInstallLayout.child(layout.root, "current.json").exists()
+                && !AgentInstallLayout.child(layout.home, "journal.json").exists()
+                && !AgentInstallLayout.child(layout.root, "collector-spool/update-request.json").exists(), "LEGACY_UPDATE_ACTIVE");
+            Map stored = AgentInstallLayout.read(layout.journal());
+            AgentInstallLayout.require(stored.equals(transaction), "RECOVERY_REQUIRED");
+            AgentMigrationBootstrap.revalidateIdentity(layout, stored);
+        }
+        void rememberLegacyState(Map transaction) throws Exception {
+            if (transaction.containsKey(LEGACY_WAS_ACTIVE)) {
+                AgentInstallLayout.require(transaction.get(LEGACY_WAS_ACTIVE) instanceof Boolean, "RECOVERY_REQUIRED"); return;
+            }
+            ServiceState state = commands.status(LEGACY_SERVICE);
+            AgentInstallLayout.require("loaded".equals(state.load) && (state.running() && state.controlPid == 0 && state.job == 0 || state.stopped()), "SERVICE_STATE_UNKNOWN");
+            AgentBundleInstaller recorder = recoveryCopier(layout, this);
+            AgentInstallLayout.require(recorder.journal.equals(transaction), "RECOVERY_REQUIRED");
+            transaction.put(LEGACY_WAS_ACTIVE, Boolean.valueOf(state.running()));
+            recorder.journal = transaction; recorder.save("PREPARED");
+        }
+        void clearLegacyStop(Map transaction) throws Exception {
+            File marker = AgentInstallLayout.child(layout.home, "stop"); if (!marker.exists()) return;
+            AgentInstallLayout.require(marker.isFile() && marker.length() == 0 && commands.run(new String[]{"/bin/sh", AgentInstallLayout.child(layout.root, "root-trust.sh").getPath(), "private", marker.getPath()}, 30000L) == 0, "LOCAL_CHECK_FAILED");
+            String metadata = commands.fileMetadata(marker);
+            AgentInstallLayout.require(metadata.matches("0:(400|600):1:[a-f0-9]{4,8}"), "LOCAL_CHECK_FAILED");
+            String[] fields = metadata.split(":"); long mode = Long.parseLong(fields[3], 16);
+            AgentInstallLayout.require((mode & 0xf000) == 0x8000 && (mode & 07777) == Integer.parseInt(fields[1], 8), "LOCAL_CHECK_FAILED");
+            preparedIdentity(transaction); ServiceState helper = commands.status(LEGACY_SERVICE);
+            AgentInstallLayout.require("loaded".equals(helper.load) && helper.stopped() && marker.delete(), "LOCAL_CHECK_FAILED");
+        }
+        boolean restoreLegacyAfterQueueFailure(Map transaction, ServiceState bootstrap) {
+            try {
+                if (!Boolean.TRUE.equals(transaction.get(LEGACY_WAS_ACTIVE)) || !bootstrap.stopped()
+                    || AgentInstallLayout.child(layout.home, "bootstrap").exists()) return false;
+                preparedIdentity(transaction);
+                ServiceState recovery = commands.status(RECOVERY_SERVICE);
+                if (!recovery.stopped()) return false;
+                ServiceState helper = commands.status(LEGACY_SERVICE);
+                if (!"loaded".equals(helper.load) || !helper.stopped()) return false;
+                preparedIdentity(transaction);
+                // A known failed enqueue may restore only the previously active
+                // helper. Unknown jobs, timeouts and an installed BOOT stay put.
+                // The original loop leaves this private marker on SIGTERM;
+                // PID1's ExecStart=loop does not perform the SysV start cleanup.
+                clearLegacyStop(transaction);
+                int started = commands.run(new String[]{commands.executable("systemctl"), "start", LEGACY_SERVICE}, 30000L);
+                if (started != 0) return false;
+                ServiceState restored = commands.status(LEGACY_SERVICE);
+                return restored.running() && restored.controlPid == 0 && restored.job == 0;
+            } catch (Exception uncertain) { return false; /* Unconfirmed restoration is never reported as success. */ }
+        }
+        void queueBootstrap(File script, Map transaction, String operation) throws Exception {
+            preparedIdentity(transaction); rememberLegacyState(transaction); preparedIdentity(transaction);
+            int stopped = commands.run(new String[]{commands.executable("systemctl"), "stop", LEGACY_SERVICE}, 60000L);
+            AgentInstallLayout.require(stopped == 0, "SERVICE_FAILED");
+            ServiceState helper = commands.status(LEGACY_SERVICE);
+            AgentInstallLayout.require("loaded".equals(helper.load) && "inactive".equals(helper.active) && helper.stopped(), "SERVICE_FAILED");
+            preparedIdentity(transaction);
+            String unit = "java-assessment-bootstrap-" + operation + ".service";
+            int result = commands.run(new String[]{commands.executable("systemd-run"), "--unit=" + unit,
+                "--uid=root", "--gid=root", "--service-type=simple", "/bin/sh", script.getPath(), "install-bootstrap", operation}, 60000L);
+            if (result == 0) return;
+            // A timed-out client may already have queued a PID-1 job. Never
+            // restart the old helper in that indeterminate case.
+            AgentInstallLayout.require(result != 30 && result != 31, "SERVICE_FAILED");
+            ServiceState bootstrap = commands.status(unit);
+            if (bootstrap.running()) return;
+            restoreLegacyAfterQueueFailure(transaction, bootstrap);
+            throw new AgentInstallLayout.Failure("SERVICE_FAILED");
+        }
         File script(Map transaction) throws Exception {
             File script = AgentInstallLayout.child(layout.home, "bootstrap/update-bootstrap.sh");
             if (!script.isFile() && transaction != null) script = AgentInstallLayout.child(layout.transaction(AgentInstallLayout.text(transaction.get("operationId"))), AgentInstallLayout.text(transaction.get("preparedDirectory")) + "/bootstrap/update-bootstrap.sh");
@@ -220,7 +380,7 @@ public final class AgentMigrationBootstrap {
         }
         public void local(String action, Map transaction) throws Exception {
             AgentInstallLayout.require(Arrays.asList(new String[]{"check", "sync", "snapshot-services", "snapshot-uninstall", "activate-uninstall", "restore-uninstall", "pause", "start", "activate-services", "restore-services", "install-bootstrap", "probe-manager"}).contains(action), "LOCAL_CHECK_FAILED");
-            if ("sync".equals(action)) { AgentInstallLayout.require(AgentUpdateWorker.Production.process(new String[]{"/bin/sync"}, 30000) == 0, "LOCAL_CHECK_FAILED"); return; }
+            if ("sync".equals(action)) { AgentInstallLayout.require(commands.run(new String[]{"/bin/sync"}, 30000) == 0, "LOCAL_CHECK_FAILED"); return; }
             File script = script(transaction);
             if ("install-bootstrap".equals(action)) script = AgentInstallLayout.child(layout.transaction(AgentInstallLayout.text(transaction.get("operationId"))), AgentInstallLayout.text(transaction.get("preparedDirectory")) + "/bootstrap/update-bootstrap.sh");
             if (!script.isFile() && "check".equals(action)) {
@@ -236,14 +396,7 @@ public final class AgentMigrationBootstrap {
                 // launch a separate SERVICE, without inheriting that namespace.
                 // These options are available in systemd 219 (RHEL 7); --scope,
                 // --wait, --collect and --no-block are deliberately not used.
-                String unit = "java-assessment-bootstrap-" + operation + ".service";
-                int result = commands.run(new String[]{commands.executable("systemd-run"), "--unit=" + unit,
-                    "--uid=root", "--gid=root", "--service-type=simple", "/bin/sh", script.getPath(), action, operation}, 60000);
-                // A repeated poll must not enqueue a second bootstrap or stop
-                // the first one. Failed/inactive jobs remain visible for review.
-                if (result != 0) result = commands.run(new String[]{commands.executable("systemctl"), "is-active", "--quiet", unit}, 30000);
-                AgentInstallLayout.require(result == 0, "SERVICE_FAILED");
-                return;
+                queueBootstrap(script, transaction, operation); return;
             }
             AgentInstallLayout.require(commands.run(new String[]{"/bin/sh", script.getPath(), action, operation}, 1700000) == 0, "SERVICE_FAILED");
         }
