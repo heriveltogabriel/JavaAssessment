@@ -25,6 +25,29 @@
       "supportFiles": 23,
       "minUpdater": 1,
       "format": "collector-jar-v1"
+    },
+    "2.0.9": {
+      "packageManifestSha256": "b9485c8f8f3723e81f7fcc3811b0935e52a72734127cc2275ff5fb6e874e4626",
+      "artifacts": {
+        "assessment-collector-2.0.9.zip": {
+          "sha256": "bc90a94004b12ece419e0ffa6df3fe6b2bed50f6e21e42d844acee2eb86eb279",
+          "bytes": 30547019
+        },
+        "assessment-dashboard-runtime-2.0.9.zip": {
+          "sha256": "5adccc958d79f3ccb7ad0d60b6a9a67d115905c4ce9130ff4e72280cd6896efa",
+          "bytes": 76249034
+        }
+      },
+      "collectorJarSha256": "507e45f87f0da3d417d3a1dbe2f2dfb3e9412652eb10b7c73cd50b5751361761",
+      "collectorJarBytes": 178334,
+      "classfileMajor": 50,
+      "manifestSha256": "01963966d5568f219c548f0f96bba189a799da8afb69194fb26c22d6b9245755",
+      "signatureSha256": "b41f84820b52ead86a02a21083e6834c32f3c907f366627d23057734fc947aa8",
+      "publicKeySha256": "d5911883d9aa35e0b0e8c8ea6b6f971f70566282ee9a7816d500a79e897130b8",
+      "supportProfileId": "cde761dd16ccc3f0079b2092629ec54d396f68506a55f00f6aa909621b9cdc9d",
+      "supportFiles": 24,
+      "minUpdater": 3,
+      "format": "agent-bundle-v1"
     }
   },
   "testLimitations": [
@@ -93,6 +116,12 @@
       "sha256": "43bd58318078694fb45b69a80a9933084285c5727bb53e5ac1d692d5c2570f69",
       "bytes": 7606013,
       "migrationOrigin": true
+    },
+    {
+      "version": "2.0.9",
+      "sha256": "bc90a94004b12ece419e0ffa6df3fe6b2bed50f6e21e42d844acee2eb86eb279",
+      "bytes": 30547019,
+      "migrationOrigin": true
     }
   ],
   "reviewedSupportGroups": [
@@ -115,6 +144,60 @@
         "2.0.5"
       ],
       "verification": "public ZIP receipts, exact script/library/pin hashes; not OS execution"
+    },
+    {
+      "versions": [
+        "2.0.9"
+      ],
+      "verification": "public ZIP receipt and signed first V3 bundle; exact immutable bootstrap/script/library/pin hashes; not additional OS execution"
     }
-  ]
+  ],
+  "immutableBootstrapPin": {
+    "version": "2.0.9",
+    "packageManifestSha256": "b9485c8f8f3723e81f7fcc3811b0935e52a72734127cc2275ff5fb6e874e4626",
+    "packageSha256": "bc90a94004b12ece419e0ffa6df3fe6b2bed50f6e21e42d844acee2eb86eb279",
+    "packageBytes": 30547019,
+    "publicKeySha256": "d5911883d9aa35e0b0e8c8ea6b6f971f70566282ee9a7816d500a79e897130b8",
+    "manifestSha256": "01963966d5568f219c548f0f96bba189a799da8afb69194fb26c22d6b9245755",
+    "signatureSha256": "b41f84820b52ead86a02a21083e6834c32f3c907f366627d23057734fc947aa8",
+    "bundleSha256": "6d978574ec90296b1455bad11841fca378e8e85da3a4131275d5ce0f7b873c5c",
+    "files": {
+      "bootstrap/anchor.jar": {
+        "bytes": 178334,
+        "mode": "600",
+        "role": "bootstrap",
+        "sha256": "507e45f87f0da3d417d3a1dbe2f2dfb3e9412652eb10b7c73cd50b5751361761"
+      },
+      "bootstrap/lib/bcprov-jdk15to18-1.86.jar": {
+        "bytes": 7177698,
+        "mode": "600",
+        "role": "bootstrap",
+        "sha256": "fc50334d4d87b4272e72fa95ca748ead05bdef02ef760a5b13f64ffee317cd81"
+      },
+      "bootstrap/lib/bctls-jdk15to18-1.86.jar": {
+        "bytes": 812367,
+        "mode": "600",
+        "role": "bootstrap",
+        "sha256": "c0dbcd24ceeb78a263661a38d243a3c82620f002a41f49c5399a9635764a963a"
+      },
+      "bootstrap/lib/bcutil-jdk15to18-1.86.jar": {
+        "bytes": 789262,
+        "mode": "600",
+        "role": "bootstrap",
+        "sha256": "e72ef8a0fcad295207529b268ee02eb72acc7c83ec2e3a9df90cbed9380e3990"
+      },
+      "bootstrap/root-trust.sh": {
+        "bytes": 7938,
+        "mode": "700",
+        "role": "bootstrap",
+        "sha256": "a754e4c25443e7f6a275ed35ccfb4154be6760f005a6ad335c3eac3e27cec627"
+      },
+      "bootstrap/update-bootstrap.sh": {
+        "bytes": 15560,
+        "mode": "700",
+        "role": "bootstrap",
+        "sha256": "ec1d08dde81c9cbcf559797cd0c5fdf3dd076874d5410ff5cc0e4839da10c663"
+      }
+    }
+  }
 }

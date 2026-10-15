@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Public candidate verification and rejection checks; no signing or host access."""
 import argparse
+import copy
 import importlib.util
 import io
 from pathlib import Path
@@ -38,7 +39,8 @@ def main(candidate):
     public = ROOT / 'collector/public/agent-update-public.der'
     result = module.verify(candidate, candidate.parent, pins, public)
     check(result['result'] == 'PUBLIC_CANDIDATE_VERIFIED' and result['candidateOnly'] is True
-          and result['productionCompatibilityValidated'] is False and result['privateSigningMaterialRead'] is False)
+          and result['productionCompatibilityValidated'] is False and result['privateSigningMaterialRead'] is False
+          and result['bootstrapOriginVersion'] == '2.0.9' and result['immutableBootstrapVerified'] is True)
     original_parse = module.parse
     for corrupt in ('candidateOnly', 'hash'):
         def changed(raw):
@@ -68,10 +70,53 @@ def main(candidate):
         pem = scratch / 'public.pem'
         pem.write_bytes(module.openssl('pkey', '-pubin', '-inform', 'DER', '-in', scratch / 'public.der', '-outform', 'PEM'))
         reject(lambda: module.check_signature(pem, b'{}', bytes(384), scratch))
+        reviewed = module.parse(pins.read_bytes())
+        origin = next(row for row in reviewed['reviewedPackagePins'] if row['version'] == '2.0.9')
+        original = candidate.parent / '2.0.9/packages/assessment-collector-2.0.9.zip'
+        entries, profile = module.legacy_bridge_profile(original, origin['sha256'])
+        known = {'2.0.9': (entries, profile, origin)}
+        inherited_version, inherited = module.inherited_bootstrap(reviewed, known, candidate.parent, public.read_bytes(), pem, scratch, '2.0.11')
+        check(inherited_version == '2.0.9' and module.sha(inherited['bootstrap/anchor.jar']) ==
+              reviewed['immutableBootstrapPin']['files']['bootstrap/anchor.jar']['sha256'])
+        check(set(inherited) == set(reviewed['immutableBootstrapPin']['files']))
+        for corrupt in ('origin', 'package', 'receipt', 'inventory', 'member'):
+            bad = copy.deepcopy(reviewed)
+            pin = bad['immutableBootstrapPin']
+            if corrupt == 'origin':
+                pin['version'] = '2.0.8'
+            elif corrupt == 'package':
+                pin['packageSha256'] = '0' * 64
+            elif corrupt == 'receipt':
+                pin['packageManifestSha256'] = '0' * 64
+            elif corrupt == 'inventory':
+                pin['files'].pop('bootstrap/root-trust.sh')
+            else:
+                pin['files']['bootstrap/anchor.jar']['sha256'] = '0' * 64
+            reject(lambda: module.inherited_bootstrap(bad, known, candidate.parent, public.read_bytes(), pem, scratch, '2.0.11'))
+        # Even an updated checksum pin cannot make altered, unsigned source
+        # metadata an authenticated inherited bootstrap.
+        bad = copy.deepcopy(reviewed)
+        changed_entries = dict(entries)
+        raw = changed_entries['full-update/manifest.json']
+        altered = raw.replace(b'"minJava":6', b'"minJava":7')
+        check(altered != raw)
+        changed_entries['full-update/manifest.json'] = altered
+        bad['immutableBootstrapPin']['manifestSha256'] = module.sha(altered)
+        changed_known = {'2.0.9': (changed_entries, profile, origin)}
+        reject(lambda: module.inherited_bootstrap(bad, changed_known, candidate.parent, public.read_bytes(), pem, scratch, '2.0.11'))
+        # A replacement payload with a matching outer pin still has to match
+        # the signed original bundle checksum and every signed member.
+        bad = copy.deepcopy(reviewed)
+        changed_entries = dict(entries)
+        changed_entries['full-update/bundle.zip'] += b'altered-public-bundle'
+        bad['immutableBootstrapPin']['bundleSha256'] = module.sha(changed_entries['full-update/bundle.zip'])
+        changed_known = {'2.0.9': (changed_entries, profile, origin)}
+        reject(lambda: module.inherited_bootstrap(bad, changed_known, candidate.parent, public.read_bytes(), pem, scratch, '2.0.11'))
     print('Public full-agent candidate PASS ' + str(checks) + ' checks; no private signing material or host access.')
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--candidate', type=Path, required=True)
-    main(parser.parse_args().candidate)
+    with patch('agent_update_signing.ensure_keypair', side_effect=AssertionError('Private signing material must never be accessed by public verification')):
+        main(parser.parse_args().candidate)

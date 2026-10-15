@@ -31,15 +31,15 @@ Use um JDK 17 e o ECJ 3.33.0 para compilar o produto com target Java 6. Os ZIPs 
 export JAVA_HOME=/caminho/do/jdk17
 export ASSESSMENT_ECJ_JAR=/caminho/do/ecj-3.33.0.jar
 python3 -B tests/build-agent-migration-fixtures.py --output tmp/agent-migration/fixture
-python3 -B tests/build-agent-full-update-fixtures.py --output tmp/full-update/http-fixture-final3
-python3 -B tests/build-agent-profile-fixtures.py --fixture tmp/full-update/http-fixture-final3 --output tmp/full-update/profile-fixture
-/bin/sh ops/test-agent-migration.sh --suite all --fixture tmp/full-update/http-fixture-final3 --profile-fixture tmp/full-update/profile-fixture
-python3 -B tests/full-agent-release-test.py --fixture tmp/full-update/http-fixture-final3
-python3 -B tests/full-update-installer-test.py --fixture tmp/full-update/http-fixture-final3
+python3 -B tests/build-agent-full-update-fixtures.py --bridge-version 2.0.10 --target-version 2.0.11 --future-version 2.0.12 --output tmp/full-update/reproduction-211-fixture
+python3 -B tests/build-agent-profile-fixtures.py --fixture tmp/full-update/reproduction-211-fixture --output tmp/full-update/reproduction-211-profiles
+/bin/sh ops/test-agent-migration.sh --suite all --fixture tmp/full-update/reproduction-211-fixture --profile-fixture tmp/full-update/reproduction-211-profiles
+python3 -B tests/full-agent-release-test.py --fixture tmp/full-update/reproduction-211-fixture
+python3 -B tests/full-update-installer-test.py --fixture tmp/full-update/reproduction-211-fixture
 python3 -B tests/agent-bundle-service-test.py
 ```
 
-Os destinos de fixture são imutáveis: se já existirem, use outra pasta e passe o mesmo caminho aos testes. O modo `all` usa separadamente a fixture original `tmp/agent-migration/fixture`. Evidências de execução ficam em `tmp/agent-migration/evidence/` e `tmp/full-update/`; screenshots/JSON de navegador em `output/agent-migration/`. Não são artefatos para distribuição.
+O alvo da fixture precisa corresponder a `DashboardVersion.VERSION` da fonte conferida; os números acima correspondem ao candidato 2.0.11. Os destinos de fixture são imutáveis: se já existirem, use outra pasta e passe o mesmo caminho aos testes. O modo `all` usa separadamente a fixture original `tmp/agent-migration/fixture`. Evidências de execução ficam em `tmp/agent-migration/evidence/` e `tmp/full-update/`; screenshots/JSON de navegador em `output/agent-migration/`. Não são artefatos para distribuição.
 
 ## Gates ainda abertos para release
 
@@ -87,4 +87,20 @@ Para a tentativa já preparada, `ops/retomar-migracao.py` verifica o candidato p
 
 O script de retomada passou 38 verificações offline, incluindo alvo/operação sintéticos, arquivo privado, assinatura pública, marcadores permitidos, espera pelo recuperador e timeout sem repetição automática. Uma prova adicional executou `verify_state()` inteiro em árvore temporária criada com os ZIPs públicos reais: staging e modos, bootstrap/selo, origem 1.5.12, helper 1.5.8 e journal sintético. OpenSSL real verificou a assinatura; arquivo de staging adulterado e diretório preparado diferente foram rejeitados. Somente identidade root/Linux/serviços foram simulados nessa prova, sem iniciar bootstrap ou SSH.
 
-A primeira execução da retomada pelo operador encontrou timeout ao conectar à porta SSH. O relatório privado registrou exit code 255 e nenhum marcador remoto; essa tentativa não chegou a executar o reparo. A mensagem do wrapper foi corrigida para distinguir ausência de resposta SSH, timeout de resultado desconhecido, recusa específica de uma validação e divergência real de hashes. A regressão do script passou 53 verificações offline. A conexão e a conclusão nativa continuam pendentes.
+A primeira execução da retomada pelo operador encontrou timeout ao conectar à porta SSH. O relatório privado registrou exit code 255 e nenhum marcador remoto; essa tentativa não chegou a executar o reparo. A mensagem do wrapper foi corrigida para distinguir ausência de resposta SSH, timeout de resultado desconhecido, recusa específica de uma validação e divergência real de hashes. A regressão do script passou 53 verificações offline. A conexão e a conclusão nativa ainda estavam pendentes naquele momento; a retomada posterior está registrada abaixo.
+
+## Confirmação nativa após a retomada
+
+O operador informou que a VM estava desligada, ligou-a e executou novamente a retomada. O relatório retornou SSH 0, `RESUME_PRESERVATION=UNCHANGED` para os seis hashes conferidos e `RESUME_RECOVERY=ACTIVE`. `HANDOFF_ONLY` não foi usado como prova de conclusão; o estado `FAILED` do coletor nesse instante também não foi interpretado como uma nova falha definitiva.
+
+A interface real do dashboard foi consultada pelo Chrome, sem requisições simuladas ou execução de SSH pelo agente. A máquina apareceu com 2.0.9 e contato `Reporting`. O mesmo pedido iniciado às 19:44 de 2026-10-14 mostrou migração 1.5.12 → 2.0.9, atualização completa confirmada e conclusão às 22:45:40 GMT-3. O assessment vinculado foi recebido às 22:45:57: quatro instalações Java, nenhum servidor e coleta parcial por caminho de inclusão ausente (`/usr/java`). Atualização e cobertura da coleta permaneceram resultados separados.
+
+Essa prova confirma a continuação nativa do pacote 2.0.9 após uma recuperação manual, preservando configuração e identidade. Não comprova o novo despacho automático systemd ainda presente apenas na fonte. Os dois canários originais 1.5.12, a recuperação após interrupções, a evolução posterior e Java 6/SysV permanecem pendentes. Endereços, IDs completos e recibos ficam apenas em `output/agent-canaries/`, fora do Git.
+
+## Candidato corrigido 2.0.11
+
+Foram reservados e preparados B=2.0.10/T=2.0.11, exclusivamente para laboratório. Os cinco artefatos finais foram conferidos por recibo, assinatura e inventário. As sete rotas assinadas e o código do agente contêm o novo despacho independente; as 58 classes do agente mantêm major 50. Os bytes da interface são iguais aos da 2.0.9 conferida na sessão real. O bootstrap herdado da primeira V3 permanece exatamente 2.0.9, autenticado pelo ZIP público revisado, recibo, DER, assinatura e inventário; código e manager correspondem ao alvo novo.
+
+O verificador público passou 20 checks em 2.0.9 e 2.0.11, incluindo adulteração dos pins, recibos, assinatura e herança. A suíte completa com fixtures novas B=2.0.10/T=2.0.11/U=2.0.12 passou: binário original, contratos, 20 checks do handoff corrigido, lifecycle, desinstalação, perfis, HTTP/SQLite, Work requests, assessment e integração final. A retomada pontual também passou novamente seus 53 checks, sem SSH. O builder validou as regressões de descoberta/JDBC, autenticação, instaladores e publicação.
+
+Pacotes conferidos e instruções ficam em `output/dashboard-releases/2.0.11/`; o log integrado está em `tmp/full-update/canary-211-migration.log`. A publicação e o próximo pedido serão executados pelo operador. O próximo aceite nativo é um canário original 1.5.12 concluindo diretamente pelo painel, sem o reparo usado em 2.0.9. Java 6/SysV, dois canários, interrupções/reboot e evolução real continuam gates de produção.

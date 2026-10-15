@@ -61,6 +61,63 @@ def worker_classes(jar):
     return result
 
 
+def checked_bundle(public, raw, signature, payload, target, scratch):
+    bundle = check_signature(public, raw, signature, scratch)
+    require(set(bundle) == {'schema', 'type', 'format', 'version', 'minUpdater', 'minJava', 'platform', 'bytes', 'sha256', 'files'}
+            and bundle['schema'] == 1 and bundle['type'] == 'ASSESSMENT_AGENT_BUNDLE_V1' and bundle['format'] == 'agent-bundle-v1'
+            and bundle['version'] == target and bundle['minUpdater'] == 3 and bundle['minJava'] == 6 and bundle['platform'] == 'linux'
+            and bundle['bytes'] == len(payload) and bundle['sha256'] == sha(payload), 'Unexpected signed bundle header')
+    (scratch / 'bundle.zip').write_bytes(payload)
+    members = bundle_entries(scratch / 'bundle.zip')
+    require(set(members) == set(bundle['files']), 'Bundle manifest inventory differs')
+    for name, data in members.items():
+        item = bundle['files'][name]
+        require(item == {'bytes': len(data), 'sha256': sha(data), 'mode': '700' if name.endswith('.sh') else '600', 'role': bundle_role(name)}, 'Bundle member metadata differs')
+    return bundle, members
+
+
+def inherited_bootstrap(pins, known, baselines_root, public_bytes, public_pem, scratch, target):
+    """Authenticate immutable bootstrap solely through reviewed public artifacts."""
+    pin = pins['immutableBootstrapPin']
+    require(set(pin) == {'version', 'packageManifestSha256', 'packageSha256', 'packageBytes', 'publicKeySha256',
+                         'manifestSha256', 'signatureSha256', 'bundleSha256', 'files'}, 'Unexpected immutable bootstrap pin fields')
+    origin = pin['version']
+    require(origin == '2.0.9' and version(origin) <= version(target) and origin in known,
+            'Immutable bootstrap must come from the reviewed first V3 2.0.9 package')
+    entries, _, package_pin = known[origin]
+    require(package_pin['sha256'] == pin['packageSha256'] and package_pin['bytes'] == pin['packageBytes']
+            and pin['publicKeySha256'] == sha(public_bytes) and entries['update-public.der'] == public_bytes,
+            'Immutable bootstrap package/key differs from reviewed pin')
+    manifest_path = baselines_root / origin / 'packages/package-manifest.json'
+    require(manifest_path.is_file() and not manifest_path.is_symlink(), 'Immutable bootstrap public package receipt is missing')
+    manifest_raw = manifest_path.read_bytes()
+    require(sha(manifest_raw) == pin['packageManifestSha256'], 'Immutable bootstrap package receipt changed')
+    receipt = parse(manifest_raw)
+    artifact_name = 'packages/assessment-collector-' + origin + '.zip'
+    artifacts = [row for row in receipt['artifacts'] if row['file'] == artifact_name]
+    require(receipt['dashboardVersion'] == receipt['agentVersion'] == origin
+            and receipt['agentUpdatePublicKeySha256'] == sha(public_bytes) and len(artifacts) == 1
+            and artifacts[0]['sha256'] == pin['packageSha256'] and artifacts[0]['bytes'] == pin['packageBytes'],
+            'Immutable bootstrap package receipt does not authenticate the reviewed agent')
+    raw, signature, payload = (entries['full-update/' + name] for name in ('manifest.json', 'manifest.sig', 'bundle.zip'))
+    require(sha(raw) == pin['manifestSha256'] and sha(signature) == pin['signatureSha256']
+            and sha(payload) == pin['bundleSha256'], 'Immutable bootstrap signed source bytes differ')
+    bundle, members = checked_bundle(public_pem, raw, signature, payload, origin, scratch)
+    bootstrap = {name: data for name, data in members.items() if name.startswith('bootstrap/')}
+    require(set(bootstrap) == set(pin['files']) and set(bootstrap) == {name for name in bundle['files'] if name.startswith('bootstrap/')},
+            'Immutable bootstrap inventory differs')
+    require({'bootstrap/anchor.jar', 'bootstrap/root-trust.sh', 'bootstrap/update-bootstrap.sh'}.issubset(bootstrap)
+            and all(name in {'bootstrap/anchor.jar', 'bootstrap/root-trust.sh', 'bootstrap/update-bootstrap.sh'}
+                    or re.fullmatch(r'bootstrap/lib/[A-Za-z0-9_.-]+[.]jar', name) for name in bootstrap),
+            'Immutable bootstrap contains an unexpected member')
+    for name, data in bootstrap.items():
+        require(pin['files'][name] == bundle['files'][name]
+                and pin['files'][name]['bytes'] == len(data) and pin['files'][name]['sha256'] == sha(data),
+                'Immutable bootstrap member differs from reviewed signed bytes')
+    validate_jar(bootstrap['bootstrap/anchor.jar'], origin)
+    return origin, bootstrap
+
+
 def verify(release, baselines_root, pins_path, public_path):
     release, baselines_root = Path(release), Path(baselines_root)
     require(release.is_dir() and not release.is_symlink(), 'Release directory is missing or linked')
@@ -147,31 +204,20 @@ def verify(release, baselines_root, pins_path, public_path):
         require({name for name in generic if name.startswith('full-update/')} == {'full-update/' + name for name in ('manifest.json', 'manifest.sig', 'bundle.zip')}, 'Unexpected generic full-update assets')
         for name in ('manifest.json', 'manifest.sig', 'bundle.zip'):
             require(generic['full-update/' + name] == runtime[prefix + name], 'Generic and runtime full-update bytes differ')
-        bundle = check_signature(pem, raw, signature, scratch)
-        require(set(bundle) == {'schema', 'type', 'format', 'version', 'minUpdater', 'minJava', 'platform', 'bytes', 'sha256', 'files'}
-                and bundle['schema'] == 1 and bundle['type'] == 'ASSESSMENT_AGENT_BUNDLE_V1' and bundle['format'] == 'agent-bundle-v1'
-                and bundle['version'] == target and bundle['minUpdater'] == 3 and bundle['minJava'] == 6 and bundle['platform'] == 'linux'
-                and bundle['bytes'] == len(payload) and bundle['sha256'] == sha(payload), 'Unexpected final bundle header')
-        (scratch / 'bundle.zip').write_bytes(payload)
-        members = bundle_entries(scratch / 'bundle.zip')
-        require(set(members) == set(bundle['files']), 'Bundle manifest inventory differs')
-        for name, data in members.items():
-            item = bundle['files'][name]
-            require(item == {'bytes': len(data), 'sha256': sha(data), 'mode': '700' if name.endswith('.sh') else '600', 'role': bundle_role(name)}, 'Bundle member metadata differs')
-        expected_members = {'code/collector.jar': generic['collector.jar'], 'manager/helper.jar': generic['collector.jar'],
-                            'bootstrap/anchor.jar': generic['collector.jar'], 'bootstrap/root-trust.sh': generic['root-trust.sh'],
-                            'bootstrap/update-bootstrap.sh': generic['update-bootstrap.sh']}
+        bundle, members = checked_bundle(pem, raw, signature, payload, target, scratch)
+        bootstrap_origin, bootstrap = inherited_bootstrap(pins, known, baselines_root, public, pem, scratch, target)
+        expected_members = {'code/collector.jar': generic['collector.jar'], 'manager/helper.jar': generic['collector.jar'], **bootstrap}
         for name, data in generic.items():
             if re.fullmatch(r'[A-Za-z0-9_-]+[.]sh|lib/[A-Za-z0-9_.-]+[.]jar', name):
                 expected_members['code/' + name] = data
                 if name.startswith('lib/'):
                     expected_members['manager/' + name] = data
-                    expected_members['bootstrap/' + name] = data
             elif name.startswith('conf/') and name.endswith('.example'):
                 expected_members['defaults/' + Path(name).name] = data
-        require(members == expected_members, 'First V3 candidate bundle differs from complete generic code/bootstrap/libraries')
-        for name in ('code/collector.jar', 'manager/helper.jar', 'bootstrap/anchor.jar'):
+        require(members == expected_members, 'Candidate bundle differs from complete generic code/manager or immutable inherited bootstrap')
+        for name in ('code/collector.jar', 'manager/helper.jar'):
             validate_jar(members[name], target)
+        validate_jar(members['bootstrap/anchor.jar'], bootstrap_origin)
 
         route_prefix = 'dist/agent-update-routes/' + target + '/'
         routes = check_signature(pem, runtime[route_prefix + 'routes.json'], runtime[route_prefix + 'routes.sig'], scratch)
@@ -179,7 +225,7 @@ def verify(release, baselines_root, pins_path, public_path):
                 and routes['schema'] == 1 and routes['type'] == 'ASSESSMENT_AGENT_ROUTES_V1'
                 and routes['targetVersion'] == target and routes['minimumAgentVersion'] == '1.5.12'
                 and routes['bundleManifestSha256'] == sha(raw), 'Route catalog differs from final bundle')
-        expected_origins = {v for v, (_, _, pin) in known.items() if pin['migrationOrigin']}
+        expected_origins = {v for v, (_, _, pin) in known.items() if pin['migrationOrigin'] and version(v) < version(target)}
         require(len(routes['routes']) == len(expected_origins)
                 and {row['fromVersion'] for row in routes['routes']} == expected_origins, 'Route origin inventory differs from reviewed pins')
         for route in routes['routes']:
@@ -221,6 +267,7 @@ def verify(release, baselines_root, pins_path, public_path):
             'targetVersion': target, 'bridgeVersion': bridge, 'publicKeySha256': sha(public),
             'packageManifestSha256': sha(manifest_raw), 'bundleManifestSha256': sha(raw),
             'bundleSha256': bundle['sha256'], 'legacyProfiles': len(routes['routes']),
+            'bootstrapOriginVersion': bootstrap_origin, 'immutableBootstrapVerified': True,
             'original1512Verified': True, 'helper1512And159Verified': True,
             'artifacts': [{'file': row['file'], 'sha256': row['sha256'], 'bytes': row['bytes']} for row in rows]}
 
