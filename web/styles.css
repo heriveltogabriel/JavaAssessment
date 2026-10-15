@@ -39,3 +39,6 @@ body.sidebar-collapsed #main-content{margin-left:0}
 
 /* Keep the full release visible on desktop and narrow screens. */
 .brand{min-width:0}.brand .brand-text{min-width:0;display:flex;flex-direction:column;gap:1px;line-height:1.2}.brand .brand-text>span{overflow:hidden;text-overflow:ellipsis}.brand .brand-text small{display:block;font-size:10px;letter-spacing:.3px;border:0;padding:0;line-height:1.3}
+
+/* Compact machine network identity; full evidence remains in the detail drawer. */
+.machine-ip-cell{display:inline-flex;align-items:baseline;gap:8px}.machine-ip-cell>span{white-space:nowrap}.machine-ip-more{flex-shrink:0;font-size:11px;font-weight:600;padding:2px 5px;border-radius:4px;background:#edf1e6}.machine-network-details{margin:14px 0}

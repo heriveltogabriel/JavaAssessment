@@ -8,6 +8,8 @@ Preparada localmente em 2026-10-15 para continuidade da validação no laborató
 - Menu lateral **Java Assessment** abre **Machines / All environments**, limpando máquina, busca, datas e página anteriores. Leitores também acessam a listagem; ações administrativas continuam restritas.
 - O bridge systemd para e confirma a inatividade do helper legado antes de iniciar o bootstrap independente. Preserva o estado original e só restaura o helper quando a falha anterior ao handoff permite fazê-lo com segurança. Inclui a leitura corrigida de propriedades vazias do systemd.
 
+- Machines mostra o primeiro IP de rede, priorizando IPv4, e um botão “+N” para abrir os demais nos detalhes. Loopback e IPv6 link-local ficam fora da tabela; a lista completa permanece nos detalhes da máquina. IPv6 de rede continua visível quando não há IPv4. A alteração foi autorizada antes da publicação, mantendo a versão 2.0.13; somente arquivos web e pacotes do dashboard foram recompostos, com novos hashes. Agente, bridges e assinaturas permanecem idênticos.
+
 ## Validação
 
 Testes de navegação desktop/mobile, perfis administrador/leitor, ACK perdido, erro de confirmação, API real V1/V3 e SQLite locais passaram. O fluxo confirma o pedido correto e mantém o assessment vinculado. A regressão antiga do modal teve um timeout no login após expirar a sessão; a repetição integral sem alterações passou, registrada como instabilidade do ensaio, não como correção de autenticação.

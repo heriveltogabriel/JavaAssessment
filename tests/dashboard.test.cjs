@@ -132,3 +132,17 @@ assert.equal((compactHtml.match(/data-landscape=/g)||[]).length,4);
 assert.match(compactHtml,/Driver: Não informada/);assert.ok(!compactHtml.includes('<script>unsafe'));
 assert.match(compactHtml,/overview-machine-table/);assert.ok(!compactHtml.includes('class="machine-card'));
 console.log('PASS: compact server and datasource-version groups, unknown metadata, remainder totals, four panels and escaped host table.');
+
+// Network summary is a view only; local addresses remain in the original inventory.
+const ips=['fe80:0:0:0:0:17ff:fe00:920%ens3','10.0.0.63','0:0:0:0:0:0:0:1%lo','127.0.0.1'];
+assert.deepEqual(dash.networkAddresses(ips),['10.0.0.63']);assert.equal(ips.length,4);
+assert.deepEqual(dash.networkAddresses(['2001:db8::1','10.1.2.3','10.1.2.3','2001:0db8:0:0:0:0:0:1']),['10.1.2.3','2001:db8::1']);
+assert.deepEqual(dash.networkAddresses(['::1','127.2.3.4','fe90::1%eth0','FEAF::1','febf::1','::','0.0.0.0','::ffff:127.0.0.1']),[]);
+assert.deepEqual(dash.networkAddresses(['fec0::1','fd12::1','2001:db8::2']),['fec0::1','fd12::1','2001:db8::2']);
+assert.deepEqual(dash.networkAddresses(['bad','999.1.2.3','<img src=x>','fe80:::1',null]),[]);
+assert.deepEqual(dash.networkAddresses(null),[]);
+assert.match(dash.machineIpCell({id:'h',ipAddresses:['::1']}),/unknown/);
+assert.doesNotMatch(dash.machineIpCell({id:'h',ipAddresses:ips}),/fe80|127\.0|machine-ip-more/);
+assert.match(dash.machineIpCell({id:'h',hostname:'a<bad>',ipAddresses:['2001:db8::1','10.0.0.1','10.0.0.2']}),/\+2<\/button>/);
+assert.doesNotMatch(dash.machineIpCell({id:'h',hostname:'a<bad>',ipAddresses:['10.0.0.1','10.0.0.2']}),/<bad>/);
+console.log('Machine IP presentation PASS: IPv4 priority, IPv6-only, loopback/link-local, duplicate normalization, empty and escaped details.');

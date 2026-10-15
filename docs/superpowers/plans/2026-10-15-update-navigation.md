@@ -32,3 +32,7 @@
 - Candidato incorpora o código de parada coordenada do helper; testes locais não são apresentados como prova nativa de falha/reboot.
 
 Resultado: candidato local 2.0.13 (bridge 2.0.12) preparado e verificado. Publicação remota não executada. Evidências e limites em docs/RELEASE_2.0.13.md.
+
+## Ajuste autorizado antes da publicação
+
+O usuário aprovou manter 2.0.13 e simplificar IP addresses: primeiro IPv4 de rede, demais em +N, IPv6 de rede preservado, loopback/IPv6 link-local só nos detalhes completos. Implementação apenas web, com normalização para deduplicação e sem alterar inventário/CSV. Validar classificação e clique de detalhes, guardar cópia privada da montagem anterior e recompor runtime/source/manual, script publicador e checksums. Preservar bytes do agente e todos os assets assinados; verificar novamente o candidato público antes da entrega.
