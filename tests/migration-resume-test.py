@@ -89,6 +89,15 @@ def full_tree_checks(release, contract):
             check(not fields_namespace['helper_inactive'](fields_namespace['service']('java-assessment-update.service')))
         returned.stdout = service_bytes({**native_fields, 'Job': '0'})
         check(fields_namespace['helper_inactive'](fields_namespace['service']('java-assessment-update.service')))
+        timer_fields = {'LoadState': 'loaded', 'ActiveState': 'active', 'SubState': 'waiting', 'Job': ''}
+        returned.stdout = service_bytes(timer_fields)
+        check(fields_namespace['service']('java-assessment-collector.timer') == timer_fields)
+        check('MainPID' not in observed.call_args.args[0] and 'KillMode' not in observed.call_args.args[0])
+        for unit in ('java-assessment-update.service', 'java-assessment-recovery.service',
+                     'java-assessment-bootstrap-' + contract['operation'] + '.service'):
+            reject(lambda: fields_namespace['service'](unit))
+        returned.stdout = service_bytes({key: value for key, value in timer_fields.items() if key != 'Job'})
+        reject(lambda: fields_namespace['service']('java-assessment-collector.timer'))
     with zipfile.ZipFile(release.parent / '1.5.12/packages/assessment-collector-1.5.12.zip') as archive:
         original = {name: archive.read(name) for name in archive.namelist()}
     with zipfile.ZipFile(release / 'packages/assessment-dashboard-runtime-2.0.11.zip') as archive:
@@ -159,6 +168,10 @@ def full_tree_checks(release, contract):
             if action == 'show':
                 assert '--all' in argv and '--no-pager' in argv
                 result = services[name]
+                if name.endswith('.timer'):
+                    if behavior.get('timer_display_failure'):
+                        raise RuntimeError('INCOMPLETE_SERVICE_DIAGNOSTIC')
+                    result = {key: result[key] for key in ('LoadState', 'ActiveState', 'SubState', 'Job')}
                 return subprocess.CompletedProcess(argv, 0, stdout=('\n'.join(k + '=' + v for k, v in result.items()) + '\n').encode())
             check(name == 'java-assessment-update.service' and action in ('stop', 'start'))
             if action == 'stop':
@@ -247,6 +260,12 @@ def full_tree_checks(release, contract):
             between = calls[actions.index('stop') + 1:actions.index('bootstrap')]
             check(any(call[:2] == ('show', 'java-assessment-update.service') and call[2:] == ('inactive', '0') for call in between))
             check('RESUME_COMPLETE=HANDOFF_ONLY' in captured.getvalue() and native['snapshot_identity']() == before)
+            reset(); behavior.update(success=True, timer_display_failure=True)
+            unknown_timer = io.StringIO()
+            with contextlib.redirect_stdout(unknown_timer): native['remote_main']()
+            check('RESUME_RECOVERY=ACTIVE' in unknown_timer.getvalue() and 'RESUME_TIMER=UNKNOWN' in unknown_timer.getvalue()
+                  and 'RESUME_COMPLETE=HANDOFF_ONLY' in unknown_timer.getvalue() and 'RESUME_STOP=' not in unknown_timer.getvalue())
+            check(sum(call[0] == 'bootstrap' for call in calls) == 1 and not any(call[0] == 'start' for call in calls))
             # Execution/stop failures restore only the previously active helper,
             # and never after created/active recovery or changed transaction.
             for options, restart in (({}, True), ({'stop_code': 1}, True), ({'stop_timeout': True}, False),
@@ -393,6 +412,16 @@ def main(release):
         changed = captured.getvalue().replace('RESUME_AFTER_CONFIG=' + 'a' * 64,
                                               'RESUME_AFTER_CONFIG=' + 'b' * 64)
         failed_result(changed.encode(), 0, 'PRESERVATION_NOT_CONFIRMED_CHECK_PRIVATE_REPORT')
+        def unknown_timer_ssh(argv, **kwargs):
+            raw = captured.getvalue().replace('RESUME_TIMER=INACTIVE', 'RESUME_TIMER=UNKNOWN')
+            return subprocess.CompletedProcess(argv, 0, stdout=raw.encode())
+        with contextlib.redirect_stdout(io.StringIO()):
+            timer_report = module.execute(case['host'], key, 'opc', contract, runner=unknown_timer_ssh,
+                                          output_root=directory / 'evidence')
+        timer_receipt = json.loads(timer_report.read_text())
+        check(timer_receipt['markers']['RESUME_TIMER'] == 'UNKNOWN'
+              and timer_receipt['markers']['RESUME_RECOVERY'] == 'ACTIVE'
+              and timer_receipt['markers']['RESUME_COMPLETE'] == 'HANDOFF_ONLY')
     if contract['bootstrapState'] == 'ABSENT':
         full_tree_checks(release, contract)
     print('Migration resume PASS ' + str(checks) + ' offline checks; fake SSH/OS, public artifacts only; no host access.')

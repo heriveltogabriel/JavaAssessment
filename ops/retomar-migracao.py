@@ -172,10 +172,14 @@ def service(name):
     need(name in ('java-assessment-collector.service', 'java-assessment-collector.timer',
                   'java-assessment-update.service', 'java-assessment-recovery.service',
                   'java-assessment-bootstrap-' + EXPECTED['operation'] + '.service'), 'INVALID_SERVICE')
-    result = subprocess.run(['/usr/bin/systemctl', 'show', name, '--all', '--no-pager', '-p', 'LoadState', '-p', 'ActiveState',
-                             '-p', 'SubState', '-p', 'MainPID', '-p', 'ProtectSystem', '-p', 'ExecMainStatus',
-                             '-p', 'Transient', '-p', 'FragmentPath', '-p', 'ControlPID', '-p', 'Job',
-                             '-p', 'ControlGroup', '-p', 'KillMode'],
+    properties = ['LoadState', 'ActiveState', 'SubState', 'Job']
+    if name.endswith('.service'):
+        properties += ['MainPID', 'ProtectSystem', 'ExecMainStatus', 'Transient', 'FragmentPath',
+                       'ControlPID', 'ControlGroup', 'KillMode']
+    query = ['/usr/bin/systemctl', 'show', name, '--all', '--no-pager']
+    for property_name in properties:
+        query.extend(['-p', property_name])
+    result = subprocess.run(query,
                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=10)
     need(len(result.stdout) < 4096, 'SERVICE_DIAGNOSTIC_FAILED')
     fields = {}
@@ -184,11 +188,14 @@ def service(name):
         key, value = line.split('=', 1)
         need(key not in fields, 'DUPLICATE_SERVICE_DIAGNOSTIC')
         fields[key] = value
-    need({'LoadState', 'ActiveState', 'SubState', 'MainPID', 'ControlPID', 'Job', 'ControlGroup', 'KillMode'} <= set(fields),
-         'INCOMPLETE_SERVICE_DIAGNOSTIC')
+    required = {'LoadState', 'ActiveState', 'SubState', 'Job'}
+    if name.endswith('.service'):
+        required |= {'MainPID', 'ControlPID', 'ControlGroup', 'KillMode'}
+    need(required <= set(fields), 'INCOMPLETE_SERVICE_DIAGNOSTIC')
     need(result.returncode == 0 or result.returncode in (1, 4) and fields.get('LoadState') == 'not-found'
          and fields.get('ActiveState') == 'inactive' and fields.get('MainPID', '0') == '0', 'SERVICE_DIAGNOSTIC_FAILED')
-    need(all(re.fullmatch('[0-9]{1,10}', fields[key]) for key in ('MainPID', 'ControlPID')), 'INVALID_SERVICE_PID')
+    if name.endswith('.service'):
+        need(all(re.fullmatch('[0-9]{1,10}', fields[key]) for key in ('MainPID', 'ControlPID')), 'INVALID_SERVICE_PID')
     need(fields['Job'] == '' or re.fullmatch('[0-9]{1,12}(?: /org/freedesktop/systemd1/job/[0-9]{1,12})?', fields['Job']),
          'INVALID_SERVICE_JOB')
     return fields
@@ -493,8 +500,15 @@ def remote_main():
     print('RESUME_RECOVERY=ACTIVE')
     print('RESUME_TARGET=' + EXPECTED['target'])
     for name, label in (('java-assessment-collector.service', 'COLLECTOR'), ('java-assessment-collector.timer', 'TIMER')):
-        state = service(name).get('ActiveState')
-        need(state in ('active', 'inactive', 'activating', 'deactivating', 'failed'), 'UNEXPECTED_SERVICE_STATE')
+        try:
+            state = service(name).get('ActiveState')
+            need(state in ('active', 'inactive', 'activating', 'deactivating', 'failed'), 'UNEXPECTED_SERVICE_STATE')
+        except Exception:
+            # Timer state is display-only after signed recovery and identity
+            # checks already confirmed handoff. It never proves update success.
+            if label != 'TIMER':
+                raise
+            state = 'unknown'
         print('RESUME_' + label + '=' + state.upper())
     print('RESUME_COMPLETE=HANDOFF_ONLY')
 
@@ -539,6 +553,7 @@ def execute(host, identity, user, contract, runner=subprocess.run, output_root=N
         name, value = line.split('=', 1)
         if (name in fixed and value == fixed[name]
             or name in ('RESUME_COLLECTOR', 'RESUME_TIMER') and value in ('ACTIVE', 'INACTIVE', 'ACTIVATING', 'DEACTIVATING', 'FAILED')
+            or name == 'RESUME_TIMER' and value == 'UNKNOWN'
             or name == 'RESUME_STOP' and re.fullmatch('[A-Z0-9_]{1,96}', value)
             or name == 'RESUME_LEGACY_HELPER' and value in ('STOPPED', 'ALREADY_INACTIVE')
             or name == 'RESUME_HELPER_RESTORE' and value in ('NOT_REQUIRED', 'SKIPPED_HANDOFF', 'ALREADY_ACTIVE', 'RESTORED', 'NOT_CONFIRMED_UNSAFE_TO_FORCE')
