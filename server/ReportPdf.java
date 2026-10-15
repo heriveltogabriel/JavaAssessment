@@ -32,7 +32,7 @@ public final class ReportPdf {
 
     private record Column(String key,String label) {}
     private static final class Data {
-        final String title, generatedAt;
+        final String title, generatedAt, context;
         final List<Column> columns=new ArrayList<>();
         final List<Map<?,?>> rows=new ArrayList<>();
         final List<String> filters=new ArrayList<>();
@@ -42,7 +42,8 @@ public final class ReportPdf {
         Data(Map<String,Object> source) {
             if(source==null)throw new IllegalArgumentException("Report is required");
             title=value(source.get("title"),300,"title");
-            generatedAt=value(source.get("generatedAt"),100,"generatedAt");
+            generatedAt=formatTime(value(source.get("generatedAt"),100,"generatedAt"));
+            context=value(source.get("context"),2000,"context");
             List<?> rawColumns=list(source.get("columns"));
             if(rawColumns.isEmpty()||rawColumns.size()>32)throw new IllegalArgumentException("Select between 1 and 32 columns");
             Set<String> keys=new HashSet<>();
@@ -83,6 +84,10 @@ public final class ReportPdf {
         private static List<?> list(Object o){if(o==null)return List.of();if(o instanceof List<?>)return (List<?>)o;throw new IllegalArgumentException("Invalid report list");}
         private static Map<?,?> map(Object o){if(o instanceof Map<?,?>)return (Map<?,?>)o;throw new IllegalArgumentException("Invalid report object");}
     }
+    private static String formatTime(String value){
+        try{return java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm 'UTC'").withZone(java.time.ZoneOffset.UTC).format(java.time.Instant.parse(value));}
+        catch(java.time.format.DateTimeParseException ignored){return value;}
+    }
     private static String scalar(Object o) {
         if(o==null)return "";
         if(o instanceof String||o instanceof Number||o instanceof Boolean)return o.toString();
@@ -105,7 +110,7 @@ public final class ReportPdf {
 
     private static final class Layout {
         final Pdf pdf;final Data data;final List<List<Column>> groups=new ArrayList<>();
-        StringBuilder page; double y; int groupIndex; boolean tableHeader;
+        StringBuilder page; double y; int groupIndex,pageGroup; boolean tableHeader;
         Layout(Pdf pdf,Data data) {
             this.pdf=pdf;this.data=data;
             Column identity=null;
@@ -123,6 +128,7 @@ public final class ReportPdf {
         void render() throws IOException {
             startPage(true);
             summary();
+            if(!data.context.isBlank())paragraph(data.context,9,MUTED,WIDTH,false);
             if(data.escapedUnicode)paragraph("Caracteres fora do alfabeto Latin-1 são identificados como [U+XXXX]; o CSV preserva o texto Unicode original.",9,MUTED,WIDTH,false);
             if(!data.filters.isEmpty()) {
                 section("FILTROS APLICADOS");
@@ -162,7 +168,7 @@ public final class ReportPdf {
             line(M,H-32,RIGHT,H-32,BORDER);
             text(M,H-18,"Java Assessment · Inventário",8,false,MUTED);
             String footer="Página "+(pdf.pages.size()+1);
-            if(tableHeader)footer+=" · Seção "+(Math.min(groupIndex+1,groups.size()))+"/"+groups.size();
+            if(tableHeader)footer+=" · Seção "+(Math.min(pageGroup+1,groups.size()))+"/"+groups.size();
             text(RIGHT-width(footer,8,false),H-18,footer,8,false,MUTED);
             pdf.page(page.toString());page=null;
         }
@@ -199,7 +205,7 @@ public final class ReportPdf {
             rect(M,y,RIGHT-M,height,PALE);
             text(M+3,y+17,"#",8,true,OLIVE);
             for(int c=0;c<cs.size();c++)for(int l=0;l<lines.get(c).size();l++)text(TABLE_X+c*col+8,y+17+l*LINE,lines.get(c).get(l),9,true,OLIVE);
-            y+=height;tableHeader=true;
+            y+=height;tableHeader=true;pageGroup=groupIndex;
         }
         void row(int index,List<Column> cs) throws IOException {
             double col=WIDTH/cs.size();List<List<String>> cells=new ArrayList<>();int count=1;

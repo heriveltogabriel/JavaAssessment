@@ -13,24 +13,48 @@ final class Reports {
     static final Map<String,List<String>> COLUMNS=new LinkedHashMap<>(), DEFAULTS=new LinkedHashMap<>();
     static final Map<String,String> TITLES=new LinkedHashMap<>(), FILTERS=new LinkedHashMap<>();
     static {
-        String[][] labels={{"machine","Máquina"},{"environment","Ambiente"},{"ip","IP de rede"},{"os","Sistema operacional"},{"architecture","Arquitetura"},{"cpus","CPUs lógicas"},{"memory","Memória (GiB)"},{"agentVersion","Versão do agente"},{"javaVersions","Versões Java"},{"servers","Servidores da máquina"},{"datasources","Datasources da máquina"},{"drivers","Drivers JDBC da máquina"},{"version","Versão"},{"javaHome","Java home"},{"vendor","Fornecedor Java"},{"product","Servidor Java"},{"name","Nome do servidor"},{"datasource","Datasource"},{"driver","Driver JDBC"},{"driverClass","Classe do driver"},{"driverVersion","Versão do driver"},{"serverName","Servidor associado"},{"machines","Máquinas"},{"javaCount","Instalações Java"},{"serverCount","Servidores Java"},{"datasourceCount","Datasources JDBC"}};
+        String[][] labels={{"jdbc","JDBC"},{"hostJdbc","JDBC da máquina"},{"javaVersion","Java do servidor"},{"path","Caminho do servidor"},{"pid","PID"},{"databaseType","Banco"},{"applicationName","Aplicação associada"},{"driverReference","Referência do driver"},{"resourceType","Tipo de recurso"},{"datasourceState","Estado informado"},{"configuredMaxPoolSize","Pool máximo configurado"},{"machine","Máquina"},{"environment","Ambiente"},{"ip","IP de rede"},{"os","Sistema operacional"},{"architecture","Arquitetura"},{"cpus","CPUs lógicas"},{"memory","Memória (GiB)"},{"agentVersion","Versão do agente"},{"javaVersions","Versões Java"},{"servers","Servidores da máquina"},{"datasources","Datasources da máquina"},{"drivers","Drivers JDBC da máquina"},{"version","Versão"},{"javaHome","Java home"},{"vendor","Fornecedor Java"},{"product","Servidor Java"},{"name","Nome do servidor"},{"datasource","Datasource / nome JNDI"},{"driver","Driver JDBC"},{"driverClass","Classe do driver"},{"driverVersion","Versão do driver"},{"serverName","Servidor associado"},{"machines","Máquinas"},{"javaCount","Instalações Java"},{"serverCount","Servidores Java"},{"datasourceCount","Datasources JDBC"}};
         for(String[] l:labels)LABELS.put(l[0],l[1]);
-        model("machines","Inventário de máquinas","machine,environment,ip,os,javaVersions,servers,datasources,drivers,architecture,cpus,memory,agentVersion","machine,environment,ip,os,javaVersions,servers,datasources,drivers");
-        model("java","Instalações Java","machine,environment,version,javaHome,vendor,os,architecture,ip","machine,environment,version,javaHome,vendor");
-        model("servers","Java Servers","machine,environment,product,name,version,os,ip,javaHome,datasources,drivers","machine,environment,product,name,version");
-        model("jdbc","Datasources e drivers JDBC","machine,environment,datasource,driver,driverVersion,driverClass,serverName,os,ip","machine,environment,datasource,driver,driverVersion,driverClass,serverName");
-        model("environments","Resumo por ambiente","environment,machines,javaCount,serverCount,datasourceCount","environment,machines,javaCount,serverCount,datasourceCount");
-        for(String[] f:new String[][]{{"environmentId","Ambiente"},{"machine","Máquina"},{"os","Sistema operacional"},{"architecture","Arquitetura"},{"javaVersion","Versão Java"},{"serverType","Servidor Java"},{"serverVersion","Versão do servidor"},{"datasource","Datasource"},{"driver","Driver JDBC"},{"driverVersion","Versão do driver"}})FILTERS.put(f[0],f[1]);
+        model("machines","Inventário de máquinas","machine,environment,ip,os,javaVersions,servers,jdbc,datasources,drivers,architecture,cpus,memory,agentVersion","machine,environment,ip,os,javaVersions,servers,jdbc");
+        model("java","Instalações Java","machine,environment,ip,version,javaHome,vendor,os,architecture,jdbc","machine,environment,ip,version,javaHome,vendor,jdbc");
+        model("servers","Java Servers","machine,environment,ip,product,name,version,javaVersion,os,jdbc,javaHome,path,pid,hostJdbc,datasources,drivers","machine,environment,ip,product,name,version,javaVersion,os,jdbc");
+        model("jdbc","Datasources e drivers JDBC","machine,environment,ip,datasource,databaseType,driver,driverVersion,driverClass,serverName,applicationName,jdbc,resourceType,datasourceState,driverReference,configuredMaxPoolSize,os","machine,environment,ip,datasource,databaseType,driver,driverVersion,driverClass,serverName,applicationName,jdbc");
+        model("environments","Resumo por ambiente","environment,machines,javaCount,serverCount,datasourceCount,jdbc","environment,machines,javaCount,serverCount,datasourceCount,jdbc");
+        for(String[] f:new String[][]{{"environmentId","Ambiente"},{"machine","Máquina"},{"os","Sistema operacional"},{"architecture","Arquitetura"},{"javaVersion","Versão Java"},{"serverType","Servidor Java"},{"serverVersion","Versão do servidor"},{"datasource","Datasource / nome JNDI"},{"driver","Driver JDBC"},{"driverVersion","Versão do driver"},{"databaseType","Banco"},{"driverClass","Classe do driver"},{"driverReference","Referência do driver"},{"serverName","Servidor associado ao JDBC"},{"applicationName","Aplicação associada ao JDBC"},{"resourceType","Tipo de recurso JDBC"},{"datasourceState","Estado informado do JDBC"},{"jdbcPresence","Presença de JDBC"}})FILTERS.put(f[0],f[1]);
     }
     private static void model(String key,String title,String columns,String defaults){TITLES.put(key,title);COLUMNS.put(key,List.of(columns.split(",")));DEFAULTS.put(key,List.of(defaults.split(",")));}
     static String s(Object value){return value==null?"":String.valueOf(value);}
     static List<Map<String,Object>> columns(List<String> keys){return keys.stream().map(k->map("key",k,"label",LABELS.get(k))).toList();}
+    static List<Map<String,Object>> modelColumns(List<String> keys,String model){
+        var result=columns(keys);
+        for(var column:result)if(column.get("key").equals("jdbc"))column.put("label",switch(model){case "servers"->"JDBC do servidor";case "environments"->"JDBC do ambiente";case "jdbc"->"JDBC · datasource / driver / versão";default->"JDBC da máquina";});
+        return result;
+    }
     final InventoryStore db;
     Reports(InventoryStore db){this.db=db;}
     Map<String,Object> options(){
-        return map("models",TITLES.keySet().stream().map(k->map("key",k,"label",TITLES.get(k),"columns",columns(COLUMNS.get(k)),"defaults",DEFAULTS.get(k))).toList(),
-            "environments",db.rows("SELECT id,name FROM environments ORDER BY name,id"));
+        return map("models",TITLES.keySet().stream().map(k->map("key",k,"label",TITLES.get(k),"columns",modelColumns(COLUMNS.get(k),k),"defaults",DEFAULTS.get(k))).toList(),
+            "environments",db.rows("SELECT id,name FROM environments ORDER BY name,id"),"suggestions",suggestions());
     }
+    private Map<String,Object> suggestions(){
+        var result=new LinkedHashMap<String,Object>();
+        var expressions=new LinkedHashMap<String,String>();
+        for(String key:List.of("databaseType","driverReference","resourceType","driverVersion"))expressions.put(key,field("i",key));
+        expressions.put("datasource",field("i","name"));expressions.put("driver",field("i","driverName"));expressions.put("driverClass",driverClass("i"));expressions.put("datasourceState",field("i","state"));
+        for(var entry:expressions.entrySet())result.put(entry.getKey(),db.rows("SELECT DISTINCT "+entry.getValue()+" AS value FROM inventory i WHERE kind='datasources' AND length("+entry.getValue()+") BETWEEN 1 AND 200 ORDER BY value LIMIT 100").stream().map(r->s(r.get("value"))).toList());
+        for(String key:List.of("serverName","applicationName")){
+            String scalar=field("i",key), nested=associationField("a",key);
+            result.put(key,db.rows("SELECT DISTINCT value FROM (SELECT "+scalar+" AS value FROM inventory i WHERE kind='datasources' UNION ALL SELECT "+nested+" AS value FROM inventory i,json_each("+associationArray("i")+") a WHERE i.kind='datasources') WHERE length(value) BETWEEN 1 AND 200 ORDER BY value LIMIT 100").stream().map(r->s(r.get("value"))).toList());
+        }
+        return result;
+    }
+    static String context(String model){return switch(model){
+        case "servers" -> "Java e JDBC associados ao servidor pelo inventário. JDBC da máquina está disponível nas colunas adicionais. Associação ausente não confirma ausência de uso.";
+        case "java" -> "JDBC da máquina: não confirma uso por esta instalação Java. Cada entrada mantém datasource, driver e versão juntos.";
+        case "environments" -> "JDBC distinto nas máquinas filtradas de cada ambiente. Datasource, driver e versão permanecem juntos.";
+        case "jdbc" -> "Uma linha por datasource. Estado informado e pool configurado não confirmam conectividade com o banco.";
+        default -> "JDBC encontrado na máquina, com datasource, driver e versão juntos. Ausência no inventário não comprova ausência na máquina.";
+    };}
     static final class Selection {
         final String model; final Map<String,String> filters=new LinkedHashMap<>(); final List<String> columns;
         final int page,size;
@@ -43,6 +67,7 @@ final class Reports {
                 if(value.length()>200||value.codePoints().anyMatch(c->Character.isISOControl(c)))throw new Failure(400,"Filtro inválido: "+FILTERS.get(key));
                 if(!value.isEmpty())filters.put(key,value);
             }
+            if(filters.containsKey("jdbcPresence")&&!Set.of("present","missing").contains(filters.get("jdbcPresence")))throw new Failure(400,"Presença de JDBC inválida.");
             String raw=input.getOrDefault("columns","");columns=raw.isEmpty()?DEFAULTS.get(model):List.of(raw.split(",",-1));
             if(columns.isEmpty()||columns.size()>COLUMNS.get(model).size()||new HashSet<>(columns).size()!=columns.size()||!COLUMNS.get(model).containsAll(columns))throw new Failure(400,"Selecione colunas válidas para este modelo.");
             page=integer(input.getOrDefault("page","1"),1,10000);size=integer(input.getOrDefault("pageSize","20"),1,100);
@@ -50,6 +75,23 @@ final class Reports {
         private static int integer(String value,int min,int max){try{int n=Integer.parseInt(value);if(n>=min&&n<=max)return n;}catch(NumberFormatException ignored){}throw new Failure(400,"Paginação inválida.");}
     }
     static String field(String alias,String key){return "CASE WHEN json_type("+alias+".payload,'$."+key+"') IN ('text','integer','real') THEN json_extract("+alias+".payload,'$."+key+"') ELSE '' END";}
+    private static String associationArray(String alias){return "CASE WHEN json_type("+alias+".payload,'$.associations')='array' THEN json_extract("+alias+".payload,'$.associations') ELSE '[]' END";}
+    private static String associationField(String alias,String key){String value="CASE WHEN "+alias+".type='object' THEN "+alias+".value ELSE '{}' END";return "CASE WHEN json_type("+value+",'$."+key+"') IN ('text','integer','real') THEN json_extract("+value+",'$."+key+"') ELSE '' END";}
+    private static String associatedText(String alias,String key){String scalar=field(alias,key),nested=associationField("assoc",key);return "(SELECT group_concat(value, char(10)) FROM (SELECT DISTINCT value FROM (SELECT "+scalar+" AS value UNION ALL SELECT "+nested+" FROM json_each("+associationArray(alias)+") assoc) WHERE value<>'' ORDER BY value))";}
+    private static String driverClass(String alias){String name=field(alias,"driverName");return "coalesce(nullif("+field(alias,"driverClass")+",''),CASE WHEN "+name+" LIKE '%.%' AND "+name+" NOT LIKE '% %' THEN "+name+" ELSE '' END)";}
+    private static String tuple(String alias){return identified(field(alias,"name"))+" || ' — ' || "+identified("coalesce(nullif("+field(alias,"driverName")+",''),nullif("+driverClass(alias)+",''),'')")+" || ' · ' || "+identified(field(alias,"driverVersion"));}
+    private static String serverAssociation(String ds,String server){
+        String name=field(server,"name"),pid=field(server,"pid"),otherPid=field(ds,"pid"),otherName=field(ds,"serverName");
+        String direct="(CASE WHEN CAST("+pid+" AS INTEGER)>0 AND CAST("+otherPid+" AS INTEGER)>0 THEN CAST("+pid+" AS INTEGER)=CAST("+otherPid+" AS INTEGER) ELSE "+name+"<>'' AND "+name+"="+otherName+" END)";
+        String nestedPid=associationField("assoc","pid"),nestedName=associationField("assoc","serverName");
+        return "("+direct+" OR EXISTS (SELECT 1 FROM json_each("+associationArray(ds)+") assoc WHERE CASE WHEN CAST("+pid+" AS INTEGER)>0 AND CAST("+nestedPid+" AS INTEGER)>0 THEN CAST("+pid+" AS INTEGER)=CAST("+nestedPid+" AS INTEGER) ELSE "+name+"<>'' AND "+name+"="+nestedName+" END))";
+    }
+    private static String runtimeAssociation(String runtime,String server){String home=field(server,"javaHome");return "("+home+"<>'' AND rtrim("+field(runtime,"javaHome")+",'/')=rtrim("+home+",'/'))";}
+    private static String serverJava(){return "(SELECT group_concat(DISTINCT "+field("j","version")+") FROM inventory j WHERE j.host_id=h.id AND j.kind='runtimes' AND "+runtimeAssociation("j","i")+")";}
+    private String jdbcAggregate(Selection f,List<Object> args,boolean linked,boolean json){
+        var predicates=resourceFilters(f,"datasources","a",args);
+        return "(SELECT "+(json?"json_group_array(label)":"group_concat(label,char(10))")+" FROM (SELECT DISTINCT "+tuple("a")+" AS label FROM inventory a WHERE a.host_id=h.id AND a.kind='datasources'"+(linked?" AND "+serverAssociation("a","i"):"")+(predicates.isEmpty()?"":" AND "+String.join(" AND ",predicates))+" ORDER BY label))";
+    }
     private static void term(List<String> where,List<Object> args,String expression,String value,boolean exact){
         if(value==null)return;
         where.add("assessment_lower("+expression+")"+(exact?" = assessment_lower(?)":" LIKE assessment_lower(?) ESCAPE '\\'"));
@@ -66,6 +108,10 @@ final class Reports {
             term(w,args,field(alias,"name"),f.filters.get("datasource"),false);
             term(w,args,"("+field(alias,"driverName")+" || ' ' || "+field(alias,"driverClass")+")",f.filters.get("driver"),false);
             term(w,args,field(alias,"driverVersion"),f.filters.get("driverVersion"),true);
+            for(String key:List.of("databaseType","driverReference","resourceType"))term(w,args,field(alias,key),f.filters.get(key),false);
+            term(w,args,driverClass(alias),f.filters.get("driverClass"),false);
+            term(w,args,field(alias,"state"),f.filters.get("datasourceState"),false);
+            for(String key:List.of("serverName","applicationName"))term(w,args,associatedText(alias,key),f.filters.get(key),false);
         }
         return w;
     }
@@ -93,7 +139,16 @@ final class Reports {
             select.add("i.id AS _recordId");
             if(kind.equals("runtimes")){select.add(field("i","version")+" AS version");select.add(field("i","javaHome")+" AS javaHome");select.add(field("i","vendor")+" AS vendor");}
             if(kind.equals("servers")){select.add(field("i","type")+" AS product");select.add(field("i","version")+" AS version");select.add(field("i","name")+" AS name");select.add(field("i","javaHome")+" AS javaHome");}
-            if(kind.equals("datasources"))for(String[] pair:new String[][]{{"name","datasource"},{"driverName","driver"},{"driverVersion","driverVersion"},{"driverClass","driverClass"},{"serverName","serverName"}})select.add(field("i",pair[0])+" AS "+pair[1]);
+            if(kind.equals("datasources"))for(String[] pair:new String[][]{{"name","datasource"},{"driverName","driver"},{"driverVersion","driverVersion"},{"driverClass","driverClass"},{"serverName","serverName"}})select.add((pair[0].equals("serverName")?associatedText("i","serverName"):pair[0].equals("driverClass")?driverClass("i"):field("i",pair[0]))+" AS "+pair[1]);
+        }
+        if(f.columns.contains("jdbc"))select.add((kind.equals("datasources")?tuple("i"):jdbcAggregate(f,args,kind.equals("servers"),f.model.equals("environments")))+" AS jdbc");
+        if(f.columns.contains("hostJdbc"))select.add(jdbcAggregate(f,args,false,false)+" AS hostJdbc");
+        if(kind.equals("servers")){
+            select.add(serverJava()+" AS javaVersion");select.add(field("i","path")+" AS path");select.add(field("i","pid")+" AS pid");
+        }
+        if(kind.equals("datasources")){
+            for(String key:List.of("databaseType","driverReference","resourceType","configuredMaxPoolSize"))select.add(field("i",key)+" AS "+key);
+            select.add(field("i","state")+" AS datasourceState");select.add(associatedText("i","applicationName")+" AS applicationName");
         }
         var where=new ArrayList<String>();
         String env=f.filters.get("environmentId");if(env!=null){where.add("h.environment_id=?");args.add(env.equals("__unassigned__")?"":env);}
@@ -102,7 +157,15 @@ final class Reports {
         term(where,args,field("h","architecture"),f.filters.get("architecture"),false);
         for(String resource:List.of("runtimes","servers","datasources")){
             var conditions=resourceFilters(f,resource,resource.equals(kind)?"i":"r",args);
-            if(!conditions.isEmpty())where.add(resource.equals(kind)?"("+String.join(" AND ",conditions)+")":"EXISTS (SELECT 1 FROM inventory r WHERE r.host_id=h.id AND r.kind='"+resource+"' AND "+String.join(" AND ",conditions)+")");
+            if(resource.equals("datasources")){
+                boolean missing="missing".equals(f.filters.get("jdbcPresence")),present="present".equals(f.filters.get("jdbcPresence"));
+                if(resource.equals(kind)){if(missing)where.add("0=1");if(!conditions.isEmpty())where.add("("+String.join(" AND ",conditions)+")");}
+                else{
+                    String base="SELECT 1 FROM inventory r WHERE r.host_id=h.id AND r.kind='datasources'"+(kind.equals("servers")?" AND "+serverAssociation("r","i"):"");
+                    if(missing)where.add("NOT EXISTS ("+base+")");
+                    if(present||!conditions.isEmpty())where.add("EXISTS ("+base+(conditions.isEmpty()?"":" AND "+String.join(" AND ",conditions))+")");
+                }
+            }else if(!conditions.isEmpty())where.add(resource.equals(kind)?"("+String.join(" AND ",conditions)+")":"EXISTS (SELECT 1 FROM inventory r WHERE r.host_id=h.id AND r.kind='"+resource+"'"+(resource.equals("runtimes")&&kind.equals("servers")?" AND "+runtimeAssociation("r","i"):"")+" AND "+String.join(" AND ",conditions)+")");
         }
         String from=" FROM hosts h LEFT JOIN environments e ON e.id=h.environment_id"+(!kind.isEmpty()?" JOIN inventory i ON i.host_id=h.id AND i.kind='"+kind+"'":"");
         // Fetch only selected columns and bound each SQL text result before it reaches the JVM.
@@ -114,7 +177,7 @@ final class Reports {
             if(!Set.of("_memory","javaCount","serverCount","datasourceCount").contains(key))body="substr(CAST(("+body+") AS TEXT),1,"+(MAX_CELL+1)+")";
             projection.add(body+" AS "+key);
         }
-        var hosts=new HashSet<String>();var environments=new HashSet<String>();var grouped=new LinkedHashMap<String,Map<String,Object>>();
+        var hosts=new HashSet<String>();var environments=new HashSet<String>();var grouped=new LinkedHashMap<String,Map<String,Object>>();var envJdbc=new LinkedHashMap<String,Set<String>>();
         var records=new ArrayList<Map<String,Object>>();long[] chars={0};int[] read={0};
         db.forEachRow("SELECT "+String.join(",",projection)+from+(where.isEmpty()?"":" WHERE "+String.join(" AND ",where))+" ORDER BY lower(h.hostname),h.id"+(!kind.isEmpty()?",i.id":"")+" LIMIT "+(MAX_ROWS+1),source->{
             if(++read[0]>MAX_ROWS)throw new Failure(413,"O relatório excede 10.000 registros. Refine os filtros antes de gerar ou exportar.");
@@ -125,6 +188,12 @@ final class Reports {
             if(f.model.equals("environments")){
                 var row=grouped.computeIfAbsent(s(source.get("_envId")),key->map("environment",source.get("environment"),"machines",0L,"javaCount",0L,"serverCount",0L,"datasourceCount",0L));
                 row.put("machines",((Number)row.get("machines")).longValue()+1);
+                if(f.columns.contains("jdbc")){
+                    Set<String> tuples=envJdbc.computeIfAbsent(s(source.get("_envId")),key->new LinkedHashSet<>());
+                    Object entries=Json.parse(s(source.get("jdbc")));
+                    if(entries instanceof List<?> values)for(Object value:values)if(value instanceof String text){tuples.add(text);if(tuples.stream().mapToInt(String::length).sum()+tuples.size()>MAX_CELL)throw new Failure(413,"JDBC do ambiente excede 8.192 caracteres. Refine os filtros ou use o relatório JDBC.");}
+                    row.put("jdbc",String.join("\n",tuples));
+                }
                 for(String key:List.of("javaCount","serverCount","datasourceCount"))row.put(key,((Number)row.get(key)).longValue()+((Number)source.get(key)).longValue());
             }else{
                 var row=new LinkedHashMap<String,Object>();
@@ -142,7 +211,7 @@ final class Reports {
         if(f.model.equals("environments"))for(var group:grouped.values()){
             if(records.size()>=MAX_ROWS)throw new Failure(413,"O relatório excede 10.000 registros. Refine os filtros antes de gerar ou exportar.");
             var row=new LinkedHashMap<String,Object>();
-            for(String key:f.columns){String value=s(group.get(key));if(value.length()>MAX_CELL)throw new Failure(413,"Uma célula excede o limite de 8.192 caracteres. Refine os filtros.");chars[0]+=value.length();row.put(key,value);}
+            for(String key:f.columns){String value=s(group.get(key));if(key.equals("jdbc")&&value.isEmpty())value="Não identificado";if(value.length()>MAX_CELL)throw new Failure(413,"Uma célula excede o limite de 8.192 caracteres. Refine os filtros.");chars[0]+=value.length();row.put(key,value);}
             if(chars[0]>7*1024*1024)throw new Failure(413,"Relatório muito grande. Refine os filtros antes de exportar.");
             records.add(row);
         }
@@ -150,13 +219,14 @@ final class Reports {
         for(var entry:f.filters.entrySet()){
             String value=entry.getValue();
             if(entry.getKey().equals("environmentId")){var names=db.rows("SELECT name FROM environments WHERE id=?",value);value=value.equals("__unassigned__")?"Sem ambiente":names.isEmpty()?"Ambiente não encontrado":s(names.get(0).get("name"));}
+            if(entry.getKey().equals("jdbcPresence"))value=value.equals("present")?"Com JDBC no inventário":"Sem JDBC no inventário";
             filterLabels.add(map("label",FILTERS.get(entry.getKey()),"value",value));
         }
         var summary=map("machines",hosts.size(),"environments",environments.size(),"records",records.size());
         String revision=InventoryStore.hash(Json.stringify(map("model",f.model,"filters",filterLabels,"columns",f.columns,"rows",records,"summary",summary)));
         if(all&&!revision.equals(input.getOrDefault("revision","")))throw new Failure(409,"O inventário ou as colunas mudaram. Atualize o relatório antes de exportar.");
         int total=records.size(),pages=Math.max(1,(total+f.size-1)/f.size),page=Math.min(f.page,pages);
-        return map("title",TITLES.get(f.model),"generatedAt",Instant.now().toString(),"filters",filterLabels,"columns",columns(f.columns),"availableColumns",columns(COLUMNS.get(f.model)),"rows",all?records:records.subList((page-1)*f.size,Math.min(page*f.size,total)),"summary",summary,"revision",revision,"pagination",map("page",page,"pageSize",f.size,"total",total,"pages",pages));
+        return map("title",TITLES.get(f.model),"context",context(f.model),"generatedAt",Instant.now().toString(),"filters",filterLabels,"columns",modelColumns(f.columns,f.model),"availableColumns",modelColumns(COLUMNS.get(f.model),f.model),"rows",all?records:records.subList((page-1)*f.size,Math.min(page*f.size,total)),"summary",summary,"revision",revision,"pagination",map("page",page,"pageSize",f.size,"total",total,"pages",pages));
     }
     static String networkIps(String raw){
         var v4=new LinkedHashSet<String>();var v6=new LinkedHashSet<String>();

@@ -65,3 +65,16 @@
 @media(max-width:1150px){.reports-workspace{padding:24px}.reports-filter-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.reports-heading{align-items:flex-start}.reports-heading h2{font-size:27px}.reports-models>button{padding:14px 11px}.reports-models small{font-size:9px}}
 @media(max-width:700px){.reports-workspace{padding:20px 16px}.reports-heading{display:block;margin-bottom:20px}.reports-heading h2{font-size:26px}.reports-heading p{font-size:12px}.reports-export{margin-top:18px}.reports-export .button{flex:1}.reports-models{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.reports-models>button{padding:13px}.reports-models>button:last-child{grid-column:1/-1}.reports-model-symbol{width:25px;height:25px;float:right;margin:0 0 8px 5px;font-size:17px}.reports-models strong{font-size:12px}.reports-models small{font-size:10px}.reports-filters{padding:15px}.reports-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 10px}.reports-filter-heading{align-items:flex-start}.reports-filter-heading>span{max-width:92px;font-size:9px}.reports-filter-actions{gap:12px}.reports-columns{margin-left:0;position:static}.reports-column-options{left:15px;right:15px;top:auto;margin-top:8px;max-width:none;width:auto}.reports-summary{gap:7px;margin-bottom:17px}.reports-summary>div{padding:13px 11px}.reports-summary strong{font-size:25px}.reports-summary span{font-size:10px}.reports-table-heading{display:block;padding:17px}.reports-table-heading>label{margin-top:14px}.reports-pagination{padding:12px;align-items:flex-start;flex-direction:column}.reports-pagination>div{width:100%;justify-content:space-between;gap:7px}.reports-applied{font-size:9px}.reports-workspace td{padding:13px 15px}.reports-workspace th{padding:12px 15px}}
 @media(prefers-reduced-motion:reduce){.reports-pulse{animation:none}.reports-models>button{transition:none}}
+
+/* General scope and JDBC criteria stay visually distinct while sharing a query. */
+.reports-filter-group{border:0;min-width:0;padding:0;margin:22px 0 0}
+.reports-filter-group legend{font-size:11px;font-weight:600;color:#5e7150;letter-spacing:.1px;padding:0}
+.reports-filter-group>.reports-filter-grid{margin-top:12px}
+.reports-filter-group>p{font-size:10px;color:#7b856e;margin:7px 0 0;line-height:1.6}
+.reports-jdbc-filters{border-top:1px solid #e2e8d9;padding-top:13px}
+.reports-jdbc-filters legend{padding-right:12px}
+.reports-table-heading .reports-association-context{margin-top:7px;color:#697a57;font-size:11px;max-width:800px}
+.reports-workspace datalist{display:none}
+@media(max-width:700px){.reports-filter-group{margin-top:20px}.reports-filter-group>p{font-size:10px}.reports-table-heading .reports-association-context{font-size:10px}}
+
+.reports-workspace td.reports-jdbc-cell{min-width:240px;max-width:420px;white-space:pre-line;overflow-wrap:anywhere}

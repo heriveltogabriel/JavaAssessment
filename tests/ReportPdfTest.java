@@ -60,6 +60,9 @@ public final class ReportPdfTest {
         check(text.contains("COLUNAS 2 DE 2")&&text.contains("Classe do driver"),"column groups");
         check(text.split("servidor-68",-1).length==3,"last row appears in both column groups with repeated identity");
         check(text.contains("<unsafe>")&&text.contains("\\"),"PDF syntax characters remain literal text");
+        Matcher pages=Pattern.compile("stream\\n(.*?)endstream",Pattern.DOTALL).matcher(pdf);
+        while(pages.find()){String page=text(pages.group(1));if(page.contains("COLUNAS 1 DE 2"))check(page.contains("Seção 1/2"),"footer matches first column group");else if(page.contains("COLUNAS 2 DE 2"))check(page.contains("Seção 2/2"),"footer matches second column group");}
+        Map<String,Object> dated=new LinkedHashMap<>(fixture);dated.put("generatedAt","2026-10-15T12:21:38.450225Z");dated.put("context","JDBC da máquina; associação ao servidor não confirmada.");String datedText=text(bytes(dated));check(datedText.contains("15/10/2026 12:21 UTC"),"readable generation date with timezone");check(datedText.contains("JDBC da máquina; associação ao servidor"),"association context exported");
         Map<String,Object> empty=new LinkedHashMap<>(fixture);empty.put("rows",List.of());String emptyPdf=bytes(empty);structural(emptyPdf);check(text(emptyPdf).contains("Nenhum registro"),"empty report");
         Map<String,Object> giant=new LinkedHashMap<>(fixture);giant.put("rows",List.of(map("hostname","x".repeat(8193))));invalid(giant,"cell bound");
         Map<String,Object> tooMany=new LinkedHashMap<>(fixture);tooMany.put("rows",java.util.Collections.nCopies(10001,map("hostname","x")));invalid(tooMany,"row bound");

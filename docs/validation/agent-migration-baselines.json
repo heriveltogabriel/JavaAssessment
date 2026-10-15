@@ -134,6 +134,12 @@
       "sha256": "2861885b4cb3dc5d501a96b82b468608942ebaebc49c0baf25e003b32649647a",
       "bytes": 30571218,
       "migrationOrigin": true
+    },
+    {
+      "version": "2.0.15",
+      "sha256": "b166de4ae60127c6d5670bcb7077650d164956b26ae9f11f76a46eb73fa532fd",
+      "bytes": 30571221,
+      "migrationOrigin": true
     }
   ],
   "reviewedSupportGroups": [
