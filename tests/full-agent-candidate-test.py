@@ -56,6 +56,20 @@ def main(candidate):
     reject(lambda: module.parse('{"schema":1,"schema":2}'))
     reject(lambda: module.version('2.0.9-beta'))
     reject(lambda: module.version('02.0.9'))
+    # An outer ZIP checksum can be correct while its internal manifest is stale.
+    # This was the failed 2.0.13 web amendment: reject it before publication.
+    def web_archive(body, manifest):
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, 'w') as archive:
+            archive.writestr('web/app.js', body)
+            archive.writestr('SHA256SUMS', manifest)
+        return stream.getvalue()
+    original_web = b'original web application'
+    checksum = module.sha(original_web) + '  web/app.js\n'
+    check(module.archive(web_archive(original_web, checksum))['web/app.js'] == original_web)
+    reject(lambda: module.archive(web_archive(b'updated web application', checksum)))
+    reject(lambda: module.archive(web_archive(original_web, checksum + checksum)))
+    reject(lambda: module.archive(web_archive(original_web, module.sha(original_web) + '  missing.js\n')))
     for name, mode in (('../outside', stat.S_IFREG), ('/absolute', stat.S_IFREG), ('linked', stat.S_IFLNK)):
         stream = io.BytesIO()
         with zipfile.ZipFile(stream, 'w') as archive:

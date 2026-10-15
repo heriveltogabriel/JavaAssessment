@@ -10,6 +10,10 @@ Preparada localmente em 2026-10-15 para continuidade da validação no laborató
 
 - Machines mostra o primeiro IP de rede, priorizando IPv4, e um botão “+N” para abrir os demais nos detalhes. Loopback e IPv6 link-local ficam fora da tabela; a lista completa permanece nos detalhes da máquina. IPv6 de rede continua visível quando não há IPv4. A alteração foi autorizada antes da publicação, mantendo a versão 2.0.13; somente arquivos web e pacotes do dashboard foram recompostos, com novos hashes. Agente, bridges e assinaturas permanecem idênticos.
 
+## Correção do empacotamento antes da publicação
+
+A primeira tentativa após o ajuste de IPs foi recusada por `Internal checksum mismatch: web/app.js`, antes da parada do serviço e da substituição de arquivos. Os manifestos internos dos ZIPs foram recompostos, junto com os hashes externos e as referências do publicador. O verificador local agora rejeita manifestos internos desatualizados, mesmo quando o hash externo está correto. O agente e todos os artefatos assinados permanecem idênticos. A versão continua 2.0.13 porque esta tentativa não instalou a versão no servidor.
+
 ## Validação
 
 Testes de navegação desktop/mobile, perfis administrador/leitor, ACK perdido, erro de confirmação, API real V1/V3 e SQLite locais passaram. O fluxo confirma o pedido correto e mantém o assessment vinculado. A regressão antiga do modal teve um timeout no login após expirar a sessão; a repetição integral sem alterações passou, registrada como instabilidade do ensaio, não como correção de autenticação.

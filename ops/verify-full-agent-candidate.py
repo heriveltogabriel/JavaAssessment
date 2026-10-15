@@ -42,7 +42,16 @@ def archive(raw, limit=512 * 1024 * 1024):
             name = item.filename
             require(name and not name.startswith('/') and '\\' not in name and '..' not in PurePosixPath(name).parts
                     and not item.is_dir() and stat.S_IFMT(item.external_attr >> 16) in (0, stat.S_IFREG), 'Unsafe ZIP entry')
-        return {item.filename: source.read(item) for item in entries}
+        content = {item.filename: source.read(item) for item in entries}
+    if 'SHA256SUMS' in content:
+        checked = set()
+        for line in content['SHA256SUMS'].decode('utf-8').splitlines():
+            digest, name = line.split('  ', 1)
+            require(re.fullmatch(r'[0-9a-f]{64}', digest) and name in content
+                    and name != 'SHA256SUMS' and name not in checked, 'Invalid internal checksum entry')
+            require(sha(content[name]) == digest, 'Internal checksum mismatch: ' + name)
+            checked.add(name)
+    return content
 
 
 def check_signature(public, raw, signature, scratch):
