@@ -67,6 +67,9 @@ public final class InventoryStore implements AutoCloseable {
                 s.execute("PRAGMA wal_autocheckpoint=1000");
                 s.execute("PRAGMA journal_size_limit=16777216");
             }
+            org.sqlite.Function.create(c,"assessment_lower",new org.sqlite.Function(){
+                @Override protected void xFunc()throws SQLException {String value=value_text(0);result(value==null?"":java.text.Normalizer.normalize(value,java.text.Normalizer.Form.NFC).toLowerCase(Locale.ROOT));}
+            },1,org.sqlite.Function.FLAG_DETERMINISTIC);
             return c;
         } catch(SQLException e) {c.close();throw e;}
     }
@@ -193,6 +196,21 @@ public final class InventoryStore implements AutoCloseable {
                 }
                 return results;
             }
+        });
+    }
+
+    /** Iterate within the caller's snapshot so consumers can enforce limits before materializing a fleet. */
+    public void forEachRow(String sql,java.util.function.Consumer<Map<String,Object>> consumer,Object...args) {
+        read(c->{
+            try(PreparedStatement statement=prepare(c,sql,args);ResultSet rs=statement.executeQuery()){
+                ResultSetMetaData columns=rs.getMetaData();
+                while(rs.next()){
+                    Map<String,Object> row=new LinkedHashMap<>();
+                    for(int i=1;i<=columns.getColumnCount();i++)row.put(columns.getColumnLabel(i),rs.getObject(i));
+                    consumer.accept(row);
+                }
+            }
+            return null;
         });
     }
 

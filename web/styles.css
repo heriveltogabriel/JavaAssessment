@@ -42,3 +42,7 @@ body.sidebar-collapsed #main-content{margin-left:0}
 
 /* Compact machine network identity; full evidence remains in the detail drawer. */
 .machine-ip-cell{display:inline-flex;align-items:baseline;gap:8px}.machine-ip-cell>span{white-space:nowrap}.machine-ip-more{flex-shrink:0;font-size:11px;font-weight:600;padding:2px 5px;border-radius:4px;background:#edf1e6}.machine-network-details{margin:14px 0}
+
+/* Reports own their inventory filters and page layout. */
+.reports-page #main-content>:not(#reports-view){display:none!important}
+.reports-page #global-search-form{display:none!important}

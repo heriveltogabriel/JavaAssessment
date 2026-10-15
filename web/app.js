@@ -13,6 +13,7 @@
     ['servers','Java servers','Java servers discovered during the assessment are listed in the table.'],
     ['libraries','Java libraries','Java libraries and JDBC drivers discovered by the collector are listed with their evidence.'],
     ['schedule','Scheduled tasks','Manage when assessments run and set limits on collection work.'],
+    ['reports','Relatórios','Consulte, filtre e exporte o inventário.'],
     ['jobs','Work requests','Acompanhe coletas e atualizações de agentes, por ambiente e por máquina.']
   ];
   let rawData=null, environmentData=null, environmentScope=AssessmentEnvironments.stored(), contextKind='root';
@@ -53,6 +54,7 @@
     renderedHash=location.hash;
   }
   function routeHash() {
+    if(current==='reports')return '#reports';
     const params=new URLSearchParams({env:environmentScope===''?'all':environmentScope==='__unassigned__'?'unassigned':environmentScope});
     let path=current;
     if(contextKind==='machine'){path='machine/'+encodeURIComponent(machineId);params.set('view',routeView());}
@@ -217,7 +219,7 @@
     if(!AssessmentAccess.isAdmin())throw new Error('Esta ação requer um administrador.');
     const accessRevision=AssessmentAccess.getRevision();
     const response=await fetch('/api/'+path,{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json','Accept':'application/zip','X-CSRF-Token':csrf},body:JSON.stringify(body)});
-    if(!response.ok){let message='The package could not be downloaded.';try{message=(await response.json()).error || message;}catch(_){}if(response.status===401)showLogin();throw new Error(message);}
+    if(!response.ok){let message='The package could not be downloaded.';try{message=(await response.json()).error || message;}catch(_){}if(response.status===401)showLogin();const error=new Error(message);error.status=response.status;throw error;}
     if(accessRevision!==AssessmentAccess.getRevision())throw new Error('A sessão mudou. Faça o download novamente.');
     if(!(response.headers.get('Content-Type') || '').includes('application/zip'))throw new Error('The server returned an unexpected package format.');
     return {blob:await response.blob(),filename:downloadFilename(response)};
@@ -230,7 +232,7 @@
   async function downloadGet(path,{signal,accept}={}){
     const accessRevision=AssessmentAccess.getRevision();
     const response=await fetch('/api/'+path,{credentials:'same-origin',cache:'no-store',signal,headers:{Accept:accept || 'application/octet-stream'}});
-    if(!response.ok){let message='Não foi possível baixar o arquivo.';try{message=(await response.json()).error || message;}catch(_){}if(response.status===401)showLogin();throw new Error(message);}
+    if(!response.ok){let message='Não foi possível baixar o arquivo.';try{message=(await response.json()).error || message;}catch(_){}if(response.status===401)showLogin();const error=new Error(message);error.status=response.status;throw error;}
     if(accessRevision!==AssessmentAccess.getRevision())throw new Error('A sessão mudou. Faça o download novamente.');
     if(accept&&!(response.headers.get('Content-Type') || '').toLowerCase().includes(accept.toLowerCase()))throw new Error('O servidor retornou um formato de arquivo inesperado.');
     return {blob:await response.blob(),filename:downloadFilename(response)};
@@ -243,6 +245,7 @@
     finishNavigation();
   }
   function clearSession() {
+    AssessmentReports.clear();
     AssessmentAgentUpdates.renderNotice(null);
     requestRevision++;detailRevision++;stateController?.abort();closeActions();closeDrawer();AssessmentMachines.clear();AssessmentAgentUpdates.clear();AssessmentWorkRequests.clear();AssessmentEnvironments.clear();AssessmentEnrollment.clear();clearInterval(pollTimer);csrf='';rawData=null;environmentData=null;data=null;refreshing=false;manualRefresh=null;
     if($('modal').open)$('modal').close();$('modal-body').replaceChildren();$('drawer-content').replaceChildren();$('special-view').replaceChildren();$('inventory-table').querySelector('tbody').replaceChildren();$('view-actions').replaceChildren();updateRefreshState();clearTimeout(toastTimer);$('toast').hidden=true;$('toast').textContent='';
@@ -257,6 +260,7 @@
   }
   async function loadState(quiet) {
     if(!AssessmentAccess.canInventory())return false;
+    if(current==='reports'){if(quiet)return true;requestRevision++;stateController?.abort();refreshing=false;updateRefreshState();return AssessmentReports.refresh(false);}
     const key=current==='administration'?'administration':stateParams().toString();if(quiet&&refreshing&&key===requestKey)return;
     const revision=++requestRevision;requestKey=key;stateController?.abort();stateController=new AbortController();refreshing=true;updateRefreshState();
     try {
@@ -278,7 +282,7 @@
     try {
       const updated=await loadState(false);
       if(!stillCurrent())return;
-      const workUpdated=current==='administration'?true:await AssessmentWorkRequests.refresh(false);
+      const workUpdated=['administration','reports'].includes(current)?true:await AssessmentWorkRequests.refresh(false);
       if(!stillCurrent())return;
       if(updated&&workUpdated){$('last-refresh').textContent='Atualizado às '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});notify('Dados atualizados.');}
       else notify('Não foi possível atualizar todos os dados. O último estado conhecido foi mantido.',true);
@@ -292,7 +296,7 @@
     if(contextKind==='machine'&&machineId===changedId){contextKind='environment';machineId='';hostFilter='';current='hosts';resetTransient();writeRoute(true);}
     await loadState(false);
   }
-  function goRoot(id='overview') {contextKind='root';current=['environments','administration'].includes(id)&&allowedView(id)?id:'overview';machineId='';hostFilter='';resetTransient();finishNavigation();}
+  function goRoot(id='overview') {contextKind='root';current=['environments','administration','reports'].includes(id)&&allowedView(id)?id:'overview';machineId='';hostFilter='';resetTransient();finishNavigation();}
   function setTab(id,options={}) {
     if(!allowedView(id))return;
     if(['environments','administration'].includes(id)){goRoot(id);return;}
@@ -326,15 +330,18 @@
   function render() {
     AssessmentAgentUpdates.renderNotice(rawData?.agentUpdateNotice);
     AssessmentMachines.sync();
+    document.body.classList.toggle('reports-page',current==='reports');
+    $('reports-view').hidden=current!=='reports';
     document.body.classList.toggle('work-requests-page',current==='jobs');
     AssessmentWorkRequests.sync({enabled:!!data&&AssessmentAccess.canInventory()&&contextKind!=='root'&&current!=='administration',view:current,environmentId:environmentScope,hostId:contextKind==='machine'?machineId:'',environments:rawData?.environments||[],requestId:workRequestId,requestType:workRequestType});
     document.body.classList.toggle('administration-view',current==='administration');
     $('admin-view').hidden=current!=='administration';
+    if(current==='reports'){$('side-nav').querySelectorAll('[data-tab]').forEach(item=>{const active=item.dataset.tab==='reports';item.classList.toggle('active',active);if(active)item.setAttribute('aria-current','page');else item.removeAttribute('aria-current');});AssessmentReports.render();return;}
     if(current==='administration'){$('side-nav').querySelectorAll('[data-tab]').forEach(item=>{item.classList.toggle('active',item.dataset.tab==='administration');if(item.dataset.tab==='administration')item.setAttribute('aria-current','page');else item.removeAttribute('aria-current');});AssessmentAccess.renderAdministration();return;}
     renderActions();
     document.body.classList.toggle('summary-view',['overview','environments','versions','machine'].includes(current));
     $('tabs').hidden=contextKind==='root'||current==='jobs';
-    $('tabs').innerHTML=tabs.filter(([id])=>!['environments','jobs'].includes(id)&&allowedView(id)).map(([id,title])=>{const active=routeView()===id,label=id==='properties'?(contextKind==='machine'?'Machine properties':'Environment properties'):title;return '<button type="button" class="'+(active?'active':'')+'" data-tab="'+id+'" aria-current="'+(active?'page':'false')+'">'+label+'</button>';}).join('');
+    $('tabs').innerHTML=tabs.filter(([id])=>!['environments','jobs','reports'].includes(id)&&allowedView(id)).map(([id,title])=>{const active=routeView()===id,label=id==='properties'?(contextKind==='machine'?'Machine properties':'Environment properties'):title;return '<button type="button" class="'+(active?'active':'')+'" data-tab="'+id+'" aria-current="'+(active?'page':'false')+'">'+label+'</button>';}).join('');
     $('side-nav').querySelectorAll('[data-tab]').forEach(item=>{const active=item.dataset.tab==='hosts'?contextKind!=='root'&&!['jobs','administration'].includes(current):item.dataset.tab==='jobs'?current==='jobs':contextKind==='root'&&item.dataset.tab===current;item.classList.toggle('active',active);if(active)item.setAttribute('aria-current','page');else item.removeAttribute('aria-current');});
     renderContext();
     const selected=tabs.find(t=>t[0]===current) || ['machine','Machine overview','Resources and Java inventory for this host.'];$('view-title').textContent=current==='properties'?(contextKind==='machine'?'Machine properties':'Environment properties'):selected[1];$('view-description').textContent=selected[2];
@@ -526,6 +533,7 @@
   AssessmentEnrollment.init({isAdmin:AssessmentAccess.isAdmin,api,getData:()=>data,getEnrollmentData:()=>environmentData,refresh:loadState,notify,editHostSettings:editSettings,addMachine:()=>{if(environmentScope&&environmentScope!=='__unassigned__')AssessmentEnvironments.openPackage(environmentScope);else{goRoot('environments');notify('Choose or create an environment to download its configured agent.');}}});
   AssessmentEnvironments.init({isAdmin:AssessmentAccess.isAdmin,api,download:downloadPackage,downloadGet,getExportContext:()=>({environmentId:environmentScope,hostId:contextKind==='machine'?machineId:'',hostName:host(machineId)?.hostname || host(machineId)?.fqdn || machineId}),getRaw:()=>rawData,getScoped:()=>data,getScope:()=>environmentScope,select:selectEnvironment,refresh:loadState,notify,navigate:setTab,afterMachineChange});
   AssessmentMachines.init({isAdmin:AssessmentAccess.isAdmin,getRevision:AssessmentAccess.getRevision,api,getHost:id=>(data?.hosts||[]).find(h=>h.id===id),getEnvironments:()=>rawData?.environments||[],getScope:()=>environmentScope,move:AssessmentEnvironments.openAssignment,update:id=>AssessmentAgentUpdates.open({hostId:id,label:hostName(id)}),afterChange:afterMachineChange,notify,closeOtherMenus:()=>{closeActions();AssessmentAccess.closeMenu();}});
+  AssessmentReports.init({api,download:(path,options,accept)=>downloadGet(path,{...options,accept})});
   AssessmentWorkRequests.init({canRead:AssessmentAccess.canInventory,isAdmin:AssessmentAccess.isAdmin,getRevision:AssessmentAccess.getRevision,api,select:openWorkRequest,changeEnvironment:selectEnvironment,openAssessment:(id,hostId)=>showDetail('jobs',id,hostId),notify});
   AssessmentAgentUpdates.init({isAdmin:AssessmentAccess.isAdmin,getRevision:AssessmentAccess.getRevision,api,refreshInventory:()=>{loadState(true);AssessmentWorkRequests.refresh(true);},openWorkRequest:openAgentUpdateRequest,notify,closeMenus:()=>{closeActions();AssessmentMachines.closeMenu();AssessmentAccess.closeMenu();}});
   AssessmentAccess.init({onSession:startSession,onSignedOut:clearSession,notify});

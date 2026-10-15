@@ -40,6 +40,9 @@ const server=http.createServer(async(req,res)=>{
  // Sidebar clears previous machine/environment/search scope, including mobile navigation.
  await page.goto(base+'/#machine/host-a?view=applications&env=env-a');
  await page.locator('#side-nav [data-tab=hosts]').click();await page.locator('#view-title').filter({hasText:'Machines'}).waitFor();
+ // The route and heading change before the new scoped inventory finishes loading.
+ // Wait for the filter render, rather than reading its previous environment value.
+ await page.waitForFunction(()=>document.getElementById('environment-filter').value==='');
  assert.equal(new URL(page.url()).hash,'#environment/hosts?env=all');assert.equal(await page.locator('#environment-filter').inputValue(),'');
  assert.equal(await page.locator('#side-nav [data-tab=hosts]').getAttribute('aria-current'),'page');
  const ipRow=id=>page.locator('#inventory-table tbody tr').filter({has:page.locator('[data-detail-id="'+id+'"]')});

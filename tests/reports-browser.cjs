@@ -1,0 +1,59 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const {chromium}=require('playwright');
+const root=path.resolve(__dirname,'..'),out=path.join(root,'output','reports','browser');fs.mkdirSync(out,{recursive:true});
+const definitions={machines:['machine','environment','os','java','servers','datasource','driver','driverVersion'],java:['machine','environment','java'],servers:['machine','environment','serverType','serverVersion'],jdbc:['machine','environment','datasource','driver','driverVersion'],environments:['environment','machines']};
+const names={machine:'Máquina',environment:'Ambiente',os:'Sistema operacional',java:'Java',servers:'Servidores',datasource:'Datasource',driver:'Driver JDBC',driverVersion:'Versão do driver',serverType:'Servidor Java',serverVersion:'Versão',machines:'Máquinas'};
+const models=Object.entries(definitions).map(([key,cols])=>({key,label:{machines:'Máquinas',java:'Java',servers:'Java Servers',jdbc:'JDBC',environments:'Resumo por ambiente'}[key],columns:cols.map(key=>({key,label:names[key]})),defaults:cols}));
+const calls=[],errors=[];let exportConflict=false,fail=false;
+(async()=>{let browser;try{
+ browser=await chromium.launch({channel:process.env.BROWSER_CHANNEL||'chrome',headless:true});const context=await browser.newContext({viewport:{width:1440,height:1050},acceptDownloads:true}),page=await context.newPage();
+ page.on('pageerror',error=>errors.push(error.message));
+ await page.exposeFunction('fixtureApi',async endpoint=>{
+  calls.push(endpoint);if(endpoint==='reports/options')return{models,environments:[{id:'env-a',name:'Produção'},{id:'env-b',name:'Homologação'}]};
+  const params=new URL('http://fixture/'+endpoint).searchParams;if(fail){fail=false;throw Error('Falha temporária.');}
+  if(params.get('machine')==='slow')await new Promise(resolve=>setTimeout(resolve,350));
+  if(params.get('machine')==='slowclear')await new Promise(resolve=>setTimeout(resolve,350));
+  const model=params.get('model'),columns=models.find(item=>item.key===model).columns.filter(col=>params.get('columns').split(',').includes(col.key));
+  const data={machine:params.get('machine')||'instance-web',environment:'Produção',os:'Red Hat Enterprise Linux 7.9',java:'11.0.31',servers:'WildFly 26.1.3 · Tomcat 9.0.90',datasource:'Pedidos <img src=x onerror="alert(1)">',driver:'PostgreSQL JDBC',driverVersion:'42.7.3',serverType:'WebLogic',serverVersion:'10.3.6.0',machines:21};
+  const current=Number(params.get('page')||1),empty=params.get('machine')==='none',total=empty?0:21,rows=empty?[]:Array.from({length:current===1?20:1},()=>({...data}));
+  return{title:models.find(item=>item.key===model).label,generatedAt:'2026-10-15T12:00:00Z',filters:['environmentId','machine','serverType','serverVersion','datasource','driver','driverVersion'].filter(key=>params.get(key)).map(key=>({label:names[key]||key,value:params.get(key)})),columns,availableColumns:columns,rows,summary:{machines:empty?0:21,environments:empty?0:1,records:total},revision:'revision-'+(params.get('machine')||'initial'),pagination:{page:current,pageSize:Number(params.get('pageSize')||20),total,pages:empty?1:2}};
+ });
+ await page.exposeFunction('fixtureDownload',async endpoint=>{calls.push(endpoint);return{conflict:exportConflict};});
+ await page.setContent('<!doctype html><html lang="pt-BR"><head></head><body><main style="margin-left:0"><section id="reports-view"></section></main></body></html>');
+ await page.addStyleTag({path:path.join(root,'web/styles.css')});await page.addStyleTag({path:path.join(root,'web/reports.css')});await page.addScriptTag({path:path.join(root,'web/reports.js')});
+ await page.evaluate(()=>{AssessmentReports.init({api:fixtureApi,download:async endpoint=>{const r=await fixtureDownload(endpoint);if(r.conflict){const e=new Error('Dados alterados');e.status=409;throw e;}return{blob:new Blob(['Máquina;Datasource\r\ninstance-web;Pedidos'],{type:'text/csv'}),filename:'relatorio.csv'};}});AssessmentReports.render();AssessmentReports.refresh();});
+ await page.locator('#reports-results tbody tr').first().waitFor();assert.equal(await page.locator('#reports-results tbody tr').count(),20);
+ assert.equal(await page.locator('#reports-view img').count(),0);assert.equal(await page.locator('[data-report-model]').count(),5);
+ assert.equal(await page.locator('#reports-view').innerText().then(text=>/cobertura|última coleta/i.test(text)),false);
+ const download=page.waitForEvent('download');await page.locator('[data-report-export=csv]').click();assert.equal((await download).suggestedFilename(),'relatorio.csv');
+ assert(calls.some(call=>call.includes('export.csv?')&&call.includes('revision=revision-initial')));
+ await page.locator('[data-report-page="2"]').click();await page.waitForFunction(()=>document.querySelector('#reports-results tbody')?.children.length===1);assert((await page.locator('.reports-pagination').innerText()).includes('Página 2 de 2'));
+ await page.locator('[data-report-model=jdbc]').click();await page.waitForFunction(()=>document.querySelector('.reports-table-heading h3')?.textContent==='JDBC');
+ assert((await page.locator('#reports-results thead').innerText()).includes('Versão do driver'));
+ await page.locator('[name=datasource]').fill('Pedidos');await page.locator('[name=driver]').fill('PostgreSQL');await page.locator('[name=driverVersion]').fill('42.7.3');
+ assert.equal(await page.locator('[data-report-export=pdf]').isDisabled(),true);
+ await page.locator('#reports-form [type=submit]').first().click();await page.waitForFunction(()=>document.querySelector('.reports-applied')?.textContent.includes('PostgreSQL'));
+ assert(calls.some(call=>call.includes('datasource=Pedidos')&&call.includes('driverVersion=42.7.3')));
+ await page.locator('[data-report-toggle]').click();assert.equal(await page.locator('#reports-filter-fields').isVisible(),false);await page.locator('[data-report-toggle]').click();
+ await page.locator('[data-report-columns]').click();await page.locator('[data-report-column=driverVersion]').uncheck();await page.locator('#reports-column-options [type=submit]').click();await page.waitForFunction(()=>document.querySelectorAll('#reports-results th').length===4);
+ // Out-of-order responses must not overwrite the newer query.
+ await page.locator('[name=machine]').fill('slow');await page.locator('#reports-form [type=submit]').first().click();await page.locator('[data-report-model=servers]').click();
+ await page.waitForTimeout(450);assert.equal(await page.locator('.reports-table-heading h3').textContent(),'Java Servers');
+ // Refresh preserves unsubmitted drafts but repeats the displayed query.
+ await page.locator('[name=machine]').fill('draft-kept');await page.evaluate(()=>AssessmentReports.refresh());await page.waitForTimeout(400);assert.equal(await page.locator('[name=machine]').inputValue(),'draft-kept');
+ assert.equal(await page.locator('[data-report-export=csv]').isDisabled(),true);
+ await page.locator('[data-report-reset]').click();await page.waitForFunction(()=>document.querySelector('[data-report-export=csv]')?.disabled===false);
+ exportConflict=true;await page.locator('[data-report-export=pdf]').click();await page.waitForFunction(()=>document.querySelector('.reports-error')?.textContent.includes('inventário mudou'));exportConflict=false;
+ await page.locator('[data-report-refresh]').click();await page.waitForFunction(()=>document.querySelector('#reports-results tbody')?.children.length===20);
+ fail=true;await page.evaluate(()=>AssessmentReports.refresh());assert((await page.locator('.reports-error').innerText()).includes('Falha temporária'));await page.locator('[data-report-retry]').click();await page.locator('#reports-results tbody tr').first().waitFor();
+ await page.locator('[name=machine]').fill('none');await page.locator('#reports-form [type=submit]').first().click();await page.locator('.reports-empty').waitFor();assert.equal(await page.locator('#reports-results tbody tr').count(),0);
+ await page.locator('[data-report-reset]').click();await page.locator('#reports-results tbody tr').first().waitFor();
+ await page.screenshot({path:path.join(out,'reports-desktop.png'),fullPage:true});
+ await page.setViewportSize({width:390,height:844});await page.waitForTimeout(250);await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:path.join(out,'reports-mobile.png'),fullPage:false});await page.locator('[data-report-columns]').click();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.locator('[data-report-columns]').click();
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ // Hidden reports do not refresh. Clearing session invalidates in-flight responses.
+ const before=calls.length;await page.evaluate(async()=>{document.querySelector('#reports-view').hidden=true;await AssessmentReports.refresh();});assert.equal(calls.length,before);
+ await page.evaluate(()=>document.querySelector('#reports-view').hidden=false);await page.locator('[name=machine]').fill('slowclear');await page.locator('#reports-form [type=submit]').first().click();await page.evaluate(()=>AssessmentReports.clear());await page.waitForTimeout(450);assert.equal(await page.locator('#reports-view').innerHTML(),'');
+ assert.deepEqual(errors,[]);fs.writeFileSync(path.join(out,'browser-results.json'),JSON.stringify({status:'PASS',checks:['five models','JDBC columns','literal escaped content','pagination','CSV revision-bound download','combined filters','column picker','collapsible filters','race safety','draft-preserving refresh','stale export','retry','empty','mobile no viewport overflow','hidden refresh suppressed','session clear invalidates pending query'],calls:calls.length},null,2));console.log('PASS: reports desktop/mobile, filters, columns, exports, races and session clearing');
+ }finally{if(browser)await browser.close();}})().catch(error=>{console.error(error);process.exitCode=1;});

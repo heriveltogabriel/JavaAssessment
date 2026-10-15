@@ -112,7 +112,7 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
         if(Set.of("/api/session","/api/account/password","/api/logout").contains(path))return;
         if(user.mustChangePassword())throw new ApiError(403,"Change your temporary password before continuing");
         if(user.role().equals("ADMIN"))return;
-        if(!x.getRequestMethod().equals("GET")||!Set.of("/api/state","/api/item","/api/export.csv","/api/export","/api/work-requests","/api/work-requests/active","/api/work-requests/detail").contains(path)||query(x,"view").equals("settings"))throw new ApiError(403,"Administrator access required");
+        if(!x.getRequestMethod().equals("GET")||!Set.of("/api/state","/api/item","/api/export.csv","/api/export","/api/work-requests","/api/work-requests/active","/api/work-requests/detail","/api/reports","/api/reports/options","/api/reports/export.csv","/api/reports/export.pdf").contains(path)||query(x,"view").equals("settings"))throw new ApiError(403,"Administrator access required");
     }
     private String bearer(HttpExchange x){String v=str(x.getRequestHeaders().getFirst("Authorization"));return v.startsWith("Bearer ")?v.substring(7):"";}
     private String agent(HttpExchange x){return registry.authenticate(bearer(x));}
@@ -386,6 +386,37 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
         if(slug.isEmpty())slug="inventario";if(slug.length()>100)slug=slug.substring(0,100);
         return "assessment-inventory-"+slug+"-"+java.time.LocalDate.now(java.time.ZoneOffset.UTC)+".csv";
     }
+    private void reports(HttpExchange x,Session session)throws Exception {
+        method(x,"GET");
+        String path=x.getRequestURI().getPath();
+        if(path.equals("/api/reports/options")){json(x,200,store.readSnapshot(()->{authorize(x,session);return new Reports(store).options();}));return;}
+        Map<String,String> input=new LinkedHashMap<>();
+        String raw=x.getRequestURI().getRawQuery();
+        if(raw!=null){
+            if(raw.length()>8192)throw new ApiError(400,"Filtros muito longos.");
+            for(String pair:raw.split("&")){
+                if(pair.isEmpty())continue;
+                String[] parts=pair.split("=",2);
+                String key=java.net.URLDecoder.decode(parts[0],java.nio.charset.StandardCharsets.UTF_8),value=java.net.URLDecoder.decode(parts.length>1?parts[1]:"",java.nio.charset.StandardCharsets.UTF_8);
+                if(input.putIfAbsent(key,value)!=null)throw new ApiError(400,"Filtro duplicado.");
+            }
+        }
+        boolean exporting=!path.equals("/api/reports");
+        if(!exportSlot.tryAcquire())throw new ApiError(429,"Outro relatório ou exportação está em andamento. Tente novamente em instantes.");
+        java.nio.file.Path temporary=null;
+        try {
+            Map<String,Object> result=store.readSnapshot(()->{authorize(x,session);return new Reports(store).query(input,exporting);});
+            if(!exporting){json(x,200,result);return;}
+            boolean pdf=path.endsWith(".pdf");String extension=pdf?"pdf":"csv";
+            temporary=java.nio.file.Files.createTempFile(data.toPath(),"report-","."+extension);
+            if(pdf){try(OutputStream out=java.nio.file.Files.newOutputStream(temporary)){ReportPdf.write(out,result);}}
+            else try(Writer out=java.nio.file.Files.newBufferedWriter(temporary,java.nio.charset.StandardCharsets.UTF_8)){Reports.csv(out,result);}
+            store.readSnapshot(()->{authorize(x,session);return null;});
+            x.getResponseHeaders().set("Content-Disposition","attachment; filename=\"java-assessment-"+input.getOrDefault("model","machines")+"-"+java.time.LocalDate.now(java.time.ZoneOffset.UTC)+"."+extension+"\"");
+            file(x,temporary.toFile(),pdf?"application/pdf":"text/csv; charset=utf-8");
+        } finally {if(temporary!=null)java.nio.file.Files.deleteIfExists(temporary);exportSlot.release();}
+    }
+
     private void exportCsv(HttpExchange x,Session session)throws Exception{
         method(x,"GET");if(!exportSlot.tryAcquire())throw new ApiError(429,"An export is already running; retry shortly");java.nio.file.Path temporary=null;
         try{
@@ -431,6 +462,7 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
                 if(path.equals("/api/logout")){method(x,"POST");auth.logout(authority(session));Session ending=session;sessions.entrySet().removeIf(e->e.getValue()==ending);x.getResponseHeaders().set("Set-Cookie","assessment_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"+(x instanceof HttpsExchange?"; Secure":""));json(x,200,map("ok",true));return;}
                 if(path.equals("/api/export")){export(x,session);return;}
                 if(path.equals("/api/export.csv")){exportCsv(x,session);return;}
+                if(Set.of("/api/reports","/api/reports/options","/api/reports/export.csv","/api/reports/export.pdf").contains(path)){reports(x,session);return;}
                 if(path.equals("/api/account/password")||path.startsWith("/api/admin/")){Reply reply=account(x,session);json(x,reply.status,reply.body);return;}
                 if(path.equals("/api/collector.zip")){method(x,"GET");InstallerPackage installer=installerPackage();try{x.getResponseHeaders().set("Content-Type","application/zip");x.getResponseHeaders().set("Content-Disposition","attachment; filename=\""+installer.filename()+"\"");x.sendResponseHeaders(200,0);installer.writeOriginal(x.getResponseBody());}finally{installer.close();}return;}
                 Session authenticated=session;java.util.concurrent.Callable<Reply> operation=()->{if(authenticated!=null)authorize(x,authenticated);return api(x,authenticated);};Reply reply=write||(path.equals("/api/agent/poll")||path.equals("/api/agent/actions")||path.equals("/api/agent/update-v3/action")||path.equals("/api/agent-updates")||Set.of("/api/work-requests","/api/work-requests/active","/api/work-requests/detail").contains(path))?store.transaction(operation):store.readSnapshot(operation);
@@ -440,6 +472,7 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
             }
             method(x,"GET");if(path.equals("/"))path="/index.html";File web=new File(root,"web").getCanonicalFile(),f=new File(web,path.substring(1)).getCanonicalFile();if(!f.getPath().startsWith(web.getPath()+File.separator))throw new ApiError(404,"Not found");String type=path.endsWith(".html")?"text/html; charset=utf-8":path.endsWith(".css")?"text/css; charset=utf-8":path.endsWith(".js")?"application/javascript; charset=utf-8":path.endsWith(".svg")?"image/svg+xml":"application/octet-stream";file(x,f,type);
         }catch(ApiError e){json(x,e.status,map("error",e.getMessage()));}
+        catch(Reports.Failure e){json(x,e.status,map("error",e.getMessage()));}
         catch(UserAuth.Failure e){json(x,e.status,map("error",e.getMessage()));}
         catch(EnrollmentRegistry.Failure e){json(x,e.status,map("error",e.getMessage()));}
         catch(IllegalArgumentException e){json(x,400,map("error","Invalid request data"));}
