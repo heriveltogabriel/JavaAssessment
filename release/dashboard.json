@@ -2,6 +2,141 @@
   "version": "2.0.11",
   "releases": [
     {
+      "version": "1.0.1-beta",
+      "builtAt": "2026-10-13T20:29:45.150789+00:00",
+      "status": "prepared"
+    },
+    {
+      "version": "1.0.2-beta",
+      "builtAt": "2026-10-13T20:43:39.467015+00:00",
+      "status": "prepared"
+    },
+    {
+      "version": "1.5.2",
+      "builtAt": "2026-10-13T21:00:40.894755+00:00",
+      "status": "failed"
+    },
+    {
+      "version": "1.5.3",
+      "builtAt": "2026-10-13T21:03:12.955569+00:00",
+      "status": "prepared"
+    },
+    {
+      "version": "1.5.4",
+      "builtAt": "2026-10-13T22:43:48.339519+00:00",
+      "status": "prepared"
+    },
+    {
+      "version": "1.5.5",
+      "builtAt": "2026-10-13T23:04:03.693507+00:00",
+      "status": "failed"
+    },
+    {
+      "version": "1.5.6",
+      "builtAt": "2026-10-13T23:05:17.814411+00:00",
+      "status": "prepared"
+    },
+    {
+      "version": "1.5.7",
+      "builtAt": "2026-10-13T23:46:57.485757+00:00",
+      "status": "prepared"
+    },
+    {
+      "version": "1.5.8",
+      "builtAt": "2026-10-14T00:58:26.231393+00:00",
+      "status": "prepared"
+    },
+    {
+      "version": "1.5.9",
+      "builtAt": "2026-10-14T01:00:55.915503+00:00",
+      "status": "prepared"
+    },
+    {
+      "version": "1.5.10",
+      "builtAt": "2026-10-14T01:57:11.825429+00:00",
+      "status": "prepared"
+    },
+    {
+      "version": "1.5.11",
+      "builtAt": "2026-10-14T02:50:25.364081+00:00",
+      "status": "prepared"
+    },
+    {
+      "version": "1.5.12",
+      "builtAt": "2026-10-14T03:34:23.399765+00:00",
+      "status": "prepared"
+    },
+    {
+      "version": "1.5.13",
+      "builtAt": "2026-10-14T11:49:58.081585+00:00",
+      "status": "prepared"
+    },
+    {
+      "version": "2.0.0",
+      "builtAt": "2026-10-14T13:44:26.703339+00:00",
+      "status": "prepared"
+    },
+    {
+      "version": "2.0.1",
+      "builtAt": "2026-10-14T15:05:03.252622+00:00",
+      "status": "failed"
+    },
+    {
+      "version": "2.0.2",
+      "builtAt": "2026-10-14T15:20:58.076149+00:00",
+      "status": "prepared"
+    },
+    {
+      "version": "2.0.3",
+      "builtAt": "2026-10-14T17:53:55.406630+00:00",
+      "status": "prepared"
+    },
+    {
+      "version": "2.0.4",
+      "builtAt": "2026-10-14T19:28:10.063428+00:00",
+      "status": "failed"
+    },
+    {
+      "version": "2.0.5",
+      "builtAt": "2026-10-14T19:28:56.395359+00:00",
+      "status": "prepared"
+    },
+    {
+      "version": "2.0.6",
+      "builtAt": "2026-10-14T22:31:10.888628+00:00",
+      "status": "bridge-reserved",
+      "kind": "agent-bridge",
+      "targetVersion": "2.0.7"
+    },
+    {
+      "version": "2.0.7",
+      "builtAt": "2026-10-14T22:31:10.888628+00:00",
+      "status": "failed",
+      "bridgeVersion": "2.0.6",
+      "candidateOnly": true
+    },
+    {
+      "version": "2.0.8",
+      "builtAt": "2026-10-14T22:32:09.901380+00:00",
+      "status": "bridge-prepared",
+      "kind": "agent-bridge",
+      "targetVersion": "2.0.9"
+    },
+    {
+      "version": "2.0.9",
+      "builtAt": "2026-10-14T22:32:09.901380+00:00",
+      "status": "prepared",
+      "bridgeVersion": "2.0.8",
+      "candidateOnly": true
+    },
+    {
+      "version": "2.0.10",
+      "builtAt": "2026-10-15T01:49:41.998272+00:00",
+      "status": "bridge-prepared",
+      "kind": "agent-bridge",
+      "targetVersion": "2.0.11"
+    },
+    {
       "version": "2.0.11",
       "builtAt": "2026-10-15T01:49:41.998272+00:00",
       "status": "prepared",
