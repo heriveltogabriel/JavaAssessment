@@ -2,6 +2,8 @@
 
 Preparada localmente em 2026-10-15 para continuidade da validação no laboratório. Dashboard e agente usam 2.0.13; o bridge interno usa 2.0.12. Publicar o dashboard continua sendo uma operação explícita do operador.
 
+O operador confirmou a publicação e o funcionamento do dashboard. O recibo local confirmou versão 2.0.13 e HTTPS externo, com configuração e banco preservados; nenhum agente foi alterado pela publicação. O instalador para um dashboard novo está em `install/v2.0.13`, acompanhado do SHA-256.
+
 ## Mudanças
 
 - Confirmação de atualização abre automaticamente o Work request retornado pelo servidor, em todos os ambientes, mostrando o lote inteiro. Erros, resposta perdida e respostas sem identificador mantêm o tratamento anterior; reenvio reutiliza a chave idempotente.
