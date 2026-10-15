@@ -2,6 +2,10 @@
 
 Arquivos para instalar o dashboard e os agentes na infraestrutura do cliente. Os manuais ficam nesta pasta; cada versão tem sua própria pasta de instalador.
 
+## Java para instalação sem download na VM
+
+- [OpenJDK 17 para Linux x86_64](java/README.md): pacote Temurin em partes, checksums e instruções de reconstrução e extração.
+
 ## Documentação
 
 - [Manual ilustrado da solução](Manual.pdf): arquitetura, inventário, atualização de agentes, relatórios e filtros JDBC.

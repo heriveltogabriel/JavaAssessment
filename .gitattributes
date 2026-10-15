@@ -8,3 +8,6 @@ lib/** -text -whitespace
 *.pdf binary
 *.der binary
 *.sig binary
+
+# Offline JDK archive parts must retain their original bytes.
+install/java/*.part[0-9][0-9] binary
