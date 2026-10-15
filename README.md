@@ -2,6 +2,8 @@
 
 Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versão **2.0.17** reúne dashboard, agente Linux e banco SQLite local, com organização por ambiente e máquina.
 
+![Overview do Java Assessment com indicadores de agentes, instalações Java, servidores e datasources JDBC](imagens/overview.png)
+
 ## Recursos
 
 - Overview com quatro distribuições compactas: Java, sistemas operacionais, servidores por produto/versão e datasources por nome/versão do driver; máquinas em lista com busca e dez itens por página.
