@@ -351,6 +351,15 @@ def execute(host, identity, user, contract, runner=subprocess.run, output_root=N
     for name, value in markers.items():
         if not name.startswith(('RESUME_BEFORE_', 'RESUME_AFTER_')):
             print(name + '=' + value)
+    # A connection/authentication failure can return no remote evidence at all.
+    # It must not masquerade as an identity mismatch, or hide a precise guard.
+    if 'RESUME_STOP' in markers:
+        raise RuntimeError(markers['RESUME_STOP'])
+    if result.returncode == 124:
+        raise RuntimeError('SSH_TIMEOUT_RESULT_UNKNOWN_DO_NOT_REPEAT_BLINDLY')
+    if not markers:
+        raise RuntimeError('SSH_FAILED_WITHOUT_REMOTE_CONFIRMATION' if result.returncode != 0
+                           else 'REMOTE_RESULT_MISSING_CHECK_CONNECTION')
     preserved = ('CONFIG', 'INSTALLATION_ID', 'JAVA_PATH', 'CA', 'PUBLIC_KEY', 'HOST_ID_HASH')
     require(all(markers.get('RESUME_BEFORE_' + name) and markers.get('RESUME_BEFORE_' + name) == markers.get('RESUME_AFTER_' + name)
                 for name in preserved), 'PRESERVATION_NOT_CONFIRMED_CHECK_PRIVATE_REPORT')
@@ -380,5 +389,10 @@ if __name__ == '__main__':
         main()
     except (RuntimeError, OSError, ValueError, KeyError, subprocess.TimeoutExpired) as failure:
         code = str(failure)
-        print('RETOMADA_INTERROMPIDA: ' + (code if re.fullmatch('[A-Z0-9_]{1,96}', code) else 'Verificacao ou conexao nao confirmada; nao repita sem conferir o estado.'), file=sys.stderr)
+        message = {
+            'SSH_FAILED_WITHOUT_REMOTE_CONFIRMATION': 'Falha no SSH, sem resultado remoto. Confira a conexao com a VM antes de tentar novamente.',
+            'REMOTE_RESULT_MISSING_CHECK_CONNECTION': 'O SSH terminou sem resultado remoto. Confira a conexao e o estado do agente.',
+            'SSH_TIMEOUT_RESULT_UNKNOWN_DO_NOT_REPEAT_BLINDLY': 'O SSH excedeu o limite; o resultado remoto e desconhecido. Confira o estado antes de repetir.',
+        }.get(code, code if re.fullmatch('[A-Z0-9_]{1,96}', code) else 'Verificacao ou conexao nao confirmada; nao repita sem conferir o estado.')
+        print('RETOMADA_INTERROMPIDA: ' + message, file=sys.stderr)
         sys.exit(1)

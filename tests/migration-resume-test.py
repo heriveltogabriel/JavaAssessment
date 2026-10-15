@@ -150,6 +150,32 @@ def main(release):
         check(receipt['markers']['RESUME_BEFORE_CONFIG'] == receipt['markers']['RESUME_AFTER_CONFIG'])
         reject(lambda: module.execute('192.0.2.1', key, 'opc', contract, runner=fake_ssh, output_root=directory / 'evidence'))
         check(len(calls) == 1)
+        def failed_result(raw, code, expected):
+            attempts = []
+            def failed_ssh(argv, **kwargs):
+                attempts.append(argv)
+                return subprocess.CompletedProcess(argv, code, stdout=raw)
+            reports_before = set((directory / 'evidence').glob('*/resume-result.json'))
+            with contextlib.redirect_stdout(io.StringIO()):
+                try:
+                    module.execute(case['host'], key, 'opc', contract, runner=failed_ssh,
+                                   output_root=directory / 'evidence')
+                except RuntimeError as failure:
+                    check(str(failure) == expected)
+                else:
+                    raise AssertionError('Failed SSH accepted')
+            reports_after = set((directory / 'evidence').glob('*/resume-result.json'))
+            check(len(attempts) == 1 and len(reports_after - reports_before) == 1)
+            saved = json.loads(next(iter(reports_after - reports_before)).read_text())
+            check(saved['sshExitCode'] == code)
+        failed_result(b'', 255, 'SSH_FAILED_WITHOUT_REMOTE_CONFIRMATION')
+        failed_result(b'', 0, 'REMOTE_RESULT_MISSING_CHECK_CONNECTION')
+        failed_result(b'RESUME_STOP=STAGED_FILE_CHANGED\n', 1, 'STAGED_FILE_CHANGED')
+        failed_result(b'RESUME_BEFORE_CONFIG=' + b'a' * 64 + b'\n', 124,
+                      'SSH_TIMEOUT_RESULT_UNKNOWN_DO_NOT_REPEAT_BLINDLY')
+        changed = captured.getvalue().replace('RESUME_AFTER_CONFIG=' + 'a' * 64,
+                                              'RESUME_AFTER_CONFIG=' + 'b' * 64)
+        failed_result(changed.encode(), 0, 'PRESERVATION_NOT_CONFIRMED_CHECK_PRIVATE_REPORT')
     print('Migration resume PASS ' + str(checks) + ' offline checks; fake SSH/OS, public artifacts only; no host access.')
 
 

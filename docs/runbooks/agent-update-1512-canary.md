@@ -102,4 +102,6 @@ O script recusa outro host, operação, fase, origem ou arquivo divergente. Conf
 
 `RESUME_COMPLETE=HANDOFF_ONLY` significa que o serviço de recuperação ficou ativo. Acompanhar o **mesmo** Work request até a confirmação de 2.0.9 e do assessment vinculado. Se houver `RESUME_STOP` ou conexão interrompida, conferir o relatório privado e diagnosticar novamente; não repetir cegamente nem criar outro pedido. Manter os demais canários intactos até essa tentativa estar estável.
 
+Se o SSH informar timeout de conexão antes de abrir a sessão, verificar a porta com `nc -vz -G 5 IP_DO_CASO_IDENTIFICADO 22` no Mac e confirmar se a VM está ligada e mantém o mesmo IP público. O reparo só poderá executar após restabelecer esse acesso. Um exit code SSH sem marcadores remotos não é evidência de alteração da configuração; uma queda de conexão durante a execução deixa o resultado desconhecido e exige novo diagnóstico.
+
 **Atenção: atualize também os agentes.** Publicar T não atualiza as máquinas automaticamente. A elegibilidade depende dos perfis assinados e da instalação protegida, além da versão declarada.
