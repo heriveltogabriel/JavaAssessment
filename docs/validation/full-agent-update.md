@@ -138,3 +138,7 @@ Esse ensaio confirma a atualização observada de uma instalação já migrada e
 O operador enviou a captura do segundo canário, RHEL 7/Java 11, com origem 1.5.12 e destino 2.0.11. O Work request mostrou "Migração automática" e "Atualização completa confirmada". O pedido começou em 2026-10-14 às 23:46:09 GMT-3 e concluiu às 23:48:58, após download, instalação e verificação. O assessment posterior foi recebido com 1 instalação Java e 2 servidores. Não foi relatado uso do script de retomada nesse pedido; a evidência desta etapa é a captura fornecida pelo operador, preservada com recibo privado em `output/agent-canaries/`.
 
 O sucesso comprova essa execução da migração original para o pacote completo e o assessment posterior. Não invalida a disputa de flock reproduzida na RHEL 8: uma condição de concorrência pode não ocorrer em todas as tentativas, e o pacote 2.0.11 continua sem a correção preparada. Java 6/SysV e falhas/reboot/recuperação permanecem testes distintos. Os dois canários originais agora estão migrados; validar o candidato corrigido com origem 1.5.12 requer outra instalação original ou restauração controlada de laboratório, sem downgrade improvisado.
+
+## Confirmação RHEL 5 / Java 6
+
+Em 2026-10-15 o operador confirmou sucesso da atualização automática 2.0.5 → 2.0.11 e recebimento do assessment posterior na máquina RHEL 5/Java 6. Não houve intervenção manual relatada nesse pedido. Isso complementa os testes nativos de evolução normal; não constitui prova de falha/reboot, RSS máximo ou 32 bits.

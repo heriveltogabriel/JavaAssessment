@@ -89,7 +89,12 @@
       }
       const body={...pending,hostIds:[...pending.hostIds]},result=await ctx.api('agent-updates',{method:'POST',body});if(!valid())return;
       progressBatch=String(result.batchId||result.batch?.id||result.requests?.[0]?.batchId||'');progressVersion=body.targetVersion;skipped=Array.isArray(result.skipped)?result.skipped:[];mode='progress';selection.clear();pending=null;
-      const requests=Array.isArray(result.requests)?result.requests:[];submittedIds=requests.map(request=>request.hostId);preview={...preview,requests,hosts:preview.hosts.map(host=>({...host,update:requests.find(request=>request.hostId===host.id)||host.update}))};render();ctx.notify(requests.length?requests.length+' pedido(s) de atualização registrado(s).':'Nenhuma máquina foi incluída. Revise os motivos.');ctx.refreshInventory();
+      const requests=Array.isArray(result.requests)?result.requests:[];submittedIds=requests.map(request=>request.hostId);preview={...preview,requests,hosts:preview.hosts.map(host=>({...host,update:requests.find(request=>request.hostId===host.id)||host.update}))};render();ctx.notify(requests.length?requests.length+' pedido(s) de atualização registrado(s).':'Nenhuma máquina foi incluída. Revise os motivos.');
+      // Keep the confirmed batch before close/reset clears the dialog state.
+      if(requests.length&&progressBatch&&typeof ctx.openWorkRequest==='function'){
+        const batch=progressBatch;busy=false;close();ctx.openWorkRequest(batch,'AGENT_UPDATE');return;
+      }
+      ctx.refreshInventory();
     }catch(error){if(valid()){if(error.status&&error.status<500)pending=null;showError(pending?'Não foi possível confirmar o pedido. Clique em Verificar solicitação para reenviar o mesmo pedido com segurança.':error.message);}}
     finally{if(valid()){busy=false;dialog.removeAttribute('aria-busy');render();startPolling();}}
   }

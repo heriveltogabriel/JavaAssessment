@@ -80,6 +80,13 @@
     data=contextKind==='machine'?AssessmentDashboard.scoped(environmentData,machineId):environmentData;
   }
   function finishNavigation(replace=false) {if(!AssessmentAccess.canInventory())return;if(!allowedView(current)){current='overview';contextKind='root';}closeActions();AssessmentAccess.closeMenu();AssessmentMachines.clear();AssessmentAgentUpdates.clear();AssessmentWorkRequests.clear({preserveFilters:true});hostFilter=contextKind==='machine'?machineId:'';closeMobileNavigation();closeDrawer();writeRoute(replace);data=null;render();loadState(false);window.scrollTo({top:0,behavior:'instant'});}
+  function openAllMachines(){contextKind='environment';current='hosts';environmentScope='';machineId='';hostFilter='';resetTransient();finishNavigation();}
+  function openAgentUpdateRequest(id,type){
+    // A global update can be requested from a filtered inventory or a machine.
+    // Its receipt must show the entire confirmed batch, not the previous scope.
+    if(type==='AGENT_UPDATE'){contextKind='environment';environmentScope='';machineId='';hostFilter='';}
+    openWorkRequest(id,type);
+  }
   function openWorkHistory(){contextKind='environment';current='jobs';environmentScope='';machineId='';hostFilter='';resetTransient();finishNavigation();}
   function openWorkRequest(id='',type='AGENT_UPDATE') {
     if(!AssessmentAccess.canInventory())return;
@@ -328,7 +335,7 @@
     document.body.classList.toggle('summary-view',['overview','environments','versions','machine'].includes(current));
     $('tabs').hidden=contextKind==='root'||current==='jobs';
     $('tabs').innerHTML=tabs.filter(([id])=>!['environments','jobs'].includes(id)&&allowedView(id)).map(([id,title])=>{const active=routeView()===id,label=id==='properties'?(contextKind==='machine'?'Machine properties':'Environment properties'):title;return '<button type="button" class="'+(active?'active':'')+'" data-tab="'+id+'" aria-current="'+(active?'page':'false')+'">'+label+'</button>';}).join('');
-    $('side-nav').querySelectorAll('[data-tab]').forEach(item=>{const active=item.dataset.tab==='jobs'?current==='jobs':contextKind==='root'&&item.dataset.tab===current;item.classList.toggle('active',active);if(active)item.setAttribute('aria-current','page');else item.removeAttribute('aria-current');});
+    $('side-nav').querySelectorAll('[data-tab]').forEach(item=>{const active=item.dataset.tab==='hosts'?contextKind!=='root'&&!['jobs','administration'].includes(current):item.dataset.tab==='jobs'?current==='jobs':contextKind==='root'&&item.dataset.tab===current;item.classList.toggle('active',active);if(active)item.setAttribute('aria-current','page');else item.removeAttribute('aria-current');});
     renderContext();
     const selected=tabs.find(t=>t[0]===current) || ['machine','Machine overview','Resources and Java inventory for this host.'];$('view-title').textContent=current==='properties'?(contextKind==='machine'?'Machine properties':'Environment properties'):selected[1];$('view-description').textContent=selected[2];
     $('standard-view').hidden=['overview','environments','versions','machine','properties','schedule','jobs'].includes(current);$('special-view').hidden=current==='jobs'||!$('standard-view').hidden;
@@ -476,7 +483,7 @@
     if(event.target.closest('[data-update-environment]')){if(current==='hosts'&&contextKind!=='machine')openAgentUpdates();return;}
     if(event.target.closest('[data-environment-overview]')){environmentOverview();return;}
     const back=event.target.closest('[data-context-back]');if(back){back.dataset.contextBack==='environment'?environmentOverview():goRoot('environments');return;}
-    const tab=event.target.closest('[data-tab]');if(tab){event.preventDefault();if(tab.dataset.tab==='jobs')tab.closest('#side-nav')?openWorkHistory():setTab('jobs');else if(tab.closest('#side-nav')||tab.classList.contains('brand'))goRoot(tab.dataset.tab);else setTab(tab.dataset.tab);return;}
+    const tab=event.target.closest('[data-tab]');if(tab){event.preventDefault();if(tab.dataset.tab==='hosts'&&tab.closest('#side-nav'))openAllMachines();else if(tab.dataset.tab==='jobs')tab.closest('#side-nav')?openWorkHistory():setTab('jobs');else if(tab.closest('#side-nav')||tab.classList.contains('brand'))goRoot(tab.dataset.tab);else setTab(tab.dataset.tab);return;}
     const machine=event.target.closest('[data-machine]');if(machine){openMachine(machine.dataset.machine);return;}
     const inventory=event.target.closest('[data-inventory]');if(inventory){setTab(inventory.dataset.inventory,{machineId:inventory.dataset.scope,subset:inventory.dataset.subset});return;}
     const versionGroup=event.target.closest('[data-version-group]');if(versionGroup){versionMode='family';setTab('versions',{machineId:versionGroup.dataset.scope,version:versionGroup.dataset.versionGroup});return;}
@@ -517,7 +524,7 @@
   AssessmentEnvironments.init({isAdmin:AssessmentAccess.isAdmin,api,download:downloadPackage,downloadGet,getExportContext:()=>({environmentId:environmentScope,hostId:contextKind==='machine'?machineId:'',hostName:host(machineId)?.hostname || host(machineId)?.fqdn || machineId}),getRaw:()=>rawData,getScoped:()=>data,getScope:()=>environmentScope,select:selectEnvironment,refresh:loadState,notify,navigate:setTab,afterMachineChange});
   AssessmentMachines.init({isAdmin:AssessmentAccess.isAdmin,getRevision:AssessmentAccess.getRevision,api,getHost:id=>(data?.hosts||[]).find(h=>h.id===id),getEnvironments:()=>rawData?.environments||[],getScope:()=>environmentScope,move:AssessmentEnvironments.openAssignment,update:id=>AssessmentAgentUpdates.open({hostId:id,label:hostName(id)}),afterChange:afterMachineChange,notify,closeOtherMenus:()=>{closeActions();AssessmentAccess.closeMenu();}});
   AssessmentWorkRequests.init({canRead:AssessmentAccess.canInventory,isAdmin:AssessmentAccess.isAdmin,getRevision:AssessmentAccess.getRevision,api,select:openWorkRequest,changeEnvironment:selectEnvironment,openAssessment:(id,hostId)=>showDetail('jobs',id,hostId),notify});
-  AssessmentAgentUpdates.init({isAdmin:AssessmentAccess.isAdmin,getRevision:AssessmentAccess.getRevision,api,refreshInventory:()=>{loadState(true);AssessmentWorkRequests.refresh(true);},openWorkRequest,notify,closeMenus:()=>{closeActions();AssessmentMachines.closeMenu();AssessmentAccess.closeMenu();}});
+  AssessmentAgentUpdates.init({isAdmin:AssessmentAccess.isAdmin,getRevision:AssessmentAccess.getRevision,api,refreshInventory:()=>{loadState(true);AssessmentWorkRequests.refresh(true);},openWorkRequest:openAgentUpdateRequest,notify,closeMenus:()=>{closeActions();AssessmentMachines.closeMenu();AssessmentAccess.closeMenu();}});
   AssessmentAccess.init({onSession:startSession,onSignedOut:clearSession,notify});
   setNavigation(!narrowNavigation.matches);render();AssessmentAccess.start();
 })();
