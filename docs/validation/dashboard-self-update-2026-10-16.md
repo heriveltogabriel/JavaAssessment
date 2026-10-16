@@ -1,6 +1,6 @@
 # Validação do atualizador administrativo — 2.1.0
 
-A 2.1.0 está preparada localmente. O dashboard de laboratório continua ativo na 2.0.57; nenhum agente real foi atualizado durante estes testes. O cliente permanece com sua versão atual.
+A 2.1.0 foi publicada no dashboard de laboratório em 2026-10-16 após os testes isolados abaixo. Nenhum agente real foi atualizado por esta publicação. O cliente permanece com sua versão atual.
 
 ## Preservação
 
@@ -24,6 +24,18 @@ A 2.1.0 está preparada localmente. O dashboard de laboratório continua ativo n
 
 Recibos e logs em `output/dashboard-releases/2.1.0/evidence`, incluindo `public-verification.json`, `final-java-local.log`, `final-java-native-ol8.log` e provas diretas dos agentes. Os builds não publicados rejeitados durante validação ficaram arquivados separadamente; nenhum pacote publicado foi substituído.
 
-A prova isolada inclui uma pasta de manutenção vazia na origem 2.0.57 para modelar o pré-requisito do executor. Não significa que uma 2.0.57 original aceite atualização pelo navegador. A primeira adoção da 2.1.0 usa o script tradicional, e a instalação completa do executor no dashboard real será conferida no primeiro deploy de laboratório.
+A prova isolada inclui uma pasta de manutenção vazia na origem 2.0.57 para modelar o pré-requisito do executor. Não significa que uma 2.0.57 original aceite atualização pelo navegador. A primeira adoção da 2.1.0 usa o script tradicional, e a instalação completa do executor foi conferida no primeiro deploy de laboratório descrito abaixo.
 
 Interrupções usam injeção de falhas, não corte elétrico. Não houve teste no cliente, migração de dados reais nem atualização automática de agentes. O pacote preserva o banco atual no retorno; não promete recuperação sem acesso ao servidor quando o próprio dashboard não consegue iniciar.
+
+## Primeiro deploy no laboratório
+
+Em 2026-10-16 às 19:01 BRT, o script tradicional confirmou **2.0.57 → 2.1.0** em `https://167.126.4.37`. O recibo privado está em `output/dashboard-releases/2.1.0/deployment/deployment-result.json`.
+
+- HTTPS externo com CA validada respondeu `status=ok`, `version=2.1.0`, `storage=sqlite`; arquivos publicados conferidos pelo script.
+- Banco, configuração e CA preservados; backup privado consistente criado antes da troca. Nenhum agente atualizado ou removido.
+- Dashboard e executor independente ativos; executor habilitado no systemd, estado `IDLE`, versão instalada `2.1.0`.
+- `ProtectSystem=strict` mantido; `ReadWritePaths` contém dados, logs e somente a fila do novo executor. Usuário do dashboard pode ler o estado e escrever na fila, mas não alterar o estado.
+- O backup estável anterior ao desenvolvimento e os instaladores 2.0.57 permanecem preservados. Não houve implantação no cliente.
+
+Esta publicação valida a primeira adoção pelo script tradicional. A atualização pelo navegador e a restauração foram exercitadas nas instalações isoladas descritas acima; não foi criado um pedido artificial no dashboard de laboratório.

@@ -1,8 +1,8 @@
 # Melhorias planejadas
 
-## Atualização administrativa — próxima entrega 2.1.0
+## Atualização administrativa — 2.1.0 publicada no laboratório
 
-Implementação concluída e pacotes 2.1.0 validados em ambiente isolado (Java/SQLite/HTTPS reais, systemd e usuário sem privilégios). Primeiro deploy do executor no dashboard real ainda pendente: [desenho](superpowers/specs/2026-10-16-dashboard-self-update-design.md), [operação](DASHBOARD_SELF_UPDATE.md), [evidências](validation/dashboard-self-update-2026-10-16.md). A 2.0.57 permanece preservada para o cliente. Não publicar no cliente sem validação da entrega final.
+Implementação concluída, pacotes validados em ambiente isolado e primeiro deploy no dashboard de laboratório confirmado em 2026-10-16. HTTPS externo 2.1.0, executor ativo/habilitado e permissões da fila conferidos; banco, configuração e CA preservados. Nenhum agente atualizado pelo deploy: [desenho](superpowers/specs/2026-10-16-dashboard-self-update-design.md), [operação](DASHBOARD_SELF_UPDATE.md), [evidências](validation/dashboard-self-update-2026-10-16.md). A 2.0.57 permanece preservada para o cliente. Não publicar no cliente sem validação da entrega final.
 
 
 ## Descoberta WebLogic/Spring e destinos JDBC — fonte validada
