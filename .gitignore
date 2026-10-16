@@ -50,3 +50,6 @@ test-results/
 playwright-report/
 /tests/fixtures/*output*/
 .DS_Store
+
+# Public Ansible automation bundle (examples only, no credentials).
+!/install/ansible/java-assessment-ansible.zip

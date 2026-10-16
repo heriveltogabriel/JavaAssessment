@@ -1,0 +1,57 @@
+#!/bin/sh
+# Renderizado em arquivo privado pelo controlador; nunca executar com sh -x.
+set +x
+set -eu
+umask 077
+export LC_ALL=C
+for program in wget unzip sha256sum mktemp awk sed stat; do
+  command -v "$program" >/dev/null || { echo 'DEPENDENCIA_AUSENTE' >&2; exit 1; }
+done
+if test "$(id -u)" = 0 && test "${SUDO_UID:-0}" != 0; then
+  echo 'DOWNLOAD_DEVE_USAR_USUARIO_SSH_SEM_SUDO' >&2; exit 1
+fi
+JA_STAGE=$(mktemp -d /tmp/java-assessment-ansible.XXXXXX)
+JA_KEEP=false
+cleanup() {
+  result=$?
+  trap - 0
+  rm -f "$JA_STAGE/download.conf"
+  if ! $JA_KEEP; then rm -rf -- "$JA_STAGE"; fi
+  exit "$result"
+}
+trap cleanup 0
+trap 'exit 1' 1 2 15
+cat > "$JA_STAGE/dashboard-ca.pem" <<'JAVA_ASSESSMENT_CA'
+{{ lookup('ansible.builtin.file', assessment_ca_file) }}
+JAVA_ASSESSMENT_CA
+cat > "$JA_STAGE/download.conf" <<JAVA_ASSESSMENT_DOWNLOAD
+header = Authorization: Bearer {{ assessment_install_token }}
+ca_certificate = $JA_STAGE/dashboard-ca.pem
+check_certificate = on
+output_document = $JA_STAGE/agent.zip
+max_redirect = 0
+timeout = 30
+tries = 2
+quiet = on
+JAVA_ASSESSMENT_DOWNLOAD
+JA_ATTEMPT=0
+JA_DELAY=2
+until WGETRC="$JA_STAGE/download.conf" wget {{ ((assessment_dashboard_url | regex_replace('/$', '')) ~ '/api/install/package?environmentId=' ~ assessment_environment_id) | quote }}; do
+  JA_ATTEMPT=$((JA_ATTEMPT + 1))
+  if test "$JA_ATTEMPT" -ge 6; then echo 'DOWNLOAD_FALHOU' >&2; exit 1; fi
+  sleep "$JA_DELAY"
+  JA_DELAY=$((JA_DELAY * 2))
+done
+rm -f "$JA_STAGE/download.conf"
+unzip -tq "$JA_STAGE/agent.zip" >/dev/null
+# Recusa caminhos absolutos e traversal antes da extração.
+unzip -Z1 "$JA_STAGE/agent.zip" > "$JA_STAGE/entries"
+awk 'BEGIN {bad=0} /^\// || /(^|\/)\.\.($|\/)/ || /\\/ {bad=1} END {exit bad}' "$JA_STAGE/entries"
+mkdir "$JA_STAGE/package"
+unzip -q "$JA_STAGE/agent.zip" -d "$JA_STAGE/package"
+(cd "$JA_STAGE/package" && sha256sum -c SHA256SUMS >/dev/null)
+test -f "$JA_STAGE/package/install.sh" && test ! -L "$JA_STAGE/package/install.sh"
+test -f "$JA_STAGE/package/conf/bootstrap.properties" && test ! -L "$JA_STAGE/package/conf/bootstrap.properties"
+chmod 600 "$JA_STAGE/package/conf/bootstrap.properties"
+JA_KEEP=true
+printf 'JAVA_ASSESSMENT_STAGE=%s\n' "$JA_STAGE"

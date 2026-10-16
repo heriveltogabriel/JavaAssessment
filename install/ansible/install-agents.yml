@@ -1,0 +1,197 @@
+---
+- name: Instalar Java Assessment por ambiente
+  hosts: assessment_agents
+  gather_facts: false
+  become: false
+  strategy: linear
+  serial: "{{ assessment_batch_size | default(2) | int }}"
+  any_errors_fatal: true
+  tasks:
+    - name: Validar modo de execução
+      ansible.builtin.assert:
+        that:
+          - not ansible_check_mode
+          - (assessment_batch_size | default(2) | int) >= 1
+          - (assessment_batch_size | default(2) | int) <= 2
+        fail_msg: Use --syntax-check para validar. Este playbook instala em lotes de 1 ou 2 hosts.
+
+    - name: Consultar instalação existente sem ler credenciais
+      ansible.builtin.raw: |
+        set -eu
+        test "$(uname -s)" = Linux
+        root=/opt/java-assessment-collector
+        if test -L "$root"; then
+          echo JA_STATE=PARTIAL
+        elif test -f "$root/conf/installation-id" && test ! -L "$root/conf/installation-id" &&
+             test -f "$root/conf/collector.properties" && test ! -L "$root/conf/collector.properties" &&
+             { test -f "$root/collector.jar" || test -f "$root/current.json"; }; then
+          echo JA_STATE=EXISTING
+        else
+          for p in "$root" /opt/java-assessment-update /opt/java-assessment-uninstall; do
+            if test -e "$p" || test -L "$p"; then echo JA_STATE=PARTIAL; exit 0; fi
+          done
+          echo JA_STATE=ABSENT
+        fi
+      args:
+        executable: /bin/sh
+      become: true
+      become_user: root
+      become_method: sudo
+      changed_when: false
+      register: ja_state
+
+    - name: Recusar instalação parcial ou resultado inesperado
+      ansible.builtin.assert:
+        that:
+          - "'JA_STATE=ABSENT' in ja_state.stdout or 'JA_STATE=EXISTING' in ja_state.stdout"
+          - "'JA_STATE=PARTIAL' not in ja_state.stdout"
+        fail_msg: Há uma instalação parcial ou resíduos. Diagnostique antes de reinstalar; nenhum diretório será excluído.
+
+    - name: Informar instalação existente preservada
+      ansible.builtin.debug:
+        msg: Agente já cadastrado; instalação ignorada. Confira comunicação, ambiente e atualização no dashboard.
+      when: "'JA_STATE=EXISTING' in ja_state.stdout"
+
+    - name: Instalar somente em máquina sem agente
+      when: "'JA_STATE=ABSENT' in ja_state.stdout"
+      block:
+        - name: Validar variáveis de instalação sem exibir credenciais
+          ansible.builtin.assert:
+            that:
+              - assessment_dashboard_url is match('^https://[A-Za-z0-9.\[\]:-]+/?$')
+              - assessment_environment_id is match('^env-[A-Za-z0-9-]{1,90}$')
+              - "'SUBSTITUA' not in assessment_environment_id"
+              - assessment_install_token is match('^eia1_[a-f0-9]{64}$')
+              - assessment_ca_file | length > 0
+              - (assessment_java_path | default('')) is match('^(/[A-Za-z0-9_./+ -]+)?$')
+            fail_msg: Preencha URL HTTPS, ID real do ambiente, credencial de instalação e caminho da CA.
+          no_log: true
+
+        - name: Validar formato da CA no controlador
+          ansible.builtin.assert:
+            that:
+              - lookup('ansible.builtin.file', assessment_ca_file) | length <= 65536
+              - lookup('ansible.builtin.file', assessment_ca_file) is match('(?s)^(-----BEGIN CERTIFICATE-----\s+[A-Za-z0-9+/=\s]+-----END CERTIFICATE-----\s*)+$')
+            fail_msg: Informe um arquivo PEM contendo somente certificados da CA do dashboard.
+
+        - name: Criar área temporária privada no controlador
+          ansible.builtin.tempfile:
+            state: directory
+            prefix: java-assessment-ansible-
+          delegate_to: localhost
+          become: false
+          vars:
+            ansible_python_interpreter: "{{ ansible_playbook_python }}"
+          register: ja_local
+
+        - name: Gerar script wget privado por máquina
+          ansible.builtin.template:
+            src: templates/download-agent.sh.j2
+            dest: "{{ ja_local.path }}/download.sh"
+            mode: '0600'
+          delegate_to: localhost
+          become: false
+          vars:
+            ansible_python_interpreter: "{{ ansible_playbook_python }}"
+          no_log: true
+          diff: false
+
+        - name: Baixar e verificar pacote como usuário SSH
+          ansible.builtin.script:
+            cmd: "{{ (ja_local.path ~ '/download.sh') | quote }}"
+            executable: /bin/sh
+          become: false
+          register: ja_download
+          no_log: true
+
+        - name: Extrair somente o caminho temporário do resultado
+          ansible.builtin.set_fact:
+            ja_stages: "{{ ja_download.stdout | regex_findall('JAVA_ASSESSMENT_STAGE=(/tmp/java-assessment-ansible[.][A-Za-z0-9]+)') }}"
+          no_log: true
+
+        - name: Conferir caminho único do pacote verificado
+          ansible.builtin.assert:
+            that:
+              - ja_stages | length == 1
+            fail_msg: O download não devolveu um caminho temporário válido.
+
+        - name: Guardar caminho temporário sem credencial
+          ansible.builtin.set_fact:
+            ja_stage: "{{ ja_stages[0] }}"
+
+        - name: Instalar e configurar serviços com sudo
+          ansible.builtin.raw: >-
+            /bin/sh {{ (ja_stage ~ '/package/install.sh') | quote }} --system-root
+            {{ ('--java ' ~ (assessment_java_path | quote)) if (assessment_java_path | default('') | length > 0) else '' }}
+            </dev/null
+          args:
+            executable: /bin/sh
+          become: true
+          become_user: root
+          become_method: sudo
+          register: ja_install
+          no_log: true
+
+        - name: Confirmar cadastro local e agendamento
+          ansible.builtin.raw: |
+            set -eu
+            test -s /opt/java-assessment-collector/conf/installation-id
+            test -s /opt/java-assessment-collector/conf/collector.properties
+            if command -v systemctl >/dev/null 2>&1 && test -d /run/systemd/system; then
+              systemctl is-active --quiet java-assessment-collector.timer
+            else
+              /bin/sh /opt/java-assessment-collector/root-service.sh status
+            fi
+            echo JA_INSTALLATION=LOCAL_OK
+          args:
+            executable: /bin/sh
+          become: true
+          become_user: root
+          become_method: sudo
+          changed_when: false
+          register: ja_verify
+          retries: 6
+          delay: 10
+          until: ja_verify.rc == 0
+
+        - name: Informar instalação concluída
+          ansible.builtin.debug:
+            msg: >-
+              Instalação e agendamento locais confirmados para {{ assessment_environment_id }}.
+              Confira a máquina e o recebimento da coleta em Solicitações no dashboard.
+      rescue:
+        - name: Interromper lote com orientação de diagnóstico
+          ansible.builtin.fail:
+            msg: >-
+              Falha em {{ inventory_hostname }}, etapa {{ ansible_failed_task.name }}.
+              Credenciais e saída da instalação foram ocultadas.
+              Para falha de instalação, consulte /opt/java-assessment-collector/logs/install.log na máquina.
+              Verifique o estado antes de repetir; instalações parciais não são removidas automaticamente.
+      always:
+        - name: Limpar áreas temporárias mesmo se a limpeza remota falhar
+          block:
+            - name: Remover apenas o download temporário desta execução
+              ansible.builtin.raw: |
+                set -eu
+                p={{ ja_stage | quote }}
+                test -d "$p" && test ! -L "$p"
+                test "$(stat -c %u "$p")" = "$(id -u)"
+                rm -rf -- "$p"
+              args:
+                executable: /bin/sh
+              become: false
+              when: ja_stage is defined
+              changed_when: false
+          always:
+            - name: Remover script com credencial do controlador
+              ansible.builtin.file:
+                path: "{{ ja_local.path }}"
+                state: absent
+              delegate_to: localhost
+              become: false
+              vars:
+                ansible_python_interpreter: "{{ ansible_playbook_python }}"
+              when: ja_local is defined and ja_local.path is defined
+              no_log: true
+              diff: false
+              changed_when: false

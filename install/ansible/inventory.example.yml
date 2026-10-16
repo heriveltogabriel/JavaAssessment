@@ -1,0 +1,33 @@
+all:
+  children:
+    assessment_agents:
+      vars:
+        ansible_user: opc
+        assessment_dashboard_url: "https://dashboard.exemplo.com"
+        assessment_ca_file: "{{ playbook_dir }}/private/dashboard-ca.pem"
+        # Opcional: caminho absoluto do executável Java, definido por grupo/host.
+        # assessment_java_path: /usr/lib/jvm/java-17/bin/java
+      children:
+        producao:
+          vars:
+            assessment_environment_id: env-SUBSTITUA-PRODUCAO
+            assessment_install_token: "{{ vault_install_tokens.producao }}"
+          hosts:
+            app-prod-01:
+              ansible_host: 192.0.2.11
+            app-prod-02:
+              ansible_host: 192.0.2.12
+        homologacao:
+          vars:
+            assessment_environment_id: env-SUBSTITUA-HOMOLOGACAO
+            assessment_install_token: "{{ vault_install_tokens.homologacao }}"
+          hosts:
+            app-hml-01:
+              ansible_host: 192.0.2.21
+        desenvolvimento:
+          vars:
+            assessment_environment_id: env-SUBSTITUA-DESENVOLVIMENTO
+            assessment_install_token: "{{ vault_install_tokens.desenvolvimento }}"
+          hosts:
+            app-dev-01:
+              ansible_host: 192.0.2.31

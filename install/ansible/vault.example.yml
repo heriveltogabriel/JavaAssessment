@@ -1,0 +1,6 @@
+# Copie para private/vault.yml, preencha e criptografe com ansible-vault encrypt.
+# São credenciais de INSTALAÇÃO do ambiente (eia1_), não tokens de agentes.
+vault_install_tokens:
+  producao: SUBSTITUA_PELO_TOKEN_DE_INSTALACAO_PRODUCAO
+  homologacao: SUBSTITUA_PELO_TOKEN_DE_INSTALACAO_HOMOLOGACAO
+  desenvolvimento: SUBSTITUA_PELO_TOKEN_DE_INSTALACAO_DESENVOLVIMENTO

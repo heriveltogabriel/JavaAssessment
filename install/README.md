@@ -2,6 +2,14 @@
 
 Arquivos para instalar o dashboard e os agentes na infraestrutura do cliente. Os manuais ficam nesta pasta; cada versão tem sua própria pasta de instalador.
 
+## Instalação de agentes em lote com Ansible
+
+- [Guia, playbook e exemplos por ambiente](ansible/README.md)
+- [Baixar pacote Ansible](ansible/java-assessment-ansible.zip)
+- [SHA-256 do pacote](ansible/java-assessment-ansible.zip.sha256)
+
+O playbook usa wget, instala com sudo em lotes de duas máquinas e ignora agentes existentes. Preencha o inventário e guarde as credenciais no Ansible Vault. Os exemplos publicados não contêm credenciais reais.
+
 ## Java para instalação sem download na VM
 
 - [OpenJDK 17 para Linux x86_64](java/README.md): pacote Temurin em partes, checksums e instruções de reconstrução e extração.
