@@ -1,0 +1,15 @@
+# Atualização do dashboard pela administração
+
+Desenho aprovado pelo usuário em 16/10/2026, com autorização para implementar e validar. A 2.0.57 permanece disponível ao cliente; não publicar nem substituir seu pacote. A próxima entrega será 2.1.0 somente após validação.
+
+Administração ganha Atualização do dashboard: upload do ZIP assinado, preparação sem interromper o painel, versão/notas/resultado da verificação, cancelamento e confirmação explícita de Atualizar e reiniciar. O painel acompanha etapas e volta a consultar após a interrupção; sessões podem exigir novo login. Fechar a página não cancela a operação. Log público contém eventos controlados, sem saída bruta, caminhos privados ou credenciais.
+
+Um serviço systemd separado, como root, executa um protocolo fechado por fila local. O dashboard roda com seu usuário atual e só grava solicitações e uploads limitados. Estado/histórico são escritos pelo serviço e apenas lidos pelo dashboard. Nenhum comando, caminho de destino, script de usuário ou parâmetro shell é aceito. Assinatura RSA/SHA256 do manifesto é verificada com a chave pública fixa instalada; o ZIP e cada arquivo têm limites, nomes estritos, tamanho/hash verificados. São recusados links, travessia, duplicação, pacote adulterado, versão igual/anterior e origens incompatíveis.
+
+Preparação valida arquivos e espaço em disco. Aplicação revalida origem e pacote, bloqueia mutações e pedidos dos agentes, para o dashboard, verifica a parada, cria backup consistente do SQLite/configuração/segredos locais e componentes, persiste o journal, troca componentes e inicia. Sucesso exige HTTPS com CA/SNI local, versão esperada, SQLite íntegro e arquivos corretos. Falha retorna automaticamente ao código anterior mantendo o banco, exclusivamente para pacotes declarados compatíveis com esse retorno. Restauração manual usa a mesma regra e recusa tarefas de agente pendentes ou mudanças incompatíveis; não restaura silenciosamente um banco antigo. Backups completos ficam privados no servidor.
+
+Journal persistente permite recuperar interrupção do worker. Não se mistura cancelamento (antes da aplicação) com rollback (após aplicação). Uma operação por vez, revalidação no momento da confirmação, idempotência de comandos, histórico limitado e backups preservados. Problema de recuperação mantém manutenção e estado explícito para diagnóstico, sem anunciar sucesso.
+
+A instalação inicial do serviço será pelo instalador/script de atualização tradicional da 2.1.0. A atualização via interface só aceita o novo pacote de dashboard assinado; ZIPs antigos/instaladores de servidor novo não são executados. Agentes permanecem com seu próprio fluxo. Mudanças futuras no protocolo do worker exigem compatibilidade explícita.
+
+Validação: assinatura/extração negativa, autenticação/CSRF/leitura, limites, concorrência, cancelamento, falha de início e rollback, recuperação de journal em fronteiras de troca, UI/reconexão e serviço systemd em ambiente isolado. Não confundir testes simulados com prova nativa. Backup local e do dashboard 2.0.57 precedem implementação.
