@@ -1,5 +1,10 @@
 # Melhorias planejadas
 
+## Atualização administrativa — próxima entrega 2.1.0
+
+Implementação concluída e pacotes 2.1.0 validados em ambiente isolado (Java/SQLite/HTTPS reais, systemd e usuário sem privilégios). Primeiro deploy do executor no dashboard real ainda pendente: [desenho](superpowers/specs/2026-10-16-dashboard-self-update-design.md), [operação](DASHBOARD_SELF_UPDATE.md), [evidências](validation/dashboard-self-update-2026-10-16.md). A 2.0.57 permanece preservada para o cliente. Não publicar no cliente sem validação da entrega final.
+
+
 ## Descoberta WebLogic/Spring e destinos JDBC — fonte validada
 
 **Status em 2026-10-16:** implementação e regressões locais concluídas, com probe isolado executado em Java 6 na OL7 e RHEL5. Após autorização de publicação, dashboard de laboratório atualizado para 2.0.55; pacote assinado disponibilizado, agentes instalados preservados. HTTPS, arquivos da interface, banco, configuração e CA conferidos. Detalhes em [evidências](validation/jdbc-discovery-2026-10-16.md) e [comandos de laboratório](runbooks/jdbc-discovery-lab.md).

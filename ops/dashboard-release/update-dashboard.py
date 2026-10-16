@@ -30,7 +30,7 @@ LOCAL_MODE = False
 RUNTIME_SHA = '@RUNTIME_SHA@'
 SOURCE_SHA = '@SOURCE_SHA@'
 DASHBOARD_VERSION = '@DASHBOARD_VERSION@'
-COMPONENTS = ['classes', 'web', 'server', 'shared', 'dist', 'VERSION']
+COMPONENTS = ['classes', 'web', 'server', 'shared', 'dist', 'VERSION', 'maintenance']
 CGROUP_ROOT = Path('/sys/fs/cgroup')
 SERVICE_PROPERTIES = ('LoadState', 'ActiveState', 'SubState', 'MainPID', 'ControlPID',
                       'ControlGroup', 'Result', 'ExecMainCode', 'ExecMainStatus')
@@ -330,6 +330,13 @@ def main():
     require(os.geteuid() == 0, 'Run as root')
     if not LOCAL_MODE:
         require(command('hostname') == 'dashboard', 'Unexpected hostname')
+    updater_state = Path('/var/lib/java-assessment-dashboard-updater/journal.json')
+    if updater_state.exists():
+        require(not updater_state.is_symlink() and json.loads(updater_state.read_text()).get('phase') in ('IDLE','SUCCEEDED','ROLLED_BACK','FAILED','CANCELLED'),
+                'Dashboard updater operation is pending; use the administration screen')
+        # Never compete with the independent executor. This script bootstraps older installations.
+        require(command('systemctl','show','java-assessment-dashboard-updater.service','--value','-p','ActiveState') != 'active',
+                'Use the dashboard administration updater; independent executor is active')
     require(command('systemctl', 'is-active', UNIT) == 'active', 'Dashboard is not active')
     require(command('systemctl', 'show', UNIT, '--value', '-p', 'User') == 'java-assessment-dashboard', 'Unexpected service user')
     require(not BASE.is_symlink() and BASE.stat().st_uid == 0, 'Unexpected dashboard directory')
@@ -354,6 +361,8 @@ def main():
             require((BASE / name).is_file() and sha((BASE / name).read_bytes()) == sha(data), 'Runtime library mismatch')
     for component in COMPONENTS:
         path = BASE / component
+        if component == 'maintenance' and not path.exists():
+            continue
         require(path.exists() and not path.is_symlink(), 'Missing or linked component: ' + component)
         require(path.stat().st_dev == Path('/root').stat().st_dev,
                 'Backup and dashboard must share a filesystem for atomic file replacement')
@@ -377,7 +386,7 @@ def main():
     staged['dist/assessment-collector.zip'] = collector_with_ca(runtime['dist/assessment-collector.zip'], (BASE / 'conf/agent-ca.pem').read_bytes())
     collector_version(staged['dist/assessment-collector.zip'])
     for name, data in staged.items():
-        require(name.startswith(('classes/', 'web/', 'server/', 'shared/', 'dist/agent-updates/', 'dist/agent-bundles/', 'dist/agent-bridges/', 'dist/agent-update-routes/')) or name in ('dist/assessment-collector.zip', 'dist/agent-update-public.der', 'VERSION'), 'Unexpected payload')
+        require(name.startswith(('classes/', 'web/', 'server/', 'shared/', 'maintenance/', 'dist/agent-updates/', 'dist/agent-bundles/', 'dist/agent-bridges/', 'dist/agent-update-routes/')) or name in ('dist/assessment-collector.zip', 'dist/agent-update-public.der', 'VERSION'), 'Unexpected payload')
         path = stage / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
@@ -414,7 +423,8 @@ def main():
         for component in COMPONENTS:
             saved = old / component
             saved.parent.mkdir(parents=True, exist_ok=True)
-            (BASE / component).rename(saved)
+            if (BASE / component).exists():
+                (BASE / component).rename(saved)
             moved.append(component)
             (stage / component).rename(BASE / component)
         if shutil.which('restorecon'):
@@ -428,6 +438,11 @@ def main():
         require(report['stoppedCounts'] == report['beforeCounts'], 'Database counts changed while service was stopped')
         report['databasePreservedBeforeStart'] = True
         fix_sqlite_sidecars(account)
+        updater_unit = Path('/etc/systemd/system') / 'java-assessment-dashboard-updater.service'
+        updater_access = Path('/etc/systemd/system/java-assessment-dashboard.service.d/dashboard-updater.conf')
+        report['updaterUnitExisted'] = updater_unit.exists()
+        report['updaterAccessExisted'] = updater_access.exists()
+        command(sys.executable, str(BASE / 'maintenance/install.py'))
         command('systemctl', 'start', UNIT)
         report['health'] = check_health(DASHBOARD_VERSION)
         for name, data in staged.items():
@@ -451,6 +466,19 @@ def main():
         if stop_attempted:
             try:
                 if moved:
+                    if report.get('updaterAccessExisted') is False:
+                        updater_access = Path('/etc/systemd/system/java-assessment-dashboard.service.d/dashboard-updater.conf')
+                        if updater_access.exists():
+                            require(not updater_access.is_symlink() and updater_access.read_text().startswith('# Java Assessment dashboard update inbox v1\n'), 'Unexpected dashboard access during bootstrap rollback')
+                            updater_access.unlink()
+                            command('systemctl','daemon-reload')
+                    if report.get('updaterUnitExisted') is False:
+                        updater_unit = Path('/etc/systemd/system') / 'java-assessment-dashboard-updater.service'
+                        if updater_unit.exists():
+                            require(not updater_unit.is_symlink() and updater_unit.read_text().startswith('# Java Assessment independent dashboard updater v1\n'), 'Unexpected updater unit during bootstrap rollback')
+                            command('systemctl','disable','--now',updater_unit.name)
+                            updater_unit.unlink()
+                            command('systemctl','daemon-reload')
                     # Never swap files back while the replacement process is alive.
                     stop_service(report, 'rollbackStop')
                     # Activation may have occurred during post-start verification.
@@ -478,7 +506,8 @@ def main():
                             destination = failed / component
                             destination.parent.mkdir(parents=True, exist_ok=True)
                             target.rename(destination)
-                        (old / component).rename(target)
+                        if (old / component).exists():
+                            (old / component).rename(target)
                 fix_sqlite_sidecars(account)
                 command('systemctl', 'start', UNIT)
                 report['rollbackHealth'] = check_health(baseline['version'])

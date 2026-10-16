@@ -141,6 +141,7 @@ def package(release, out, support, previous, baselines, agent):
     require(agent_version((ROOT / 'collector/AgentTransport.java').read_text()) == version, 'Agent source differs from shared release')
     require(json.loads(support.read_zip(agent)['DEPENDENCIES.json'])['version'] == version, 'Agent ZIP differs from shared release')
     runtime = support.verified_classes(sources, JDK / 'bin/javac')
+    sources.update({'maintenance/'+p.name:p.read_bytes() for p in (ROOT/'maintenance').glob('*.py')})
     web = {'web/' + path.name: path.read_bytes() for path in sorted((ROOT / 'web').iterdir())
            if path.is_file() and path.suffix in builder.WEB_SUFFIXES}
     libraries = {name: data for name, data in previous.items() if name.startswith('lib/')}
@@ -220,8 +221,9 @@ def package(release, out, support, previous, baselines, agent):
         for path in sorted((ROOT / folder).rglob('*')):
             if path.is_file() and path.suffix in ('.java', '.example', '.md'):
                 review[str(path.relative_to(ROOT))] = path.read_bytes()
-    for name in ('docs/validation/jdbc-discovery-2026-10-16.md', 'docs/runbooks/jdbc-discovery-lab.md', 'docs/SPRING_DISCOVERY.md', 'docs/SPRING_INTEGRATION.md', 'docs/ENVIRONMENT_INSTALL_ACCESS.md', 'docs/validation/recovery-installer-2026-10-16.md', 'docs/runbooks/update-from-2.0.53.md', 'docs/RELEASE_' + version + '.md'):
+    for name in ('docs/validation/jdbc-discovery-2026-10-16.md', 'docs/runbooks/jdbc-discovery-lab.md', 'docs/SPRING_DISCOVERY.md', 'docs/SPRING_INTEGRATION.md', 'docs/ENVIRONMENT_INSTALL_ACCESS.md', 'docs/validation/recovery-installer-2026-10-16.md', 'docs/DASHBOARD_SELF_UPDATE.md', 'docs/validation/dashboard-self-update-2026-10-16.md', 'docs/runbooks/update-from-2.0.53.md', 'docs/RELEASE_' + version + '.md'):
         review[name] = (ROOT / name).read_bytes()
+    review['ops/build-dashboard-web-update.py'] = (ROOT / 'ops/build-dashboard-web-update.py').read_bytes()
     review['release/dashboard.json'] = (json.dumps({'version': version, 'releases': [{**release, 'status': 'prepared'}]}, indent=2) + '\n').encode()
     review['SOURCE_RECONSTRUCTION.md'] = b'Product Java17 sources/public libraries/web/agent included. Compile shared/*.java and server/*.java with javac --release17 -cp lib/*. Compile tests with product classes. Operational rebuild also needs the previous immutable runtime/source archives and confirmed CSV receipt in the original workspace; they are baseline proofs. No credentials are included.\n'
     review_path = support.archive(packages / ('assessment-dashboard-source-' + version + '.zip'), review, secrets)

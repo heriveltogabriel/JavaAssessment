@@ -35,6 +35,7 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
     private final Map<String,Session> sessions=new ConcurrentHashMap<>();
     private final SecureRandom random=new SecureRandom();
     private final Semaphore exportSlot=new Semaphore(1);
+    final DashboardMaintenance maintenance;
     private static final String[] COLLECTIONS={"runtimes","processes","servers","libraries","applications","datasources"};
     private static class Session {
         final String csrf,userId;final long revision,expires;volatile long lastSeen;
@@ -52,7 +53,9 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
     private static long number(Object o,long fallback){return o instanceof Number?((Number)o).longValue():fallback;}
     public static String now(){return new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"){{setTimeZone(TimeZone.getTimeZone("UTC"));}}.format(new Date());}
     public AssessmentServer(File root)throws Exception {this(root,false);}
-    AssessmentServer(File root,boolean provisioning)throws Exception {
+    AssessmentServer(File root,boolean provisioning)throws Exception {this(root,provisioning,java.nio.file.Path.of("/var/lib/java-assessment-dashboard-updater"));}
+    AssessmentServer(File root,boolean provisioning,java.nio.file.Path maintenanceState)throws Exception {
+        maintenance=new DashboardMaintenance(maintenanceState);
         this.root=root.getCanonicalFile();data=new File(root,"data");conf=new Properties();try(InputStream in=new FileInputStream(new File(root,"conf/server.properties"))){conf.load(in);}
         for(String k:new String[]{"agentToken","hostId"})if(conf.getProperty(k,"").length()<4)throw new IllegalArgumentException("Missing server configuration: "+k);
         boolean legacy=Boolean.parseBoolean(conf.getProperty("seedLegacyHost","true"));
@@ -515,21 +518,35 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
     public void handle(HttpExchange x)throws IOException{
         headers(x);try{
             String path=x.getRequestURI().getPath(),method=x.getRequestMethod();boolean write=Set.of("POST","PUT","DELETE").contains(method);
-            if(write)requestBody.set(readStream(x.getRequestBody(),path.equals("/api/agent/results")?2097152:path.equals("/api/agent-updates")?131072:32768));
+            if(write&&!path.equals("/api/admin/dashboard-update/upload"))requestBody.set(readStream(x.getRequestBody(),path.equals("/api/agent/results")?2097152:path.equals("/api/agent-updates")?131072:32768));
             if(!(x instanceof HttpsExchange)&&!local(x)&&Boolean.parseBoolean(conf.getProperty("requireHttps","true"))){x.getResponseHeaders().set("Location",serverUrl()+"/");x.sendResponseHeaders(308,-1);return;}
             if(path.startsWith("/.well-known/acme-challenge/")){method(x,"GET");String name=path.substring(path.lastIndexOf('/')+1);if(!name.matches("[A-Za-z0-9_-]{10,200}"))throw new ApiError(404,"Not found");file(x,new File(root,"conf/acme/"+name),"text/plain");return;}
             if(path.equals("/health")){method(x,"GET");store.scalar("SELECT 1");json(x,200,map("status","ok","version",DashboardVersion.VERSION,"builtAt",DashboardVersion.BUILT_AT,"storage","sqlite"));return;}
+            if(maintenance.active()&&path.startsWith("/api/")&&!Set.of("/api/login","/api/logout","/api/auth/status","/api/session").contains(path)&&!path.startsWith("/api/admin/dashboard-update"))throw new ApiError(503,"Dashboard em atualização. Aguarde a conclusão.");
             if(path.equals("/api/auth/status")){method(x,"GET");json(x,200,map("bootstrapRequired",auth.bootstrapRequired()));return;}
             if(path.equals("/api/auth/bootstrap")){Reply r=bootstrap(x);json(x,r.status,r.body);return;}
             if(path.equals("/api/login")){Reply r=login(x);json(x,r.status,r.body);return;}
             if(path.equals("/api/install/package")){installPackageDownload(x);return;}
             if(path.startsWith("/api/")){
-                Session session=null;if(!path.startsWith("/api/agent/")){session=session(x);if(session==null)throw new ApiError(401,"Sign in required");authorize(x,session);if(write)csrf(x,session);}
+                Session session=null;if(!path.startsWith("/api/agent/")){session=session(x);if(session==null)throw new ApiError(401,"Sign in required");authorize(x,session);if(write){origin(x);csrf(x,session);}}
                 if(path.equals("/api/session")){method(x,"GET");json(x,200,envelope(session,authority(session)));return;}
                 if(path.equals("/api/logout")){method(x,"POST");auth.logout(authority(session));Session ending=session;sessions.entrySet().removeIf(e->e.getValue()==ending);x.getResponseHeaders().set("Set-Cookie","assessment_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"+(x instanceof HttpsExchange?"; Secure":""));json(x,200,map("ok",true));return;}
                 if(path.equals("/api/export")){export(x,session);return;}
                 if(path.equals("/api/export.csv")){exportCsv(x,session);return;}
                 if(Set.of("/api/reports","/api/reports/options","/api/reports/export.csv","/api/reports/export.pdf").contains(path)){reports(x,session);return;}
+                if(path.equals("/api/admin/dashboard-update")){method(x,"GET");json(x,200,maintenance.status());return;}
+                if(path.equals("/api/admin/dashboard-update/upload")){
+                    method(x,"POST");long length;try{length=Long.parseLong(str(x.getRequestHeaders().getFirst("Content-Length")));}catch(NumberFormatException e){throw new ApiError(411,"Informe o tamanho do pacote.");}
+                    if(length<=0||length>DashboardMaintenance.MAX_UPLOAD)throw new ApiError(413,"O pacote deve ter até 256 MiB.");
+                    Session uploadSession=session;
+                    json(x,202,maintenance.upload(x.getRequestBody(),length,requestUser.get().email(),()->{try{authorize(x,uploadSession);}catch(Exception e){throw new IllegalArgumentException("Session changed");}}));return;
+                }
+                if(path.equals("/api/admin/dashboard-update/action")){
+                    method(x,"POST");Map<String,Object> input=body(x);String action=str(input.get("action"));
+                    if(!Set.of("action","operationId","adminPassword").containsAll(input.keySet()))throw new ApiError(400,"Unknown update field");
+                    if(!action.equals("cancel")){UserAuth.User actor=requestUser.get();rateCheck(x,actor.email());try{auth.requireAdministrator(actor,str(input.get("adminPassword")));rateResult(x,actor.email(),true);}catch(UserAuth.Failure e){rateResult(x,actor.email(),false);throw e;}}
+                    json(x,202,maintenance.command(action,str(input.get("operationId")),requestUser.get().email()));return;
+                }
                 if(path.equals("/api/account/password")||path.startsWith("/api/admin/")){Reply reply=account(x,session);json(x,reply.status,reply.body);return;}
                 if(path.equals("/api/collector.zip")){method(x,"GET");InstallerPackage installer=installerPackage();try{x.getResponseHeaders().set("Content-Type","application/zip");x.getResponseHeaders().set("Content-Disposition","attachment; filename=\""+installer.filename()+"\"");x.sendResponseHeaders(200,0);installer.writeOriginal(x.getResponseBody());}finally{installer.close();}return;}
                 Session authenticated=session;java.util.concurrent.Callable<Reply> operation=()->{if(authenticated!=null)authorize(x,authenticated);return api(x,authenticated);};Reply reply=write||(path.equals("/api/agent/poll")||path.equals("/api/agent/actions")||path.equals("/api/agent/update-v3/action")||path.equals("/api/agent-updates")||path.equals("/api/environments/install-access")||Set.of("/api/work-requests","/api/work-requests/active","/api/work-requests/detail").contains(path))?store.transaction(operation):store.readSnapshot(operation);
@@ -551,7 +568,7 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
     public static void main(String[] args)throws Exception{
         // Apply before constructing SecureRandom/TLS; existing launchers are preserved on upgrade.
         if(System.getProperty("java.security.egd")==null)System.setProperty("java.security.egd","file:/dev/urandom");
-        System.setProperty("sun.net.httpserver.maxReqTime","30");System.setProperty("sun.net.httpserver.maxRspTime","60");
+        System.setProperty("sun.net.httpserver.maxReqTime","300");System.setProperty("sun.net.httpserver.maxRspTime","60");
         AssessmentServer app=new AssessmentServer(new File(args[0]));String bind=app.conf.getProperty("bind","127.0.0.1");HttpServer http=HttpServer.create(new InetSocketAddress(app.conf.getProperty("httpBind",bind),Integer.parseInt(app.conf.getProperty("httpPort","8085"))),64);http.createContext("/",app);ExecutorService httpWorkers=workers();http.setExecutor(httpWorkers);http.start();
         HttpsServer https=null;ExecutorService tlsWorkers=null;
         if(new File(app.root,"conf/tls/fullchain.pem").isFile()){https=HttpsServer.create(new InetSocketAddress(app.conf.getProperty("httpsBind",bind),Integer.parseInt(app.conf.getProperty("httpsPort","8445"))),64);SSLContext context=app.tls();https.setHttpsConfigurator(new HttpsConfigurator(context){public void configure(HttpsParameters p){SSLParameters parameters=context.getDefaultSSLParameters();parameters.setProtocols(new String[]{"TLSv1.2"});p.setSSLParameters(parameters);}});https.createContext("/",app);tlsWorkers=workers();https.setExecutor(tlsWorkers);https.start();System.out.println("HTTPS ready");}

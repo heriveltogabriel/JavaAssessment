@@ -21,8 +21,9 @@
   async function request(path,options={}){
     const provided=options,generation=epoch;
     const opts={credentials:'same-origin',cache:'no-store',...provided,headers:{Accept:'application/json',...provided.headers}};
-    if(provided.body!==undefined){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(provided.body);}
+    if(provided.body!==undefined&&!provided.binary){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(provided.body);}
     if(opts.method&&opts.method!=='GET'&&session?.csrfToken)opts.headers['X-CSRF-Token']=session.csrfToken;
+    delete opts.binary;
     const response=await fetch('/api/'+path,opts);
     if(generation!==epoch)throw new Error('A sessão mudou. Repita a solicitação após entrar.');
     let result;try{result=await response.json();}catch(_){result={error:'Não foi possível concluir a solicitação.'};}
@@ -31,7 +32,7 @@
     return result;
   }
   function blockProduct(block){document.body.classList.toggle('access-locked',block);$('main-content').inert=block;document.querySelector('.topbar').inert=block;$('side-nav').inert=block;}
-  function clearState(){epoch++;session=null;users=[];events=[];adminLoaded=false;adminLoading=null;adminQuery='';roleFilter='';statusFilter='';closeDialog();closeMenu();$('user-account').hidden=true;$('admin-view').replaceChildren();ctx?.onSignedOut();}
+  function clearState(){root.DashboardUpdate?.stop();epoch++;session=null;users=[];events=[];adminLoaded=false;adminLoading=null;adminQuery='';roleFilter='';statusFilter='';closeDialog();closeMenu();$('user-account').hidden=true;$('admin-view').replaceChildren();ctx?.onSignedOut();}
   function showLogin(message=''){
     clearState();blockProduct(true);authMode='login';authBusy=false;renderAuth();if(message)errorAt('login-error',message);
     const revision=epoch;
@@ -73,8 +74,10 @@
   }
   function renderAdministration(){
     if(!isAdmin())return;
+    if(adminTab==='update'&&$('dashboard-update-panel'))return;
+    root.DashboardUpdate?.stop();
     const active=users.filter(u=>u.status!=='DISABLED'),pending=users.filter(u=>u.status==='FIRST_ACCESS');
-    $('admin-view').innerHTML='<div class="access-admin"><header class="access-admin-header"><div><span class="access-kicker">PESSOAS E PERMISSÕES</span><h1>Administração</h1><p>O acesso certo para cada pessoa.</p></div><button type="button" class="button primary" data-add-user>+ Adicionar usuário</button></header><div class="access-stats"><div><strong>'+users.length+'</strong><span>usuários cadastrados</span></div><div><strong>'+active.filter(u=>u.role==='ADMIN').length+'</strong><span>administradores habilitados</span></div><div><strong>'+pending.length+'</strong><span>aguardando primeiro acesso</span></div></div><div class="access-tabs" role="tablist" aria-label="Administração">'+[['users','Usuários'],['groups','Grupos'],['activity','Atividade']].map(([id,label])=>'<button type="button" role="tab" id="access-tab-'+id+'" aria-controls="access-admin-panel" aria-selected="'+(adminTab===id)+'" tabindex="'+(adminTab===id?'0':'-1')+'" data-admin-tab="'+id+'">'+label+'</button>').join('')+'</div><section id="access-admin-panel" role="tabpanel" aria-labelledby="access-tab-'+adminTab+'" tabindex="0">'+(!adminLoaded?'<div class="dash-empty" role="status">Carregando acesso…</div>':adminTab==='users'?userTable():adminTab==='groups'?groupCards():activityTable())+'</section><p id="access-admin-error" class="form-error" role="alert" hidden></p></div>';
+    $('admin-view').innerHTML='<div class="access-admin"><header class="access-admin-header"><div><span class="access-kicker">PESSOAS E PERMISSÕES</span><h1>Administração</h1><p>O acesso certo para cada pessoa.</p></div><button type="button" class="button primary" data-add-user>+ Adicionar usuário</button></header><div class="access-stats"><div><strong>'+users.length+'</strong><span>usuários cadastrados</span></div><div><strong>'+active.filter(u=>u.role==='ADMIN').length+'</strong><span>administradores habilitados</span></div><div><strong>'+pending.length+'</strong><span>aguardando primeiro acesso</span></div></div><div class="access-tabs" role="tablist" aria-label="Administração">'+[['users','Usuários'],['groups','Grupos'],['activity','Atividade'],['update','Atualização do dashboard']].map(([id,label])=>'<button type="button" role="tab" id="access-tab-'+id+'" aria-controls="access-admin-panel" aria-selected="'+(adminTab===id)+'" tabindex="'+(adminTab===id?'0':'-1')+'" data-admin-tab="'+id+'">'+label+'</button>').join('')+'</div><section id="access-admin-panel" role="tabpanel" aria-labelledby="access-tab-'+adminTab+'" tabindex="0">'+(!adminLoaded?'<div class="dash-empty" role="status">Carregando acesso…</div>':adminTab==='users'?userTable():adminTab==='groups'?groupCards():adminTab==='update'?'<div id="dashboard-update-panel"></div>':activityTable())+'</section><p id="access-admin-error" class="form-error" role="alert" hidden></p></div>';    if(adminTab==='update')root.DashboardUpdate?.mount($('dashboard-update-panel'));
   }
   function userTable(){
     const q=adminQuery.trim().toLocaleLowerCase('pt-BR'),filtered=users.filter(u=>(!q||(u.name+' '+u.email).toLocaleLowerCase('pt-BR').includes(q))&&(!roleFilter||u.role===roleFilter)&&(!statusFilter||u.status===statusFilter));
@@ -162,7 +165,7 @@
     document.addEventListener('click',event=>{if(!isAdmin()&&event.target.closest(mutationSelector)){event.preventDefault();event.stopImmediatePropagation();}},true);
     document.addEventListener('input',event=>{if(event.target.id==='access-user-search'){const position=event.target.selectionStart;adminQuery=event.target.value;$('access-admin-panel').innerHTML=userTable();const input=$('access-user-search');input.focus();try{input.setSelectionRange(position,position);}catch(_){}}});
     document.addEventListener('change',event=>{if(event.target.id==='access-role-filter'){roleFilter=event.target.value;$('access-admin-panel').innerHTML=userTable();$('access-role-filter').focus();}if(event.target.id==='access-status-filter'){statusFilter=event.target.value;$('access-admin-panel').innerHTML=userTable();$('access-status-filter').focus();}});
-    document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('user-menu').hidden){closeMenu();$('user-toggle').focus();}const tab=event.target.closest('[data-admin-tab]');if(tab&&['ArrowRight','ArrowLeft','Home','End'].includes(event.key)){event.preventDefault();const ids=['users','groups','activity'];adminTab=event.key==='Home'?'users':event.key==='End'?'activity':ids[(ids.indexOf(adminTab)+(event.key==='ArrowRight'?1:2))%3];renderAdministration();$('access-tab-'+adminTab).focus();}});
+    document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('user-menu').hidden){closeMenu();$('user-toggle').focus();}const tab=event.target.closest('[data-admin-tab]');if(tab&&['ArrowRight','ArrowLeft','Home','End'].includes(event.key)){event.preventDefault();const ids=['users','groups','activity','update'];adminTab=event.key==='Home'?'users':event.key==='End'?'update':ids[(ids.indexOf(adminTab)+(event.key==='ArrowRight'?1:3))%4];renderAdministration();$('access-tab-'+adminTab).focus();}});
   }
   root.AssessmentAccess={init,start,request,showLogin,isAdmin,canInventory,applyPermissions,renderAdministration,refreshAdministration,closeMenu,getUser:()=>session?.user||null,getRevision:()=>epoch};
 })(window);

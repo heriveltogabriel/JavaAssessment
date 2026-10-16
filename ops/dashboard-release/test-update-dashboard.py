@@ -294,7 +294,7 @@ class ReleaseUpdateFixtureTests(unittest.TestCase):
             candidates = [{'label': 'fixture baseline', 'version': '1.0-beta', 'hashes': hashes}]
             source = {'server/AssessmentServer.java': b'new server', 'shared/Json.java': b'new json',
                       'server/UserAuth.java': b'new accounts', 'server/UserAdminTool.java': b'new account tool',
-                      'expected-baselines.json': json.dumps(candidates).encode()}
+                      'expected-baselines.json': json.dumps(candidates).encode(), 'maintenance/install.py': b'fixture installer', 'maintenance/dashboard_update.py': b'fixture worker'}
             runtime = {'classes/assessment/AssessmentServer.class': b'new class', 'dist/assessment-collector.zip': b'new collector',
                        'dist/agent-update-public.der': b'fixture public update key',
                        'dist/agent-updates/1.0.1-beta/manifest.json': b'fixture signed metadata',

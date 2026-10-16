@@ -41,7 +41,7 @@ public final class AgentDirectV3UpgradeTest {
   Map<String,byte[]> old=zip(Files.readAllBytes(Path.of(args[0]))),target=zip(Files.readAllBytes(Path.of(args[1])));
   check(Arrays.equals(old.get("update-public.der"),target.get("update-public.der")),"public pin preserved");
   Map beforeManifest=obj(old.get("full-update/manifest.json")),afterManifest=obj(target.get("full-update/manifest.json"));
-  check(beforeManifest.get("version").equals("2.0.53"),"exact client baseline");
+  String baseline=args.length>2?args[2]:"2.0.53";check(Set.of("2.0.53","2.0.57").contains(baseline),"reviewed client baseline");check(beforeManifest.get("version").equals(baseline),"exact client baseline");
   Path tmp=Files.createTempDirectory("direct-v3-253-").toRealPath(),root=tmp.resolve("collector"),home=tmp.resolve("helper");
   AgentInstallLayout l=new AgentInstallLayout(root.toFile(),home.toFile());l.initialize();
   for(var e:old.entrySet())if(!e.getKey().startsWith("full-update/"))put(root.resolve(e.getKey()),e.getValue());
@@ -53,10 +53,10 @@ public final class AgentDirectV3UpgradeTest {
   }
   for(Path dir:List.of(code,manager,boot)){
    put(dir.resolve("bundle-manifest.json"),old.get("full-update/manifest.json"));put(dir.resolve("bundle-manifest.sig"),old.get("full-update/manifest.sig"));
-   AgentInstallLayout.durable(dir.resolve(dir.equals(boot)?"bootstrap-owned.json":"installed.json").toFile(),AssessmentScan.map("schema",1L,"role",dir.equals(code)?"code":"manager","version","2.0.53","bundleSha256",beforeManifest.get("sha256"),"files",AgentInstallLayout.inventory(dir.toFile())));
+   AgentInstallLayout.durable(dir.resolve(dir.equals(boot)?"bootstrap-owned.json":"installed.json").toFile(),AssessmentScan.map("schema",1L,"role",dir.equals(code)?"code":"manager","version",baseline,"bundleSha256",beforeManifest.get("sha256"),"files",AgentInstallLayout.inventory(dir.toFile())));
   }
   String oldHash=AgentBundleManifest.hash(manager.resolve("helper.jar").toFile());
-  l.promote(AssessmentScan.map("schema",1L,"releaseId","release-253","managerId","manager-253","version","2.0.53","bundleSha256",beforeManifest.get("sha256"),"managerSha256",oldHash));
+  l.promote(AssessmentScan.map("schema",1L,"releaseId","release-253","managerId","manager-253","version",baseline,"bundleSha256",beforeManifest.get("sha256"),"managerSha256",oldHash));
   Properties conf=new Properties();conf.setProperty("hostId","direct-v3-fixture");conf.setProperty("agentToken","local-fixture-token");conf.setProperty("serverUrl","http://127.0.0.1:1");conf.setProperty("tlsCaFile",root.resolve("conf/ca.pem").toString());conf.setProperty("spoolDirectory",root.resolve("collector-spool").toString());
   try(var out=Files.newOutputStream(root.resolve("conf/collector.properties"))){conf.store(out,"fixture");}
   put(root.resolve("conf/java.path"),"/fixture/java6/bin/java\n".getBytes());put(root.resolve("conf/installation-id"),"same-installation\n".getBytes());put(root.resolve("conf/update-capability"),"update-v3\n".getBytes());
@@ -67,10 +67,10 @@ public final class AgentDirectV3UpgradeTest {
   List<String> reports=new ArrayList<>();List<URLClassLoader> loaders=new ArrayList<>();
   try{
    Object original=worker(manager.resolve("helper.jar"),root,home,conf,target,claim,reports,false,loaders);invoke(original,"cycle");
-   check(AgentInstallLayout.read(l.journal()).get("phase").equals("REMOTE_CONFIRMING"),"original 2.0.53 manager must activate final bundle");check(!reports.contains("SUCCEEDED"),"old manager cannot certify replacement");
+   check(AgentInstallLayout.read(l.journal()).get("phase").equals("REMOTE_CONFIRMING"),"original manager must activate final bundle");check(!reports.contains("SUCCEEDED"),"old manager cannot certify replacement");
    Object replacement=worker(l.manager(l.current()).toPath().resolve("helper.jar"),root,home,conf,target,claim,reports,true,loaders);invoke(replacement,"cycle");
    check(reports.contains("SUCCEEDED")&&!l.journal().exists(),"new manager confirms same operation");check(l.current().get("version").equals(version),"direct final version");check(preserved.equals(AgentInstallLayout.inventory(root.resolve("conf").toFile())),"configuration/identity/CA preserved");check(anchor.equals(AgentInstallLayout.inventory(boot.toFile())),"immutable anchor preserved");
-   System.out.println("DIRECT_V3_UPGRADE=PASS 2.0.53 -> "+version+"; original manager binary, final signed bundle, same operation, identity/CA/anchor preserved; OS/network adapters");
+   System.out.println("DIRECT_V3_UPGRADE=PASS "+baseline+" -> "+version+"; original manager binary, final signed bundle, same operation, identity/CA/anchor preserved; OS/network adapters");
   }finally{for(var loader:loaders)loader.close();}
  }
 }

@@ -1,5 +1,5 @@
 {
-  "version": "2.0.57",
+  "version": "2.1.0",
   "releases": [
     {
       "version": "1.0.1-beta",
@@ -462,6 +462,36 @@
       "builtAt": "2026-10-16T18:48:46.158463+00:00",
       "status": "prepared",
       "bridgeVersion": "2.0.56"
+    },
+    {
+      "version": "2.0.58",
+      "builtAt": "2026-10-16T20:07:43.915513+00:00",
+      "status": "bridge-prepared",
+      "kind": "agent-bridge",
+      "targetVersion": "2.1.0"
+    },
+    {
+      "version": "2.1.0",
+      "builtAt": "2026-10-16T20:07:43.915513+00:00",
+      "status": "prepared",
+      "bridgeVersion": "2.0.58",
+      "validationAttempts": [
+        {
+          "artifactArchive": "output/dashboard-self-update/unpublished-build-1",
+          "result": "REJECTED_BEFORE_PUBLICATION",
+          "reason": "Final-package validation rejected Java nested-class filenames; corrected allowed paths and included libraries in atomic update/rollback."
+        },
+        {
+          "artifactArchive": "output/dashboard-self-update/unpublished-build-3",
+          "result": "REJECTED_BEFORE_PUBLICATION",
+          "reason": "Final Java/SQLite test exposed read-only WAL reopen failure; corrected query-only connection and sidecar ownership."
+        },
+        {
+          "artifactArchive": "output/dashboard-self-update/unpublished-build-4",
+          "result": "REJECTED_BEFORE_PUBLICATION",
+          "reason": "Bootstrap needed an inbox-only writable drop-in for existing ProtectSystem=strict units, installed before dashboard startup. Validated with native sandbox probe."
+        }
+      ]
     }
   ]
 }

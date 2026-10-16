@@ -14,7 +14,7 @@ for suite in JdbcEndpointTest ArchiveMetadataTest WebLogicVersionTest SpringData
 done
 "$JAVA_HOME/bin/java" -Xmx96m -cp "$CP" assessment.ServerDataSourcesTest \
   --export tmp/source-evidence/jdbc-fixtures.json
-for suite in JdbcEndpointReportsTest EnvironmentPresenceTest ArchiveDefaultsHttpTest PortugueseTest InventoryStoreTest UserAuthTest UserAccessHttpTest EnvironmentInstallAccessTest EnvironmentInstallHttpTest InstallCommandTest \
+for suite in JdbcEndpointReportsTest EnvironmentPresenceTest ArchiveDefaultsHttpTest PortugueseTest InventoryStoreTest UserAuthTest UserAccessHttpTest DashboardMaintenanceHttpTest EnvironmentInstallAccessTest EnvironmentInstallHttpTest InstallCommandTest \
   MachineActionsHttpTest MachineCleanupHttpTest AgentUpdateWorkerTest AgentUpdateHttpTest \
   WorkRequestsHttpTest RuntimeInventoryHttpTest CsvExportTest \
   VersionedCsvHttpTest DashboardVersionHttpTest CompactOverviewTest PostUpdateAssessmentsTest PostUpdateAssessmentHttpTest; do

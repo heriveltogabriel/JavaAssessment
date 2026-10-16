@@ -154,7 +154,7 @@ def build(output):
         stage = Path(temporary)
         for name in INSTALLER_FILES:
             shutil.copy2(SOURCE / name, stage / name)
-        for directory, pattern in (('shared', '*.java'), ('server', '*.java'), ('web', '*')):
+        for directory, pattern in (('shared', '*.java'), ('server', '*.java'), ('web', '*'), ('maintenance', '*.py')):
             (stage / directory).mkdir()
             for path in sorted((PROJECT / directory).glob(pattern)):
                 if path.is_file() and (directory != 'web' or path.suffix in WEB_SUFFIXES):

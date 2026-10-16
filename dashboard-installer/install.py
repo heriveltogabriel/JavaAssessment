@@ -303,7 +303,7 @@ def legacy_files(directory):
 def build_stage(stage, java_home, url, host, port, cert, key, ca, password, legacy=None,
                 *, admin_name, admin_email):
     verify_libraries(SOURCE / 'lib')
-    for name in ('shared', 'server', 'web', 'lib'):
+    for name in ('shared', 'server', 'web', 'lib', 'maintenance'):
         shutil.copytree(SOURCE / name, stage / name)
     for name in ('VERSION', 'BETA_RELEASE.md', 'BETA_MIGRATION.md', 'DatabaseTool.java'):
         shutil.copyfile(SOURCE / name, stage / name)
@@ -511,6 +511,7 @@ def install(args):
                              '\nExpires: 24 hours after provisioning; change required at first login.\n')
             if ca_key:
                 save_root_secret(CA_KEY_RECORD, ca_key.read_text(encoding='ascii'))
+            command([sys.executable, str(DEST / 'maintenance/install.py')])
             command(['systemctl', 'daemon-reload'])
             command(['systemctl', 'enable', '--now', UNIT.name])
             health_check(host, port, DEST / 'conf/agent-ca.pem')
