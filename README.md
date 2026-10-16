@@ -1,6 +1,6 @@
 # Java Assessment
 
-Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versão **2.0.57** reúne dashboard, agente Linux e banco SQLite local, com organização por ambiente e máquina.
+Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versão **2.1.0** reúne dashboard, agente Linux e banco SQLite local, com organização por ambiente e máquina.
 
 ![Overview do Java Assessment com indicadores de agentes, instalações Java, servidores e datasources JDBC](imagens/overview.png)
 
@@ -15,6 +15,7 @@ Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versã
 - Exportação de um CSV único do inventário por ambiente, máquina ou todos os ambientes.
 - Ações de máquina, revogação e desinstalação controlada do agente.
 - Atualização de agentes compatíveis por HTTPS, individualmente ou por ambiente, com assinatura e verificação.
+- Atualização do próprio dashboard pela Administração, com upload de ZIP assinado, confirmação de reinício, acompanhamento e restauração compatível.
 - Histórico de coletas e atualizações em **Solicitações**, incluindo progresso, observações e assessment após atualizar.
 - Interface em português e indicadores de agentes conectados/desconectados por ambiente.
 - Instalação pelo ZIP ou por comandos e scripts curl/wget gerados no dashboard, com acesso de instalação administrado por ambiente.
@@ -65,40 +66,45 @@ Na raiz deste repositório, com Python 3 e OpenSSL disponíveis:
 
 ```sh
 # Recupera somente os artefatos públicos assinados do instalador publicado.
-unzip -o install/v2.0.57/assessment-dashboard-installer-2.0.57.zip 'dist/*' -d .
+unzip -o install/v2.1.0/assessment-dashboard-installer-2.1.0.zip 'dist/*' -d .
 python3 -B ops/prepare-beta-dependencies.py --check
 python3 -B dashboard-installer/build.py --with-source
 ```
 
-Os resultados ficam em `dist/assessment-dashboard-installer-2.0.57.zip` e `dist/assessment-dashboard-source-2.0.57.zip`, com arquivos SHA-256. O build usa as bibliotecas fixadas, o agente genérico e o catálogo público assinado incluídos no repositório. Não exige arquivos da máquina de desenvolvimento nem a chave privada de assinatura.
+Os resultados ficam em `dist/assessment-dashboard-installer-2.1.0.zip` e `dist/assessment-dashboard-source-2.1.0.zip`, com arquivos SHA-256. O build usa as bibliotecas fixadas, o agente genérico e o catálogo público assinado incluídos no repositório. Não exige arquivos da máquina de desenvolvimento nem a chave privada de assinatura.
 
 O pacote do agente versionado em `dist/assessment-collector.zip` é genérico e não contém identidade cadastrada. O catálogo extraído em `dist/` inclui os pacotes completos e as rotas de migração. O build verifica assinaturas, chave pública e integridade antes de empacotar. Alterações nos arquivos executáveis exigem uma nova entrega assinada; o build não assina nem substitui a confiança instalada.
 
 ## Atualizar dashboard existente
 
-Para clientes na **2.0.53**, use o [pacote de atualização 2.0.57](install/v2.0.57/README.md). Ele preserva dados, contas, configuração e certificados, cria backup e verifica o serviço por HTTPS.
+A primeira adoção da **2.1.0** usa o [pacote de atualização por script](install/v2.1.0/README.md), que instala o executor independente. O deploy **2.0.57 → 2.1.0** foi confirmado no laboratório, preservando banco, contas, configuração e certificados.
 
 ```sh
-sha256sum -c assessment-dashboard-update-2.0.57.zip.sha256
-unzip assessment-dashboard-update-2.0.57.zip -d dashboard-update-2.0.57
-cd dashboard-update-2.0.57
+unzip assessment-dashboard-update-2.1.0.zip -d dashboard-update-2.1.0
+cd dashboard-update-2.1.0
 sudo /bin/sh atualizar-dashboard.sh
 ```
 
-Pare se o checksum falhar e extraia em uma pasta nova. **Atualize também os agentes:** agentes V3 elegíveis podem receber **2.0.53 → 2.0.57** em um único pedido pelo dashboard, com o recuperador ativo. Não é necessário instalar 2.0.55 antes. Confirme primeiro uma máquina e execute nova coleta para obter os destinos JDBC.
+Extraia em uma pasta nova. O script verifica os arquivos, cria backup e confirma o serviço por HTTPS. O instalador completo é destinado a servidores novos.
 
-A entrega inclui a correção de inicialização do recuperador e ajustes do instalador para Python 3.6, certificados e diagnóstico HTTPS. Consulte [as validações e seus limites](docs/validation/recovery-installer-2026-10-16.md): a atualização direta do agente foi testada com os binários assinados e serviços simulados; o restart foi testado nas VMs OL7/OL8. O ensaio não incluiu instalação completa no cliente nem reboot integral das VMs.
+Nas próximas versões compatíveis, abra **Administração → Atualização do dashboard**, envie `assessment-dashboard-web-update-X.Y.Z.zip`, confira a preparação e confirme **Atualizar e reiniciar** com sua senha. É possível cancelar antes da aplicação e restaurar a última versão quando compatível. Falhas de inicialização provocam tentativa automática de retorno, preservando o banco atual. Se o serviço não conseguir iniciar, poderá ser necessário diagnóstico no servidor. Veja [o guia operacional](docs/DASHBOARD_SELF_UPDATE.md).
+
+O pacote web da 2.1.0 não instala o executor em uma versão antiga e não pode ser reaplicado na própria 2.1.0. O painel aceita somente versões posteriores e origens compatíveis com o manifesto assinado.
+
+**Atualize também os agentes:** o dashboard não os atualiza automaticamente. As rotas diretas **2.0.53 e 2.0.57 → 2.1.0** foram verificadas com os binários originais e pacotes assinados em testes com adaptadores de sistema/rede. O operador confirmou a atualização do laboratório; confira a elegibilidade no painel e comece por uma máquina em cada ambiente. Consulte [as evidências e seus limites](docs/validation/dashboard-self-update-2026-10-16.md).
+
+A [2.0.57 permanece preservada](install/v2.0.57/README.md), incluindo os instaladores originais e backup anterior ao novo atualizador.
 
 ## Instalar no cliente
 
-O [diretório install](install/README.md) reúne o [manual ilustrado](install/Manual.pdf), o [guia de instalação](install/Guia-instalacao.pdf) e o instalador pronto da versão 2.0.57, com seu SHA-256. Os PDFs usam nomes estáveis e comandos com `X.Y.Z` para a versão escolhida. Para as funcionalidades mais recentes, consulte também as notas da versão e os guias específicos abaixo.
+O [diretório install](install/README.md) reúne o [manual ilustrado](install/Manual.pdf), o [guia de instalação](install/Guia-instalacao.pdf) e o instalador pronto da versão 2.1.0, com seu SHA-256. Os PDFs usam nomes estáveis e comandos com `X.Y.Z` para a versão escolhida. Para as funcionalidades mais recentes, consulte também as notas da versão e os guias específicos abaixo.
 
 **Para uma instalação nova.** O ZIP não deve ser executado sobre um dashboard existente para atualizá-lo. Na VM destinada ao dashboard, após transferir o instalador e seu SHA-256:
 
 ```sh
-sha256sum -c assessment-dashboard-installer-2.0.57.zip.sha256
-unzip assessment-dashboard-installer-2.0.57.zip -d dashboard-installer-2.0.57
-cd dashboard-installer-2.0.57
+sha256sum -c assessment-dashboard-installer-2.1.0.zip.sha256
+unzip assessment-dashboard-installer-2.1.0.zip -d dashboard-installer-2.1.0
+cd dashboard-installer-2.1.0
 ./install.sh \
   --public-url https://dashboard.exemplo.com \
   --admin-name "Administrador" \
@@ -141,7 +147,8 @@ Os testes de navegador usam Playwright e Chrome. Configure `NODE`, `NODE_PATH`, 
 - [Melhorias planejadas](docs/TODO.md)
 - [Plano do atualizador completo a partir da 1.5.12 e assessment após atualizar](docs/superpowers/plans/2026-10-14-full-agent-update.md) — disponível para instalações elegíveis; consulte os resultados e limites de validação nas notas da versão.
 - [Visão funcional, operação e limites](docs/SOLUTION.md)
-- [Mudanças e validação da 2.0.57](docs/RELEASE_2.0.57.md)
+- [Mudanças e validação da 2.1.0](docs/RELEASE_2.1.0.md)
+- [Atualização do dashboard pela Administração](docs/DASHBOARD_SELF_UPDATE.md)
 - [Instalação e configuração](dashboard-installer/GUIA_INSTALACAO.md)
 - [Opções do instalador](dashboard-installer/README.md)
 - [Instalação do coletor](collector/INSTALL.md)
@@ -152,7 +159,7 @@ Os testes de navegador usam Playwright e Chrome. Configure `NODE`, `NODE_PATH`, 
 - [Validações e gates antes de publicar](docs/validation/full-agent-update.md)
 - [Migração e backup](dashboard-installer/BETA_MIGRATION.md)
 
-Os nomes de alguns scripts e documentos mantêm `beta` por compatibilidade com a estrutura anterior. A versão atual do produto é 2.0.57. Relatórios históricos descrevem somente o cenário e a versão em que foram produzidos.
+Os nomes de alguns scripts e documentos mantêm `beta` por compatibilidade com a estrutura anterior. A versão atual do produto é 2.1.0. Relatórios históricos descrevem somente o cenário e a versão em que foram produzidos.
 
 Configurações privadas, chaves, inventário, logs, pacotes de ambientes e ferramentas específicas do laboratório ficam fora do Git. Publicar código neste repositório não instala nem atualiza servidores ou agentes.
 

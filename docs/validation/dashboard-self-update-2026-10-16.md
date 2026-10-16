@@ -39,3 +39,7 @@ Em 2026-10-16 às 19:01 BRT, o script tradicional confirmou **2.0.57 → 2.1.0**
 - O backup estável anterior ao desenvolvimento e os instaladores 2.0.57 permanecem preservados. Não houve implantação no cliente.
 
 Esta publicação valida a primeira adoção pelo script tradicional. A atualização pelo navegador e a restauração foram exercitadas nas instalações isoladas descritas acima; não foi criado um pedido artificial no dashboard de laboratório.
+
+## Confirmação do operador
+
+Após o deploy, o operador informou: “Tudo instalado e atualizado.” Registrar como confirmação operacional do laboratório, incluindo agentes, sem ampliar os testes descritos acima ou afirmar implantação no cliente.

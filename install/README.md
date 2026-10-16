@@ -19,9 +19,20 @@ O playbook usa wget, instala com sudo em lotes de duas máquinas e ignora agente
 - [Manual ilustrado da solução](Manual.pdf): arquitetura, inventário, atualização de agentes, relatórios e filtros JDBC.
 - [Guia de instalação](Guia-instalacao.pdf): requisitos, comandos, configuração do dashboard e instalação dos agentes.
 
-## Entrega atual preparada — 2.0.57
+## Entrega atual — 2.1.0
 
-[Pacotes e comandos da 2.0.57](v2.0.57/README.md): instalador para servidor novo e atualizador separado para dashboard existente. O cliente na 2.0.53 usa o pacote **update**; agentes V3 elegíveis podem receber a versão final em um único pedido. A publicação no laboratório e o canário final são separados da geração dos arquivos.
+[Pacotes e comandos da 2.1.0](v2.1.0/README.md):
+
+- [Instalador para servidor novo](v2.1.0/assessment-dashboard-installer-2.1.0.zip).
+- [Atualização por script para primeira adoção](v2.1.0/assessment-dashboard-update-2.1.0.zip).
+- [Pacote assinado para atualização web](v2.1.0/assessment-dashboard-web-update-2.1.0.zip), com as restrições de origem descritas no guia da versão.
+- [Notas da versão](../docs/RELEASE_2.1.0.md) e [guia da atualização administrativa](../docs/DASHBOARD_SELF_UPDATE.md).
+
+Dashboard publicado e verificado no laboratório. O operador confirmou a instalação e atualização dos agentes. O pacote web da própria 2.1.0 não se reaplica à mesma versão e não substitui o script que instala o executor nas versões antigas. Os PDFs mantêm nomes genéricos; o novo fluxo está documentado no guia administrativo acima.
+
+## Versão anterior preservada — 2.0.57
+
+[Instalador, atualização e comandos da 2.0.57](v2.0.57/README.md). Os pacotes originais permanecem inalterados para o cliente que continuar nessa versão.
 
 ## Instalador anterior — 2.0.53
 

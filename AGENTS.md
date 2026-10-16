@@ -1,5 +1,7 @@
 # Orientações de entrega
 
+Em toda nova versão, atualizar o README principal, o índice `install/README.md`, o README dos pacotes e a documentação/notas afetadas antes de enviar ao Git. Conferir links, comandos, versão, compatibilidade e evidências; publicar os instaladores em `install/vX.Y.Z` e preservar os artefatos anteriores. Regra explícita do usuário em 2026-10-16.
+
 Regra solicitada em 2026-10-16: manter a versão atual durante desenvolvimento e validação. Só incrementar a versão após validar as correções previstas, consolidando-as em uma única entrega para evitar atualizações sucessivas dos agentes já instalados no cliente. Não publicar candidatos intermediários nem sobrescrever artefatos publicados com o mesmo número. Após o incremento, verificar também os pacotes finais antes da entrega. Seguir os detalhes em `docs/RELEASE_PROCESS.md`.
 
 Ao preparar ou publicar uma nova versão do dashboard, incluir um alerta explícito para atualizar também os agentes nas notas e na mensagem de entrega. Informar, após verificar a compatibilidade dos pacotes, quando a atualização pelo dashboard é possível e quando o instalador completo é necessário. Atualizar o dashboard não atualiza os agentes automaticamente.

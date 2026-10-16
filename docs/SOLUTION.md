@@ -35,18 +35,20 @@ Ambos os perfis consultam todos os ambientes; filtros não são isolamento de au
 
 ## Atualizações e Work requests
 
-Na aba Machines do ambiente, use **Atualizar agentes do ambiente** para selecionar várias máquinas elegíveis. A ação de uma linha atua somente naquela máquina. O lote executa uma atualização por vez, validando assinatura, integridade, versão e arquivos de suporte.
+Na aba Máquinas do ambiente, use **Atualizar agentes do ambiente** para selecionar várias máquinas elegíveis. A ação de uma linha atua somente naquela máquina. O lote executa uma atualização por vez, validando assinatura, integridade, versão e arquivos de suporte.
 
-Work requests mostra a linha do tempo e o resultado por máquina. Fechar o popup não cancela a operação. Sucesso exige confirmação. Falta de confirmação mantém o lote em espera; falha de código pode restaurar a versão anterior e interromper as demais máquinas do lote.
+Solicitações mostra a linha do tempo e o resultado por máquina. Fechar o popup não cancela a operação. Sucesso exige confirmação. Falta de confirmação mantém o lote em espera; falha de código pode restaurar a versão anterior e interromper as demais máquinas do lote.
 
-Mudanças em scripts, bibliotecas ou executor exigem instalador completo. Publicar uma versão no dashboard não atualiza agentes automaticamente.
+Instalações V3 elegíveis recebem atualização completa de scripts, bibliotecas e executor pelo painel. Instalações sem rota compatível exigem o instalador completo configurado para o ambiente. Publicar uma versão no dashboard não atualiza agentes automaticamente.
+
+Na 2.1.0, **Administração → Atualização do dashboard** permite enviar um ZIP assinado, preparar a atualização e confirmar o reinício com senha. O executor independente cria backup e verifica a versão por HTTPS; falhas provocam tentativa de retorno e a última versão pode ser restaurada quando compatível. A primeira adoção em dashboard antigo exige o script tradicional. Consulte [o guia operacional](DASHBOARD_SELF_UPDATE.md).
 
 ## Consulta e exportação
 
-Use ambiente e máquina para navegar. Coleta parcial significa resultado recebido com limitações; abra o motivo antes de interpretar uma ausência. Recarregar a interface mostra dados já recebidos, enquanto um novo assessment produz novas evidências.
+Use ambiente e máquina para navegar. “Concluído” com observações significa que a coleta terminou, mas há limites ou caminhos não inspecionados; abra **Observações** antes de interpretar uma ausência. Recarregar a interface mostra dados já recebidos, enquanto um novo assessment produz novas evidências.
 
-Em **Actions → Exportar CSV**, escolha o escopo. O arquivo único inclui todos os registros desse escopo, não apenas a página visível. Filtros de busca da tabela não limitam a exportação. Credenciais e tokens não fazem parte do CSV.
+Em **Ações → Exportar CSV**, escolha o escopo. O arquivo único inclui todos os registros desse escopo, não apenas a página visível. Filtros de busca da tabela não limitam a exportação. Credenciais e tokens não fazem parte do CSV.
 
 ## Implantação responsável
 
-Valide uma amostra representativa de sistemas, JVMs e aplicações. Confira cobertura, tempo, memória e recursos conhecidos antes de ampliar a instalação. Inventário não substitui teste de compatibilidade ou monitoramento contínuo da saúde das aplicações. Consulte os [limites da 2.0.2](RELEASE_2.0.2.md) e o [guia de instalação](../dashboard-installer/GUIA_INSTALACAO.md).
+Valide uma amostra representativa de sistemas, JVMs e aplicações. Confira cobertura, tempo, memória e recursos conhecidos antes de ampliar a instalação. Inventário não substitui teste de compatibilidade ou monitoramento contínuo da saúde das aplicações. Consulte as [validações e limites da versão atual](validation/dashboard-self-update-2026-10-16.md) e o [guia de instalação](../dashboard-installer/GUIA_INSTALACAO.md).

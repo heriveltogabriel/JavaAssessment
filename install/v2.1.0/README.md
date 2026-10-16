@@ -1,6 +1,6 @@
-# Java Assessment 2.1.0 — preparada para validação
+# Java Assessment 2.1.0
 
-A **2.0.57 permanece preservada para o cliente**. Esta entrega adiciona Administração → Atualização do dashboard. Não foi implantada no dashboard em uso.
+A **2.0.57 permanece preservada para o cliente**. Esta entrega adiciona Administração → Atualização do dashboard. Foi publicada e verificada no dashboard de laboratório; o operador confirmou a instalação e atualização dos agentes. Essa confirmação não representa implantação no cliente.
 
 ## Primeira atualização para 2.1.0
 

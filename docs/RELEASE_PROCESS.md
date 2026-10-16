@@ -14,6 +14,9 @@ Executar os testes em fontes e artefatos locais isolados, sem substituir os paco
 4. Incluir o alerta abaixo, mesmo se a alteração parecer ser apenas de interface. O alerta pode esclarecer que já não há agentes pendentes, se isso foi verificado.
 5. Verificar que o aviso administrativo do dashboard aparece com agentes antigos, desaparece quando as versões confirmadas estão atualizadas e abre a prévia de atualização sem criar pedidos automaticamente.
 
+6. Atualizar, em toda nova versão, o README principal, `install/README.md`, `install/vX.Y.Z/README.md`, as notas da versão e os guias afetados. Conferir links e comandos; distinguir testes isolados, deploy verificado e confirmação do operador. Manter os nomes genéricos dos manuais e revisar seu conteúdo quando o fluxo documentado mudar.
+7. Verificar os pacotes finais e seus hashes, incluí-los em `install/vX.Y.Z` e enviar código, instaladores e documentação juntos ao Git. Preservar artefatos anteriores.
+
 ## Texto para a entrega
 
 > **Atenção: atualize também os agentes.** Publicar o dashboard não atualiza os agentes das máquinas. Abra **Revisar agentes** para conferir a versão e a elegibilidade. Use o painel para instalações compatíveis; quando os componentes de suporte exigirem migração, baixe o pacote configurado para o ambiente no dashboard e execute o instalador completo com `--system-root`. Acompanhe o resultado em **Work requests** e confirme a versão informada pela máquina.
