@@ -127,7 +127,7 @@ def inherited_bootstrap(pins, known, baselines_root, public_bytes, public_pem, s
     return origin, bootstrap
 
 
-def verify(release, baselines_root, pins_path, public_path):
+def verify(release, baselines_root, pins_path, public_path, prepared_release=False):
     release, baselines_root = Path(release), Path(baselines_root)
     require(release.is_dir() and not release.is_symlink(), 'Release directory is missing or linked')
     manifest_path = release / 'packages/package-manifest.json'
@@ -136,7 +136,7 @@ def verify(release, baselines_root, pins_path, public_path):
     manifest = parse(manifest_raw)
     target, bridge = manifest['dashboardVersion'], manifest['agentBridgeVersion']
     require(version('1.5.12') < version(bridge) < version(target), 'Invalid bridge/target ordering')
-    require(manifest.get('candidateOnly') is True and manifest.get('published') is False
+    require((manifest.get('candidateOnly') is True or prepared_release and manifest.get('candidateOnly') is False) and manifest.get('published') is False
             and manifest.get('status') == 'prepared-local-build' and manifest.get('agentVersion') == target
             and manifest.get('agentUpdateFormat') == 'agent-bundle-v1'
             and manifest.get('agentUpdateMinimumVersion') == '1.5.12'
@@ -182,7 +182,7 @@ def verify(release, baselines_root, pins_path, public_path):
     ledger = parse(source['release/dashboard.json'])
     require(ledger['version'] == target and len(ledger['releases']) == 1
             and ledger['releases'][0]['version'] == target and ledger['releases'][0]['bridgeVersion'] == bridge
-            and ledger['releases'][0].get('candidateOnly') is True, 'Public source receipt loses candidate scope')
+            and bool(ledger['releases'][0].get('candidateOnly')) == manifest.get('candidateOnly'), 'Public source receipt loses candidate scope')
 
     pins = parse(Path(pins_path).read_bytes())
     known = {}
@@ -270,7 +270,7 @@ def verify(release, baselines_root, pins_path, public_path):
                            'format': 'collector-jar-v1', 'minUpdater': 2, 'sha256': sha(generic['collector.jar']),
                            'bytes': len(generic['collector.jar']), 'requiredFiles': support_files}
                 and runtime[classic + 'collector.jar'] == generic['collector.jar'], 'Classic route differs from final agent')
-    return {'schema': 1, 'result': 'PUBLIC_CANDIDATE_VERIFIED', 'candidateOnly': True,
+    return {'schema': 1, 'result': 'PUBLIC_CANDIDATE_VERIFIED' if manifest.get('candidateOnly') else 'PUBLIC_RELEASE_ARTIFACTS_VERIFIED', 'candidateOnly': manifest.get('candidateOnly'),
             'productionCompatibilityValidated': False, 'hostAccess': False, 'privateSigningMaterialRead': False,
             'verifiedAt': datetime.datetime.now(datetime.timezone.utc).isoformat(),
             'targetVersion': target, 'bridgeVersion': bridge, 'publicKeySha256': sha(public),
@@ -284,20 +284,21 @@ def verify(release, baselines_root, pins_path, public_path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--release', type=Path, required=True)
+    parser.add_argument('--prepared-release', action='store_true', help='Verify an unpublished consolidated release with the same provenance checks; does not certify runtime compatibility')
     parser.add_argument('--baselines-root', type=Path, help='Directory containing immutable previous version directories')
     parser.add_argument('--pins', type=Path, default=ROOT / 'docs/validation/agent-migration-baselines.json')
     parser.add_argument('--report', type=Path, required=True, help='Fresh private JSON receipt; existing files are never replaced')
     args = parser.parse_args()
     result = verify(args.release, args.baselines_root or args.release.parent, args.pins,
-                    ROOT / 'collector/public/agent-update-public.der')
+                    ROOT / 'collector/public/agent-update-public.der', args.prepared_release)
     args.report.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     require(not args.report.parent.is_symlink(), 'Linked report directory refused')
     fd = os.open(args.report, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, 'w') as output:
         output.write(json.dumps(result, indent=2) + '\n')
-    print('PUBLIC_CANDIDATE_VERIFIED: B=' + result['bridgeVersion'] + ' T=' + result['targetVersion']
+    print(result['result'] + ': B=' + result['bridgeVersion'] + ' T=' + result['targetVersion']
           + '; ' + str(result['legacyProfiles']) + ' reviewed legacy profiles; original 1.5.12 and helpers 1.5.12/1.5.9 verified.')
-    print('Laboratory artifacts only; Linux migration, recovery and production compatibility remain pending.')
+    print('Artifact integrity verified; native runtime/upgrade evidence must be evaluated separately.')
 
 
 if __name__ == '__main__':

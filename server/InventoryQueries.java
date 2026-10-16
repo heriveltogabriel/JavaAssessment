@@ -139,7 +139,7 @@ final class InventoryQueries {
         }else if(KINDS.contains(kind)||Set.of("hosts","jobs").contains(kind)){
             if(!f.view.equals("versions")||!f.version.isEmpty()){
                 Map<String,Object> page=page(f,kind);
-                if(kind.equals("servers"))for(Map<String,Object> server:(List<Map<String,Object>>)page.get("items"))server.put("applicationCount",db.scalar("SELECT count(*) FROM inventory WHERE kind='applications' AND host_id=? AND json_extract(payload,'$.serverName')=?",server.get("hostId"),server.get("name")));
+                if(kind.equals("servers"))for(Map<String,Object> server:(List<Map<String,Object>>)page.get("items"))server.put("applicationCount",db.scalar("SELECT count(*) FROM inventory WHERE kind='applications' AND host_id=? AND (json_extract(payload,'$.serverId')=? OR (coalesce(json_extract(payload,'$.serverId'),'')='' AND json_extract(payload,'$.serverName')=?))",server.get("hostId"),server.get("id"),server.get("name")));
                 result.put(kind,page.get("items"));result.put("pagination",page.get("pagination"));
                 if(kind.equals("hosts"))hosts=(List<Map<String,Object>>)page.get("items");
                 else {Set<String> ids=new LinkedHashSet<>();for(Map<String,Object> row:(List<Map<String,Object>>)page.get("items"))ids.add(s(row.get("hostId")));for(String id:ids){Map<String,Object> h=db.get("hosts",id);if(h!=null)hosts.add(h);}}

@@ -181,11 +181,11 @@ def validate_update_catalog(collector, assets):
             (directory / name).write_bytes(data)
         result = subprocess.run(['openssl', 'pkey', '-pubin', '-inform', 'DER', '-in',
                                  str(directory / 'public.der'), '-out', str(directory / 'public.pem')],
-                                capture_output=True, timeout=30)
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
         if result.returncode == 0:
             result = subprocess.run(['openssl', 'dgst', '-sha256', '-verify', str(directory / 'public.pem'),
                                      '-signature', str(directory / 'manifest.sig'), str(directory / 'manifest.json')],
-                                    capture_output=True, timeout=30)
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
         if result.returncode != 0:
             raise ValueError('Signed update catalog signature is invalid')
     manifest = json.loads(raw)

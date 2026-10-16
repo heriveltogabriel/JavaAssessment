@@ -411,7 +411,9 @@ public final class AgentMigrationBootstrap {
         public boolean serviceEvidence(Map pointer) throws Exception {
             File source = new File(AgentMigrationBootstrap.class.getProtectionDomain().getCodeSource().getLocation().toURI());
             if (!source.isFile() || !pointer.get("managerSha256").equals(AgentBundleManifest.hash(source))) return false;
-            return AgentUpdateWorker.Production.process(new String[]{"/bin/sh", script(null).getPath(), "evidence", AgentInstallLayout.text(pointer.get("managerSha256"))}, 30000) == 0;
+            if (AgentUpdateWorker.Production.process(new String[]{"/bin/sh", script(null).getPath(), "evidence", AgentInstallLayout.text(pointer.get("managerSha256"))}, 30000) != 0) return false;
+            AgentRecoveryService.install(layout, new File("/etc/systemd/system"), new AgentRecoveryService.Host());
+            return true;
         }
         public boolean processUses(File directory) throws Exception {
             File[] processes = new File("/proc").listFiles(); if (processes == null) return true;

@@ -115,7 +115,7 @@ final class ServerDataSources {
             row.putAll(fields); row.remove("contextIdentity"); scan.configuredDatasourceRows.put(key, row); scan.datasources.add(row);
         }
         Map association = AssessmentScan.map("pid", Long.valueOf(context.pid));
-        if (context.server != null) association.put("serverName", context.server.get("name"));
+        if (context.server != null) { association.put("serverName", context.server.get("name")); association.put("serverId", context.server.get("id")); }
         if (context.application != null) {
             association.put("applicationId", context.application.get("id")); association.put("applicationName", context.application.get("name"));
         }
@@ -125,7 +125,7 @@ final class ServerDataSources {
             else scan.warn("JDBC datasource process association limit reached; additional associations were not retained");
         }
         row.put("associations", associations);
-        for (String field : new String[]{"pid", "serverName", "applicationId", "applicationName"}) {
+        for (String field : new String[]{"pid", "serverName", "serverId", "applicationId", "applicationName"}) {
             if (associations.size() == 1 && association.containsKey(field)) row.put(field, association.get(field)); else row.remove(field);
         }
     }
@@ -201,6 +201,7 @@ final class ServerDataSources {
                     if (driverName != null) row.put("driverName", driverName);
                     String database = SpringDataSource.databaseType(String.valueOf(attrs.getValue("url")));
                     if (database != null) row.put("databaseType", database);
+                    JdbcEndpoint.addTo(row, attrs.getValue("url"));
                     Integer maximum = pool(SpringDataSource.first(attrs.getValue("maxTotal"), attrs.getValue("maxActive")));
                     if (maximum != null) row.put("configuredMaxPoolSize", maximum);
                     retain(row);
@@ -237,7 +238,7 @@ final class ServerDataSources {
             if (current != null) {
                 if (stack.size() == currentDepth + 1 && frame.name.equals("driver")) { String token = resourceName(value); if (token != null) current.put("driverReference", token); }
                 else if (stack.size() == currentDepth + 1 && frame.name.equals("driver-class")) { String token = SpringDataSource.validDriver(value); if (token != null) current.put("driverName", token); }
-                else if (stack.size() == currentDepth + 1 && frame.name.equals("connection-url")) { String database = SpringDataSource.databaseType(value); if (database != null) current.put("databaseType", database); }
+                else if (stack.size() == currentDepth + 1 && frame.name.equals("connection-url")) { String database = SpringDataSource.databaseType(value); if (database != null) current.put("databaseType", database); JdbcEndpoint.addTo(current, value); }
                 else if (stack.size() == currentDepth + 2 && frame.name.equals("max-pool-size") && parent() != null && (parent().name.equals("pool") || parent().name.equals("xa-pool"))) { Integer maximum = pool(value); if (maximum != null) current.put("configuredMaxPoolSize", maximum); }
                 if (stack.size() == currentDepth) { retain(current); current = null; }
             }

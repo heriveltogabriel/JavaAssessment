@@ -24,7 +24,7 @@ public final class LegacyDiscoveryTest {
         check("1.6.0_45".equals(row.get("version")), "Java 6 version must come from the rt.jar implementation manifest");
         check("Sun Microsystems, Inc.".equals(row.get("vendor")), "Legacy implementation vendor retained");
         check(String.valueOf(row.get("evidence")).contains("rt.jar"), "Legacy metadata source recorded");
-        check(scan.bytesRead < 8L * 1024 * 1024, "Realistic runtime archive index remains within global read budget");
+        check(scan.bytesRead < ArchiveMetadata.READ_LIMIT, "Realistic runtime archive index remains within global read budget");
         long reads = scan.bytesRead; scan.addRuntime(home, true, "Second process", scan.timestamp, null, null, null);
         check(scan.bytesRead == reads && scan.runtimes.size() == 1, "Shared runtime is read once");
         check(String.valueOf(row.get("evidence")).contains("rt.jar"), "Second process does not erase metadata provenance");
@@ -47,7 +47,7 @@ public final class LegacyDiscoveryTest {
         Map<String,String> huge = attributes(); char[] padding = new char[40000]; Arrays.fill(padding, 'x'); huge.put("Unrelated-Field", new String(padding)); runtime(other, false, huge, false);
         scan = scanner(); row = scan.addRuntime(other, true, "Observed JVM", scan.timestamp, null, null, null);
         check(row.get("version") == null && scan.partial, "Oversized runtime manifest rejected without loading unrelated metadata");
-        scan = scanner(); scan.bytesRead = 8L * 1024 * 1024; row = scan.addRuntime(jre, true, "Observed JVM", scan.timestamp, null, null, null);
+        scan = scanner(); scan.bytesRead = ArchiveMetadata.READ_LIMIT; row = scan.addRuntime(jre, true, "Observed JVM", scan.timestamp, null, null, null);
         check(row.get("version") == null && scan.partial, "Exhausted metadata budget blocks runtime fallback");
         check(!Json.stringify(scan.runtimes).contains("PRIVATE_CANARY"), "Runtime metadata fields allowlisted");
     }
@@ -64,7 +64,8 @@ public final class LegacyDiscoveryTest {
         ProcessLaunchTest.process(proc, "98666101", "java", "-Dweblogic.RootDirectory=" + base.getCanonicalPath(), "-Dweblogic.Name=AdminServer", "weblogic.Server");
         ProcessLaunchTest.process(proc, "98666102", "java", "-Dweblogic.RootDirectory=" + base.getCanonicalPath(), "-Dweblogic.Name=OtherServer", "weblogic.Server");
         AssessmentScan scan = scanner(); scan.discoverProcesses(proc);
-        check(scan.datasources.size() == 1, "WebLogic referenced JDBC descriptor must be discovered without a snapshot");
+        check(scan.datasources.size() == 2, "WebLogic referenced and unreferenced descriptors in running domain must be discovered without a snapshot");
+        check("domain-unreferenced-module".equals(((Map)scan.datasources.get(1)).get("configurationScope")), "Unreferenced descriptor is not presented as deployed");
         Map row = (Map)scan.datasources.get(0);
         check("JmsLabDerby".equals(row.get("name")) && "Derby".equals(row.get("databaseType")), "Derby resource and database family identified");
         check("org.apache.derby.jdbc.EmbeddedDriver".equals(row.get("driverName")) && Integer.valueOf(5).equals(row.get("configuredMaxPoolSize")), "Driver class and configured pool limit retained");
@@ -74,6 +75,7 @@ public final class LegacyDiscoveryTest {
         check(Json.stringify(row.get("jndiNames")).contains("jdbc/JmsLabDerby"), "Safe JNDI name retained");
         check(!Json.stringify(ServerDataSourcesTest.inventory(scan)).contains("PRIVATE_CANARY"), "No URL, username or encrypted password retained");
         Map exported = ServerDataSourcesTest.inventory(scan);
+        check(new File(base, "config/jdbc/orphan-jdbc.xml").delete(), "Remove unreferenced fixture before rejection tests");
         ProcessLaunch cwd = ProcessLaunch.parse(new String[]{"java", "-Dweblogic.Name=AdminServer", "weblogic.Server"}, base);
         check(base.getCanonicalPath().equals(cwd.serverBase), "WebLogic default domain is observed process cwd");
         text(new File(base, "config/config.xml"), domain(reference("../external-jdbc.xml")));

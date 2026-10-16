@@ -1,6 +1,6 @@
 # Java Assessment
 
-Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versão **2.0.53** reúne dashboard, agente Linux e banco SQLite local, com organização por ambiente e máquina.
+Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versão **2.0.57** reúne dashboard, agente Linux e banco SQLite local, com organização por ambiente e máquina.
 
 ![Overview do Java Assessment com indicadores de agentes, instalações Java, servidores e datasources JDBC](imagens/overview.png)
 
@@ -11,7 +11,7 @@ Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versã
 - Aplicações, processos, servidores Java, bibliotecas e datasources JDBC por configuração suportada.
 - Contas individuais com email e senha, perfis Administrador e Leitura e troca de senha no primeiro acesso.
 - Relatórios de máquinas, Java, servidores, JDBC e ambientes, com filtros combinados, seleção de colunas e exportação PDF/CSV.
-- JDBC em todos os relatórios, com datasource, driver e versão apresentados juntos.
+- JDBC em todos os relatórios, com datasource, driver, versão e destino configurado do banco (host/IP, porta e banco/serviço), também nas exportações PDF/CSV.
 - Exportação de um CSV único do inventário por ambiente, máquina ou todos os ambientes.
 - Ações de máquina, revogação e desinstalação controlada do agente.
 - Atualização de agentes compatíveis por HTTPS, individualmente ou por ambiente, com assinatura e verificação.
@@ -32,10 +32,10 @@ A área **Relatórios** transforma o inventário recebido em consultas para aná
 | Máquinas | Ambiente, IP, sistema operacional, versões Java, servidores e JDBC da máquina |
 | Java | Máquina, ambiente, IP, versão, Java home, fornecedor e JDBC da máquina |
 | Servidores Java | Máquina, ambiente, IP, produto, nome e versão do servidor, Java associado, sistema operacional e JDBC do servidor |
-| JDBC | Datasource/nome JNDI, banco, driver, versão, classe, máquina, IP, ambiente, servidores e aplicações associados |
+| JDBC | Datasource/nome JNDI, banco, host/IP e porta de destino, banco/serviço configurado, driver, versão, classe, máquina, IP, ambiente, servidores e aplicações associados |
 | Resumo por ambiente | Quantidades de máquinas, instalações Java, servidores e datasources, com resumo JDBC |
 
-Combine os filtros de máquinas e servidores com os de JDBC: presença de datasources, nome/JNDI, banco, driver e versão, classe, referência do driver, servidor, aplicação, tipo de recurso e estado. Os campos oferecem sugestões do inventário e aceitam digitação. Por exemplo, consulte máquinas com determinada versão do WebLogic ou datasources de uma aplicação com um driver específico.
+Combine os filtros de máquinas e servidores com os de JDBC: presença de datasources, nome/JNDI, banco, host/IP, porta, banco/serviço, driver e versão, classe, referência do driver, servidor, aplicação, tipo de recurso e estado. Os campos oferecem sugestões do inventário e aceitam digitação. Por exemplo, consulte máquinas com determinada versão do WebLogic ou datasources de uma aplicação com um driver específico.
 
 O JDBC de um servidor usa as associações registradas no inventário. Para consultar também os recursos encontrados na mesma máquina, adicione a coluna **JDBC da máquina**. A versão Java associada ao servidor é obtida pela correspondência do Java home registrado. Campos sem evidência permanecem sem informação.
 
@@ -65,25 +65,40 @@ Na raiz deste repositório, com Python 3 e OpenSSL disponíveis:
 
 ```sh
 # Recupera somente os artefatos públicos assinados do instalador publicado.
-unzip -o install/v2.0.53/assessment-dashboard-installer-2.0.53.zip 'dist/*' -d .
+unzip -o install/v2.0.57/assessment-dashboard-installer-2.0.57.zip 'dist/*' -d .
 python3 -B ops/prepare-beta-dependencies.py --check
 python3 -B dashboard-installer/build.py --with-source
 ```
 
-Os resultados ficam em `dist/assessment-dashboard-installer-2.0.53.zip` e `dist/assessment-dashboard-source-2.0.53.zip`, com arquivos SHA-256. O build usa as bibliotecas fixadas, o agente genérico e o catálogo público assinado incluídos no repositório. Não exige arquivos da máquina de desenvolvimento nem a chave privada de assinatura.
+Os resultados ficam em `dist/assessment-dashboard-installer-2.0.57.zip` e `dist/assessment-dashboard-source-2.0.57.zip`, com arquivos SHA-256. O build usa as bibliotecas fixadas, o agente genérico e o catálogo público assinado incluídos no repositório. Não exige arquivos da máquina de desenvolvimento nem a chave privada de assinatura.
 
 O pacote do agente versionado em `dist/assessment-collector.zip` é genérico e não contém identidade cadastrada. O catálogo extraído em `dist/` inclui os pacotes completos e as rotas de migração. O build verifica assinaturas, chave pública e integridade antes de empacotar. Alterações nos arquivos executáveis exigem uma nova entrega assinada; o build não assina nem substitui a confiança instalada.
 
+## Atualizar dashboard existente
+
+Para clientes na **2.0.53**, use o [pacote de atualização 2.0.57](install/v2.0.57/README.md). Ele preserva dados, contas, configuração e certificados, cria backup e verifica o serviço por HTTPS.
+
+```sh
+sha256sum -c assessment-dashboard-update-2.0.57.zip.sha256
+unzip assessment-dashboard-update-2.0.57.zip -d dashboard-update-2.0.57
+cd dashboard-update-2.0.57
+sudo /bin/sh atualizar-dashboard.sh
+```
+
+Pare se o checksum falhar e extraia em uma pasta nova. **Atualize também os agentes:** agentes V3 elegíveis podem receber **2.0.53 → 2.0.57** em um único pedido pelo dashboard, com o recuperador ativo. Não é necessário instalar 2.0.55 antes. Confirme primeiro uma máquina e execute nova coleta para obter os destinos JDBC.
+
+A entrega inclui a correção de inicialização do recuperador e ajustes do instalador para Python 3.6, certificados e diagnóstico HTTPS. Consulte [as validações e seus limites](docs/validation/recovery-installer-2026-10-16.md): a atualização direta do agente foi testada com os binários assinados e serviços simulados; o restart foi testado nas VMs OL7/OL8. O ensaio não incluiu instalação completa no cliente nem reboot integral das VMs.
+
 ## Instalar no cliente
 
-O [diretório install](install/README.md) reúne o [manual ilustrado](install/Manual.pdf), o [guia de instalação](install/Guia-instalacao.pdf) e o instalador pronto da versão 2.0.53, com seu SHA-256. Os PDFs usam nomes estáveis e comandos com `X.Y.Z` para a versão escolhida. Para as funcionalidades mais recentes, consulte também as notas da versão e os guias específicos abaixo.
+O [diretório install](install/README.md) reúne o [manual ilustrado](install/Manual.pdf), o [guia de instalação](install/Guia-instalacao.pdf) e o instalador pronto da versão 2.0.57, com seu SHA-256. Os PDFs usam nomes estáveis e comandos com `X.Y.Z` para a versão escolhida. Para as funcionalidades mais recentes, consulte também as notas da versão e os guias específicos abaixo.
 
 **Para uma instalação nova.** O ZIP não deve ser executado sobre um dashboard existente para atualizá-lo. Na VM destinada ao dashboard, após transferir o instalador e seu SHA-256:
 
 ```sh
-sha256sum -c assessment-dashboard-installer-2.0.53.zip.sha256
-unzip assessment-dashboard-installer-2.0.53.zip -d dashboard-installer-2.0.53
-cd dashboard-installer-2.0.53
+sha256sum -c assessment-dashboard-installer-2.0.57.zip.sha256
+unzip assessment-dashboard-installer-2.0.57.zip -d dashboard-installer-2.0.57
+cd dashboard-installer-2.0.57
 ./install.sh \
   --public-url https://dashboard.exemplo.com \
   --admin-name "Administrador" \
@@ -126,7 +141,7 @@ Os testes de navegador usam Playwright e Chrome. Configure `NODE`, `NODE_PATH`, 
 - [Melhorias planejadas](docs/TODO.md)
 - [Plano do atualizador completo a partir da 1.5.12 e assessment após atualizar](docs/superpowers/plans/2026-10-14-full-agent-update.md) — disponível para instalações elegíveis; consulte os resultados e limites de validação nas notas da versão.
 - [Visão funcional, operação e limites](docs/SOLUTION.md)
-- [Mudanças e validação da 2.0.53](docs/RELEASE_2.0.53.md)
+- [Mudanças e validação da 2.0.57](docs/RELEASE_2.0.57.md)
 - [Instalação e configuração](dashboard-installer/GUIA_INSTALACAO.md)
 - [Opções do instalador](dashboard-installer/README.md)
 - [Instalação do coletor](collector/INSTALL.md)
@@ -137,7 +152,7 @@ Os testes de navegador usam Playwright e Chrome. Configure `NODE`, `NODE_PATH`, 
 - [Validações e gates antes de publicar](docs/validation/full-agent-update.md)
 - [Migração e backup](dashboard-installer/BETA_MIGRATION.md)
 
-Os nomes de alguns scripts e documentos mantêm `beta` por compatibilidade com a estrutura anterior. A versão atual do produto é 2.0.53. Relatórios históricos descrevem somente o cenário e a versão em que foram produzidos.
+Os nomes de alguns scripts e documentos mantêm `beta` por compatibilidade com a estrutura anterior. A versão atual do produto é 2.0.57. Relatórios históricos descrevem somente o cenário e a versão em que foram produzidos.
 
 Configurações privadas, chaves, inventário, logs, pacotes de ambientes e ferramentas específicas do laboratório ficam fora do Git. Publicar código neste repositório não instala nem atualiza servidores ou agentes.
 

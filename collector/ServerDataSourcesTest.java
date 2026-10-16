@@ -9,7 +9,7 @@ public final class ServerDataSourcesTest {
     static void check(boolean value, String message) { checks++; CollectorTest.check(value, message); }
     static void text(File path, String value) throws Exception { ProcessLaunchTest.text(path, value); }
     static String tomcatResource(String name) {
-        return "<Resource name='" + name + "' type='javax.sql.DataSource' driverClassName='org.postgresql.Driver' url='jdbc:postgresql://PRIVATE_URL_CANARY/database?password=PRIVATE_QUERY_CANARY' username='PRIVATE_USER_CANARY' password='PRIVATE_PASSWORD_CANARY' maxTotal='24'/>";
+        return "<Resource name='" + name + "' type='javax.sql.DataSource' driverClassName='org.postgresql.Driver' url='jdbc:postgresql://db-primary.example:5432,db-secondary.example:5433/database?password=PRIVATE_QUERY_CANARY' username='PRIVATE_USER_CANARY' password='PRIVATE_PASSWORD_CANARY' maxTotal='24'/>";
     }
     static String jbossDatasource(String name, boolean disabled) {
         return "<datasource jndi-name='java:/" + name + "' pool-name='" + name + "' enabled='" + !disabled + "'><connection-url>jdbc:h2:mem:PRIVATE_URL_CANARY;PASSWORD=PRIVATE_QUERY_CANARY</connection-url><driver>h2</driver><pool><max-pool-size>32</max-pool-size></pool><security><user-name>PRIVATE_USER_CANARY</user-name><password>PRIVATE_PASSWORD_CANARY</password></security></datasource>";
@@ -107,8 +107,8 @@ public final class ServerDataSourcesTest {
     static void budgets(File root) throws Exception {
         File base = new File(root, "budgets"); text(new File(base, "conf/server.xml"), "<Server><GlobalNamingResources>" + tomcatResource("jdbc/bounded") + "</GlobalNamingResources></Server>");
         AssessmentScan.ProcessContext context = context("Tomcat", base, base, 1);
-        AssessmentScan bytes = scanner(); bytes.bytesRead = 8L * 1024 * 1024; bytes.serverDataSources.discover(context);
-        check(bytes.datasources.isEmpty() && bytes.partial && bytes.bytesRead == 8L * 1024 * 1024, "Global byte budget enforced before config read");
+        AssessmentScan bytes = scanner(); bytes.bytesRead = ArchiveMetadata.READ_LIMIT; bytes.serverDataSources.discover(context);
+        check(bytes.datasources.isEmpty() && bytes.partial && bytes.bytesRead == ArchiveMetadata.READ_LIMIT, "Global byte budget enforced before config read");
         AssessmentScan files = scanner(); files.filesVisited = files.maxFiles; files.serverDataSources.discover(context);
         check(files.datasources.isEmpty() && files.partial && files.bytesRead == 0, "Global file budget prevents config read");
         AssessmentScan deadline = scanner(); java.lang.reflect.Field deadlineField = AssessmentScan.class.getDeclaredField("deadline"); deadlineField.setAccessible(true); deadlineField.setLong(deadline, 0L); deadline.serverDataSources.discover(context);

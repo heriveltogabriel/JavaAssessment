@@ -49,8 +49,8 @@ public final class AssessmentScan {
         collectorPrivateRuntimeRoot = privateRuntimeRoot(codeLocation);
         collectorExternalRuntimeRoot = externalRuntimeRoot(codeLocation);
         timestamp = now();
-        deadline = start + number(settings.get("maxDurationSeconds"), 120, 10, 900) * 1000L;
-        maxFiles = number(settings.get("maxFiles"), 10000, 100, 50000);
+        deadline = start + number(settings.get("maxDurationSeconds"), 180, 10, 900) * 1000L;
+        maxFiles = number(settings.get("maxFiles"), 50000, 100, 50000);
         batchSize = number(settings.get("batchSize"), 100, 1, 500);
         pauseMillis = number(settings.get("pauseMillis"), 30, 0, 2000);
         excluded.addAll(Arrays.asList("/proc", "/sys", "/dev", "/tmp"));
@@ -171,13 +171,13 @@ public final class AssessmentScan {
     }
     String metadataText(File file, int limit, boolean report) {
         if (!available()) return null;
-        if (bytesRead >= 8L * 1024 * 1024) { warn("Metadata read budget of 8 MiB reached"); return null; }
+        if (bytesRead >= ArchiveMetadata.READ_LIMIT) { warn("Metadata read budget of 16 MiB reached"); return null; }
         InputStream input = null;
         try {
             input = new FileInputStream(file); ByteArrayOutputStream out = new ByteArrayOutputStream(); byte[] buffer = new byte[4096]; int count;
             while (available()) {
-                int remaining = (int)Math.min(limit - out.size() + 1L, 8L * 1024 * 1024 - bytesRead);
-                if (remaining <= 0) { warn("Metadata read budget of 8 MiB reached"); return null; }
+                int remaining = (int)Math.min(limit - out.size() + 1L, ArchiveMetadata.READ_LIMIT - bytesRead);
+                if (remaining <= 0) { warn("Metadata read budget of 16 MiB reached"); return null; }
                 count = input.read(buffer, 0, Math.min(buffer.length, remaining)); if (count < 0) return new String(out.toByteArray(), "UTF-8");
                 bytesRead += count; if (out.size() + count > limit) { warn("Bounded metadata entry size limit reached"); return null; } out.write(buffer, 0, count);
             }
@@ -432,7 +432,8 @@ public final class AssessmentScan {
     static final class ProcessContext {
         final ProcessLaunch launch; final long pid; final String javaHome; final Map process, application;
         Map server;
-        boolean productVersion;
+        boolean productVersion, springBootEvidence;
+        String springBootVersion;
         ProcessContext(ProcessLaunch launch, long pid, String javaHome, Map process, Map application) {
             this.launch = launch; this.pid = pid; this.javaHome = javaHome; this.process = process; this.application = application;
         }
@@ -520,12 +521,12 @@ public final class AssessmentScan {
             ProcessContext context = new ProcessContext(launch, Long.parseLong(pid), javaHome, process, app);
             if (launch.serverType != null) {
                 String serverName = launch.serverName == null ? launch.serverType + " process " + pid : launch.serverName;
-                String key = launch.serverType + ":" + serverName;
+                String key = launch.serverType + ":" + serverName + ("WebLogic".equals(launch.serverType) ? ":process:" + pid : "");
                 context.server = map("id", id("server", hostId + key), "hostId", hostId, "type", launch.serverType, "name", serverName,
                     "version", null, "path", launch.serverBase, "pid", Long.valueOf(pid), "javaHome", javaHome, "mainClass", launch.mainClass,
                     "state", "PROCESS_RUNNING", "evidence", "Known server launcher in a live Java process; service health not tested", "observedAt", timestamp);
                 if (servers.size() < 256) servers.put(key, context.server); else warn("Server row limit reached");
-                if (app != null) app.put("serverName", serverName);
+                if (app != null) { app.put("serverName", serverName); app.put("serverId", context.server.get("id")); }
             }
             discoverLinked(context);
             SpringConfiguration.discover(this, context, directory);
@@ -647,6 +648,10 @@ public final class AssessmentScan {
         try { path = file.getCanonicalPath(); } catch (IOException e) { return; }
         Map metadata = archiveMetadata.inspect(file);
         if (metadata == null) metadata = Collections.emptyMap();
+        if (context != null && context.launch.serverType == null && onProcessClasspath(context, path) && Boolean.TRUE.equals(metadata.get("springBootLibrary"))) {
+            context.springBootEvidence = true;
+            context.springBootVersion = clean(metadata.get("version"));
+        }
         String evidence = clean(metadata.get("evidence")); if (evidence == null) evidence = "Archive file found; classes were not executed";
         if (linked) evidence += "; process-linked file; discovered independently of includePaths; runtime use of packaged libraries not verified";
         String appType = clean(metadata.get("applicationType")), main = ProcessLaunch.identifier(clean(metadata.get("startClass")));
@@ -702,6 +707,16 @@ public final class AssessmentScan {
         }
         // Per-process Spring resolution follows discovery, after all driver libraries are associated.
     }
+    boolean onProcessClasspath(ProcessContext context, String path) {
+        for (String entry : context.launch.classpath) {
+            File file = new File(entry);
+            if (file.getName().equals("*") && file.getParentFile() != null) {
+                File parent = new File(path).getParentFile();
+                if (parent != null && samePath(file.getParentFile().getPath(), parent.getPath())) return true;
+            } else if (samePath(entry, path)) return true;
+        }
+        return false;
+    }
     void addConfiguredSpringDatasource(String path, Map configuration, Map application, ProcessContext context) {
         if (!Boolean.TRUE.equals(configuration.get("configurationPresent"))) return;
         // Datasource candidates belong to a live application instance. URLs are not retained,
@@ -716,7 +731,7 @@ public final class AssessmentScan {
                 "state", "CONFIGURED", "evidenceLevel", "configuration", "scanScope", "process-linked",
                 "evidence", "Local Spring datasource configuration candidate; programmatic overrides, driver loading and database connectivity were not verified",
                 "observedAt", timestamp);
-            for (String field : new String[]{"driverName", "driverVersion", "databaseType", "configuredMaxPoolSize", "configurationKey", "datasourceKey", "configurationResolution", "activeProfiles", "jndiName"})
+            for (String field : new String[]{"driverName", "driverVersion", "databaseType", "databaseHost", "databasePort", "databaseName", "databaseEndpoints", "configuredMaxPoolSize", "configurationKey", "datasourceKey", "configurationResolution", "activeProfiles", "jndiName"})
                 if (configuration.get(field) != null) row.put(field, configuration.get(field));
             if (row.get("driverVersion") != null) row.put("driverVersionEvidence", "Matching packaged JDBC library; runtime loading not verified");
             configuredDatasourceRows.put(key, row); datasources.add(row);

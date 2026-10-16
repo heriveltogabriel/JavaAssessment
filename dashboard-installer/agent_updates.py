@@ -52,14 +52,14 @@ def signature(public, raw, signed):
         for name, data in [('public.der', public), ('payload', raw), ('signature', signed)]:
             (folder / name).write_bytes(data)
         key = subprocess.run(['openssl', 'pkey', '-pubin', '-inform', 'DER', '-in', str(folder / 'public.der'),
-                              '-text', '-noout'], capture_output=True, timeout=30)
+                              '-text', '-noout'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
         need(key.returncode == 0 and re.search(br'(?:RSA )?Public-Key: \(3072 bit\)', key.stdout), 'Invalid RSA-3072 public pin')
         pem = subprocess.run(['openssl', 'pkey', '-pubin', '-inform', 'DER', '-in', str(folder / 'public.der'),
-                              '-out', str(folder / 'public.pem')], capture_output=True, timeout=30)
+                              '-out', str(folder / 'public.pem')], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
         need(pem.returncode == 0, 'Invalid public pin')
         checked = subprocess.run(['openssl', 'dgst', '-sha256', '-verify', str(folder / 'public.pem'),
                                   '-signature', str(folder / 'signature'), str(folder / 'payload')],
-                                 capture_output=True, timeout=30)
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
         need(checked.returncode == 0, 'Signed agent update signature is invalid')
 
 

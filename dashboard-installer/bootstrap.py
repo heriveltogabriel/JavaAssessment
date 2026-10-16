@@ -2,6 +2,7 @@
 import ipaddress
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -86,9 +87,12 @@ def choose_public_url(explicit, input_fn=input, interactive=None):
     return value if value.startswith('https://') else 'https://' + value
 
 
-def openssl(args):
+def openssl(args, config=None):
+    environment = dict(os.environ)
+    if config is not None:
+        environment["OPENSSL_CONF"] = str(config)
     completed = subprocess.run(['openssl'] + args, stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE, check=False)
+                               stderr=subprocess.PIPE, check=False, timeout=60, env=environment)
     if completed.returncode:
         raise RuntimeError('TLS certificate generation failed (' + args[0] + '): ' +
                            completed.stderr.decode('utf-8', 'replace')[-400:].strip())
@@ -96,6 +100,8 @@ def openssl(args):
 
 def generate_tls(directory, host):
     """Create a root CA and an RSA server certificate with a matching SAN."""
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9.:-]{0,252}', host):
+        raise RuntimeError('Invalid TLS host')
     directory = Path(directory)
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(directory, 0o700)
@@ -109,21 +115,26 @@ def generate_tls(directory, host):
     except ValueError:
         pass
     san = ('IP:' if is_ip else 'DNS:') + host
-    config.write_text('[v3_server]\nsubjectAltName=' + san +
+    config.write_text('[req]\nprompt=no\ndistinguished_name=dn\n[dn]\nCN=Java Assessment Local CA\n'
+                      '[v3_ca]\nbasicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign,cRLSign\n'
+                      'subjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid:always\n'
+                      '[v3_server]\nsubjectAltName=' + san +
                       '\nbasicConstraints=critical,CA:FALSE\n'
                       'keyUsage=critical,digitalSignature,keyEncipherment\n'
                       'extendedKeyUsage=serverAuth\n', encoding='ascii')
-    openssl(['genpkey', '-algorithm', 'RSA', '-pkeyopt', 'rsa_keygen_bits:3072', '-out', str(ca_key)])
-    openssl(['req', '-new', '-x509', '-sha256', '-days', '3650', '-key', str(ca_key),
+    def run(args):
+        openssl(args, config)
+    run(['genpkey', '-algorithm', 'RSA', '-pkeyopt', 'rsa_keygen_bits:3072', '-out', str(ca_key)])
+    run(['req', '-new', '-x509', '-sha256', '-days', '3650', '-key', str(ca_key),
              '-out', str(ca_cert), '-subj', '/CN=Java Assessment Local CA',
-             '-addext', 'basicConstraints=critical,CA:TRUE',
-             '-addext', 'keyUsage=critical,keyCertSign,cRLSign'])
-    openssl(['genpkey', '-algorithm', 'RSA', '-pkeyopt', 'rsa_keygen_bits:2048', '-out', str(server_key)])
-    openssl(['req', '-new', '-sha256', '-key', str(server_key), '-out', str(csr),
-             '-subj', '/CN=' + host[:60]])
-    openssl(['x509', '-req', '-sha256', '-days', '397', '-in', str(csr), '-CA', str(ca_cert),
+             '-config', str(config), '-extensions', 'v3_ca'])
+    run(['genpkey', '-algorithm', 'RSA', '-pkeyopt', 'rsa_keygen_bits:2048', '-out', str(server_key)])
+    run(['req', '-new', '-sha256', '-key', str(server_key), '-out', str(csr),
+             '-subj', '/CN=' + host[:60], '-config', str(config)] )
+    run(['x509', '-req', '-sha256', '-days', '397', '-in', str(csr), '-CA', str(ca_cert),
              '-CAkey', str(ca_key), '-CAcreateserial', '-out', str(server_cert),
              '-extfile', str(config), '-extensions', 'v3_server'])
+    run(['verify', '-CAfile', str(ca_cert), str(server_cert)])
     fullchain = directory / 'fullchain.pem'
     fullchain.write_bytes(server_cert.read_bytes() + ca_cert.read_bytes())
     for key in (ca_key, server_key):

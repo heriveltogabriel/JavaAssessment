@@ -35,6 +35,7 @@
 *.zip
 !/dist/assessment-collector.zip
 !/install/v*/assessment-dashboard-installer-*.zip
+!/install/v*/assessment-dashboard-update-*.zip
 *.tar.gz
 *.tgz
 *.class

@@ -8,19 +8,70 @@ import java.util.zip.*;
 
 /** Reads bounded archive metadata without extracting files or loading application classes. */
 public final class ArchiveMetadata {
-    static final long READ_LIMIT = 8L * 1024 * 1024;
+    static final long READ_LIMIT = 16L * 1024 * 1024;
     static final long FILE_LIMIT = 1024L * 1024 * 1024; // File size is independent from the bounded metadata/central-directory budget.
     static final int METADATA_LIMIT = 65536, ENTRY_LIMIT = 5000, CENTRAL_LIMIT = 2 * 1024 * 1024;
+    static final Pattern BOOT_CORE = Pattern.compile("BOOT-INF/lib/spring-boot-([0-9][A-Za-z0-9._+\\-]*)\\.jar");
     static final Pattern FILE_VERSION = Pattern.compile("^(?:ojdbc[0-9]*|classes12|derby(?:client|net|shared|tools|run)?|mysql-connector-(?:java|j)|postgresql|mssql-jdbc|sqljdbc[0-9]*|jtds|db2jcc[0-9]*|mariadb-java-client|h2|hsqldb|tomcat-embed-core|jetty-server|undertow-core)[-_]([0-9][A-Za-z0-9._+\\-]*)\\.jar$", Pattern.CASE_INSENSITIVE);
     final AssessmentScan scan;
     final Map<String, Map> cache = new LinkedHashMap<String, Map>();
     int libraryRows;
+    // Configuration is retained before large nested dependencies can consume the read budget.
+    // At most 2 MiB of transient raw bytes, never included in inventory results.
+    final Map<String, ConfigurationArchive> configurations = new LinkedHashMap<String, ConfigurationArchive>();
+    static final class ConfigurationArchive {
+        final Map<String, byte[]> entries = new LinkedHashMap<String, byte[]>();
+        final Set<String> duplicates = new HashSet<String>();
+        final Set<String> classEntries = new HashSet<String>();
+        String prefix; boolean partial; int bytes;
+    }
+    ConfigurationArchive configuration(File file) throws IOException { return configurations.get(file.getCanonicalPath()); }
+    ConfigurationArchive classpathConfiguration(File file) throws IOException {
+        String key = "classpath:" + file.getCanonicalPath();
+        if (configurations.containsKey(key)) return configurations.get(key);
+        if (!scan.visitLinked(file) || !file.isFile() || file.length() > FILE_LIMIT || !claimArchive(file.getPath())) throw new Limit("Classpath archive inspection unavailable");
+        long central = preflight(file); charge(central);
+        ConfigurationArchive result = new ConfigurationArchive(); result.prefix = "";
+        ZipFile archive = new ZipFile(file);
+        try {
+            List<ZipEntry> candidates = new ArrayList<ZipEntry>(); Set<String> names = new HashSet<String>();
+            Enumeration<? extends ZipEntry> entries = archive.entries(); int count = 0;
+            while (entries.hasMoreElements()) {
+                if (!scan.available() || ++count > ENTRY_LIMIT) throw new Limit("Classpath archive entry limit reached");
+                ZipEntry entry = entries.nextElement(); String name = entry.getName();
+                if (entry.isDirectory() || !safeName(name)) continue;
+                if (name.endsWith(".class")) result.classEntries.add(name);
+                if (name.endsWith(".properties") || name.endsWith(".yaml") || name.endsWith(".yml") || name.equals("META-INF/MANIFEST.MF")) {
+                    if (!names.add(name)) result.duplicates.add(name);
+                    if (candidates.size() < 64) candidates.add(entry); else result.partial = true;
+                }
+            }
+            Collections.sort(candidates, new Comparator<ZipEntry>() {
+                public int compare(ZipEntry a, ZipEntry b) {
+                    boolean first = base(a.getName()).startsWith("application"), second = base(b.getName()).startsWith("application");
+                    return first == second ? a.getName().compareTo(b.getName()) : first ? -1 : 1;
+                }
+            });
+            for (ZipEntry entry : candidates) {
+                if (result.duplicates.contains(entry.getName())) continue;
+                if (result.entries.size() >= 32 || entry.getSize() < 0 || entry.getSize() > METADATA_LIMIT || entry.getSize() > 262144 - result.bytes) { result.partial = true; continue; }
+                InputStream input = archive.getInputStream(entry); byte[] content;
+                try { content = read(input, Math.min(METADATA_LIMIT, 262144 - result.bytes)); } finally { input.close(); }
+                result.bytes += content.length; result.entries.put(entry.getName(), content);
+                if (entry.getName().equals("META-INF/MANIFEST.MF") && new Manifest(new ByteArrayInputStream(content)).getMainAttributes().getValue("Class-Path") != null) result.partial = true;
+            }
+        } finally { archive.close(); }
+        if (configurations.size() >= 8) configurations.remove(configurations.keySet().iterator().next());
+        configurations.put(key, result); return result;
+    }
+
+
 
     public ArchiveMetadata(AssessmentScan scan) { this.scan = scan; }
 
     public static boolean isKnownCandidate(String filename) {
         String name = base(filename).toLowerCase(Locale.ENGLISH);
-        return isJdbc(name) || isDerby(name) || isTomcat(name) || name.equals("weblogic.jar")
+        return name.matches("spring-boot-[0-9][A-Za-z0-9._+\\-]*\\.jar") || isJdbc(name) || isDerby(name) || isTomcat(name) || name.equals("weblogic.jar")
             || name.equals("jboss-modules.jar") || name.startsWith("jboss-as-server") || name.startsWith("jboss-as-version")
             || name.startsWith("jboss-as-product") || name.startsWith("wildfly-server") || name.startsWith("wildfly-version")
             || name.startsWith("wildfly-product") || name.startsWith("jetty-server-") || name.startsWith("undertow-core-");
@@ -61,7 +112,7 @@ public final class ArchiveMetadata {
     boolean claimArchive(String path) {
         if (!scan.available()) return false;
         if (scan.archivesInspected >= 40) { scan.warn("Archive inspection count limit reached"); return false; }
-        if (scan.bytesRead >= READ_LIMIT) { scan.warn("Metadata read budget of 8 MiB reached"); return false; }
+        if (scan.bytesRead >= READ_LIMIT) { scan.warn("Metadata read budget of 16 MiB reached"); return false; }
         scan.archivesInspected++;
         return true;
     }
@@ -70,6 +121,10 @@ public final class ArchiveMetadata {
         List<ZipEntry> nested = new ArrayList<ZipEntry>(), metadataEntries = new ArrayList<ZipEntry>();
         Map<String, ZipEntry> springEntries = new LinkedHashMap<String, ZipEntry>();
         Set<String> duplicateSpringEntries = new HashSet<String>(); boolean profileConfiguration = false;
+        boolean bootClasses = false, bootLoader = false, springApplication = false; String layoutBootVersion = null;
+        List<ZipEntry> configurationEntries = new ArrayList<ZipEntry>();
+        Set<String> configurationNames = new HashSet<String>(), duplicateConfigurations = new HashSet<String>();
+        boolean configurationTruncated = false;
         Enumeration<? extends ZipEntry> entries = archive.entries(); int count = 0;
         while (entries.hasMoreElements()) {
             if (!scan.available()) throw new Limit("Assessment deadline reached during archive discovery");
@@ -77,6 +132,17 @@ public final class ArchiveMetadata {
             ZipEntry entry = entries.nextElement(); String name = entry.getName();
             if (entry.isDirectory() || !safeName(name)) continue;
             if (metadata(name)) metadataEntries.add(entry);
+            if (name.startsWith("BOOT-INF/classes/")) bootClasses = true;
+            if (name.equals("org/springframework/boot/loader/JarLauncher.class") || name.equals("org/springframework/boot/loader/launch/JarLauncher.class")) bootLoader = true;
+            if (name.equals("org/springframework/boot/SpringApplication.class")) springApplication = true;
+            Matcher bootCore = BOOT_CORE.matcher(name);
+            if (bootCore.matches()) layoutBootVersion = bootCore.group(1);
+            if ((name.startsWith("BOOT-INF/classes/") || name.startsWith("WEB-INF/classes/"))
+                && (name.endsWith(".properties") || name.endsWith(".yml") || name.endsWith(".yaml"))) {
+                if (!configurationNames.add(name)) duplicateConfigurations.add(name);
+                if (configurationEntries.size() < 64) configurationEntries.add(entry);
+                else configurationTruncated = true;
+            }
             if (Arrays.asList(SpringDataSource.BASE_FILES).contains(name)) {
                 if (springEntries.containsKey(name)) duplicateSpringEntries.add(name);
                 springEntries.put(name, entry);
@@ -89,8 +155,35 @@ public final class ArchiveMetadata {
         // The manifest and base datasource settings precede dependencies and
         // arbitrary Maven metadata, using this same bounded ZipFile opening.
         for (ZipEntry entry : metadataEntries) if (entry.getName().equalsIgnoreCase("META-INF/MANIFEST.MF")) readOuterMetadata(doc, archive, entry);
-        boolean boot = bootMain(doc.main) || doc.boot != null && doc.start != null;
+        doc.bootLibrary = springApplication && "Spring Boot".equals(doc.title);
+        doc.bootLayout = bootClasses && bootLoader && layoutBootVersion != null;
+        if (doc.boot == null && doc.bootLayout) doc.boot = layoutBootVersion;
+        boolean boot = bootMain(doc.main) || doc.boot != null && doc.start != null || doc.bootLayout;
         if (boot) {
+            ConfigurationArchive configuration = new ConfigurationArchive();
+            configuration.partial = configurationTruncated;
+            configuration.duplicates.addAll(duplicateConfigurations);
+            if (configurationTruncated) scan.note("Packaged Spring configuration candidate limit reached: " + doc.path);
+            configuration.prefix = bootClasses ? "BOOT-INF/classes/" : "WEB-INF/classes/";
+            Collections.sort(configurationEntries, new Comparator<ZipEntry>() {
+                public int compare(ZipEntry a, ZipEntry b) {
+                    boolean first = base(a.getName()).startsWith("application"), second = base(b.getName()).startsWith("application");
+                    return first == second ? a.getName().compareTo(b.getName()) : first ? -1 : 1;
+                }
+            });
+            for (ZipEntry entry : configurationEntries) {
+                String name = entry.getName();
+                if (!name.startsWith(configuration.prefix)) continue;
+                if (configuration.entries.containsKey(name)) { configuration.duplicates.add(name); continue; }
+                if (configuration.entries.size() >= 32 || entry.getSize() < 0 || entry.getSize() > METADATA_LIMIT || entry.getSize() > 262144 - configuration.bytes) { configuration.partial = true; continue; }
+                try {
+                    InputStream input = archive.getInputStream(entry); byte[] content;
+                    try { content = read(input, Math.min(METADATA_LIMIT, 262144 - configuration.bytes)); } finally { input.close(); }
+                    configuration.bytes += content.length; configuration.entries.put(name, content);
+                } catch (Exception e) { configuration.partial = true; report(e, doc.path + "!/" + name); }
+            }
+            if (configurations.size() >= 8) configurations.remove(configurations.keySet().iterator().next());
+            configurations.put(doc.path, configuration);
             // Profile resolution is performed separately for each live process.
 
             for (String name : SpringDataSource.BASE_FILES) if (springEntries.containsKey(name)) {
@@ -98,8 +191,8 @@ public final class ArchiveMetadata {
                 ZipEntry entry = springEntries.get(name);
                 try {
                     if (entry.getSize() > METADATA_LIMIT) throw new Limit("Spring configuration entry exceeds 64 KiB");
-                    InputStream input = archive.getInputStream(entry); byte[] content;
-                    try { content = read(input, METADATA_LIMIT); } finally { input.close(); }
+                    byte[] content = configuration.entries.get(name);
+                    if (content == null || configuration.duplicates.contains(name)) continue;
                     SpringDataSource.Parsed parsed = SpringDataSource.parse(name, content);
                     if (parsed.notice != null) scan.note(parsed.notice + ": " + doc.path);
                     if (!parsed.fields.isEmpty()) {
@@ -190,11 +283,11 @@ public final class ArchiveMetadata {
 
     void ensureBudget() throws IOException {
         if (!scan.available()) throw new Limit("Assessment deadline reached during archive discovery");
-        if (scan.bytesRead >= READ_LIMIT) throw new Limit("Metadata read budget of 8 MiB reached");
+        if (scan.bytesRead >= READ_LIMIT) throw new Limit("Metadata read budget of 16 MiB reached");
     }
     void charge(long count) throws IOException {
         ensureBudget();
-        if (count < 0 || count > READ_LIMIT - scan.bytesRead) throw new Limit("Metadata read budget of 8 MiB reached");
+        if (count < 0 || count > READ_LIMIT - scan.bytesRead) throw new Limit("Metadata read budget of 16 MiB reached");
         scan.bytesRead += count;
     }
     void report(Exception e, String path) { scan.warn(e instanceof Limit ? e.getMessage() + ": " + path : "Archive metadata could not be read: " + path); }
@@ -334,13 +427,14 @@ public final class ArchiveMetadata {
         }
         // The modules launcher version is not the JBoss/WildFly product release.
         if (lower.equals("jboss-modules.jar")) { serverType = null; serverVersion = null; }
-        boolean boot = bootMain(doc.main) || doc.boot != null && doc.start != null;
-        if (doc.title == null && doc.version == null && doc.main == null && doc.start == null && !boot && serverType == null && rows.isEmpty()) return result;
+        boolean boot = bootMain(doc.main) || doc.boot != null && doc.start != null || doc.bootLayout;
+        if (doc.title == null && doc.version == null && doc.main == null && doc.start == null && !boot && serverType == null && rows.isEmpty() && !doc.bootLibrary) return result;
+        result.put("springBootLibrary", Boolean.valueOf(doc.bootLibrary));
         result.put("path", doc.path); result.put("title", first(doc.title, doc.filename)); result.put("version", doc.version);
         result.put("mainClass", doc.main); result.put("startClass", doc.start);
         result.put("applicationType", boot ? "Spring Boot" : null); result.put("frameworkVersion", boot ? doc.boot : null);
         result.put("serverType", serverType); result.put("serverVersion", serverVersion);
-        result.put("evidence", evidence(doc) + (boot ? "; Spring Boot launcher/framework manifest evidence" : ""));
+        result.put("evidence", evidence(doc) + (boot ? "; Spring Boot launcher/framework or packaged layout evidence" + (doc.bootLayout ? "; framework version inferred from packaged Spring Boot core filename" : "") : ""));
         result.put("libraries", rows);
         if (boot) {
             List embedded = new ArrayList();
@@ -386,7 +480,7 @@ public final class ArchiveMetadata {
         final String filename, path; final List children = new ArrayList();
         String title, version, main, start, boot, productName, productVersion, tomcatInfo, tomcatNumber, jdbcPomTitle, jdbcPomVersion;
         Map springDataSource;
-        boolean manifest, driverProvider;
+        boolean manifest, driverProvider, bootLibrary, bootLayout;
         Document(String filename, String path) { this.filename = filename; this.path = path; }
     }
     static final class Limit extends IOException { Limit(String message) { super(message); } }

@@ -1,5 +1,47 @@
 # Melhorias planejadas
 
+## Descoberta WebLogic/Spring e destinos JDBC — fonte validada
+
+**Status em 2026-10-16:** implementação e regressões locais concluídas, com probe isolado executado em Java 6 na OL7 e RHEL5. Após autorização de publicação, dashboard de laboratório atualizado para 2.0.55; pacote assinado disponibilizado, agentes instalados preservados. HTTPS, arquivos da interface, banco, configuração e CA conferidos. Detalhes em [evidências](validation/jdbc-discovery-2026-10-16.md) e [comandos de laboratório](runbooks/jdbc-discovery-lab.md).
+
+- [x] Domínios WebLogic vinculados a processos em execução; domínio, datasource, host/IP, porta e banco/serviço. Servidores homônimos mantêm associações independentes.
+- [x] Descoberta Spring Boot em JAR executável e classpath explícito; prioridade e cache limitado de configurações; novos casos de teste.
+- [x] Destinos JDBC em bibliotecas, todos os modelos de relatório, filtros e CSV/PDF, sem URL completa nem credenciais.
+- [x] Padrões de 50.000 arquivos, 180 segundos e 16 MiB de metadados; heap mantido em 96 MiB e limites explicitamente configurados preservados.
+- [x] Regressão local e probe nativo nas duas VMs, sem modificar agentes. Bancos reais do laboratório são locais; endereços remotos foram testados com fixtures.
+- [x] Publicar a entrega de laboratório 2.0.55 autorizada, com pacotes assinados e origem 2.0.53 verificada; scripts, bibliotecas e chave pública iguais aos da 2.0.53.
+- [x] As cinco máquinas concluíram 2.0.55 após retomada operacional. Correção durável e instalador consolidados na preparação 2.0.57; publicação e canário nativo com pacote final ainda separados da geração dos artefatos.
+
+## Recuperador V3 após reinício — correção preparada na 2.0.57
+
+Em 2026-10-16, o pedido `e9a58be8-deb0-40fc-8f5b-d692eada4876` (2.0.53 → 2.0.55) ficou WAITING apesar de heartbeats recentes. O serviço java-assessment-recovery estava habilitado, mas inactive/dead, Result=success. O marcador privado vazio state/recovery.stop era anterior ao boot. ExecStart executa diretamente `update-bootstrap.sh loop`; esse caminho não remove o marcador de parada do desligamento anterior.
+
+Retomada pontual: confirmados hostname, serviço sem PID/cgroup/job, ausência de transação/PID de recovery, hash do bootstrap conhecido, marcador root/600/regular/vazio/um link/anterior ao boot. Removido apenas o marcador e iniciado o recuperador pelo systemd. Hashes da configuração permaneceram iguais e o mesmo pedido avançou para DOWNLOADING, sem novo pedido nem alteração de artefatos assinados.
+
+**Outras máquinas:** confirmado o mesmo marcador anterior ao boot e serviço inativo na instance-ol8, instance-web e ol07. Aplicada a mesma retomada pontual com configurações preservadas. RHEL5/SysV estava com recuperador ativo, sem marcador; o lote sequencial aguardava as máquinas anteriores, conforme a regra de ordinal do coordenador. Não foi necessário alterar a RHEL5.
+
+**Resultado:** o mesmo pedido confirmou SUCCEEDED/OK em 2026-10-16 às 15:19:40 BRT, com heartbeat na versão 2.0.55. Isso valida a atualização observada após a retomada; a falha de boot permanece aberta.
+
+**Lote concluído:** em 2026-10-16 às 15:27:56 BRT, as cinco máquinas confirmaram 2.0.55/SUCCEEDED: instance-09, instance-ol8, instance-rh5, instance-web e ol07. Na última consulta, três coletas já haviam concluído com observações, a RHEL5 concluído sem observações e a ol07 estava pronta para coletar. Recibo privado em `output/dashboard-releases/2.0.55/evidence/lab-batch-after-recovery.json`.
+
+- [x] Extensão systemd própria instalada pelo manager novo antes da confirmação, sem alterar a âncora. Testes de propriedade, links, permissões, PID ativo/reutilizado, start/restart e restart da âncora real na OL8 passaram. Desinstalação reconhece somente a extensão exata. Pacote preparado 2.0.57; implantação nas máquinas ainda pendente.
+- [x] Restart nativo na OL8 preservou identidade/configuração/bootstrap/ponteiro e confirmou uma instância. Testes locais cobriram rollback e interrupções do journal.
+- [ ] Reboot completo/corte de energia com transação em andamento e canário nativo do pacote final; não confundir com os testes de restart e fixtures.
+
+## Próxima versão — correções do instalador e inicialização do dashboard
+
+**Status:** correções implementadas e artefatos 2.0.57 preparados em 2026-10-16. Python 3.6 real na OL8, Python 3.9 local, assinatura pública e HTTPS passaram; ZIP final passou em --check. Instalação completa em servidor vazio e atualização nativa de dashboard 2.0.53 continuam ensaios distintos, ainda não executados. Ver [evidências](validation/recovery-installer-2026-10-16.md).
+
+**Regra de entrega:** manter a versão atual durante desenvolvimento e validação; somente depois de validar as correções incrementar para uma entrega consolidada. Evitar versões intermediárias e atualizações sucessivas dos agentes do cliente, conforme o [processo de release](RELEASE_PROCESS.md).
+
+- [x] Incorporar à JVM do dashboard o ajuste `-Djava.security.egd=file:/dev/urandom`, incluindo instalação nova e atualização. O diagnóstico mostrou a thread principal bloqueada em `NativePRNG.implGenerateSeed` / `SecureRandom.generateSeed` durante `AssessmentServer.tls`. O operador confirmou a recuperação após aplicar o ajuste ao launcher. Restringir a configuração ao dashboard, sem modificar o Java global ou os agentes.
+- [x] Corrigir o uso de `subprocess.run(capture_output=True)` incompatível com Python 3.6 no instalador, preservando captura de saída, timeout e verificação de assinatura. Revisar a seleção do interpretador e validar o caminho completo em Python 3.6 e 3.9; o teste local de contrato de API não substitui execução no interpretador real.
+- [x] Tornar explícita a configuração de geração da CA e do certificado do servidor, incluindo extensões, SAN DNS/IP e validação da cadeia. A geração com configuração explícita resolveu o erro observado de `unable to get local issuer certificate`; a causa exata da falha na geração original ainda precisa ser reproduzida. Preservar certificados fornecidos pelo cliente e não desabilitar a validação TLS.
+- [x] Melhorar o diagnóstico do instalador: apresentar saída útil e sanitizada do OpenSSL, sem expor senhas, tokens ou chaves privadas; distinguir processo ativo de aplicação pronta. Revisar a verificação HTTPS de `/health`, com timeout e erro claro quando a inicialização não termina, antes de anunciar sucesso. O instalador já possui uma verificação de saúde; fortalecer sua cobertura, sem tratar o travamento posterior como prova de que ela não existia.
+- [ ] Validar instalação nova, reinicialização do serviço e atualização da 2.0.53, preservando banco, usuários, configurações, certificados e cadastros dos agentes. Conferir `/health`, login e persistência do ajuste após atualização; incluir regressões de falhas TLS e inicialização bloqueada. Documentar o procedimento e os limites dos testes na entrega.
+
+**Evidência operacional:** correção pontual aplicada pelo operador ao launcher do dashboard, com backup, seguida de reinício e confirmação de funcionamento. Incorporada à preparação 2.0.57; artefatos anteriores permanecem intactos. A geração do instalador foi autorizada; publicação desta preparação ainda não executada.
+
 ## Atualização remota completa do agente
 
 **Status:** implementação e regressões locais concluídas em 2026-10-14, com origem mínima 1.5.12. Bridge com binário original, pacote completo, operação lógica, recuperação, limpeza, desinstalação, empacotamento e assessment posterior integrados. Houve migração automática 1.5.12 para 2.0.11 em RHEL 7/Java 11, recuperação assistida em RHEL 8/Java 17 e evolução 2.0.9 para 2.0.11 em RHEL 9/Java 11, com assessment recebido nos dois últimos ensaios enviados pelo operador. A correção da concorrência conhecida ainda não foi publicada; O operador também confirmou migração e assessment em RHEL 5/Java 6. Interrupções/reboot, fronteiras de recuperação e prova do candidato corrigido continuam gates de release. O mecanismo em produção continua sendo o atual.

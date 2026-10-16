@@ -51,6 +51,7 @@ final class SpringDataSource {
         if (driver != null) result.put("driverName", driver);
         String database = urlPresent ? databaseType(url) : null;
         if (database != null) result.put("databaseType", database);
+        if (urlPresent) JdbcEndpoint.addTo(result, url);
         // This marker is internal; it is not a connection URL or a claim of connectivity.
         result.put("configurationPresent", Boolean.TRUE);
         String pool = values.getProperty(POOL);

@@ -19,7 +19,11 @@ O playbook usa wget, instala com sudo em lotes de duas máquinas e ignora agente
 - [Manual ilustrado da solução](Manual.pdf): arquitetura, inventário, atualização de agentes, relatórios e filtros JDBC.
 - [Guia de instalação](Guia-instalacao.pdf): requisitos, comandos, configuração do dashboard e instalação dos agentes.
 
-## Instalador atual — 2.0.53
+## Entrega atual preparada — 2.0.57
+
+[Pacotes e comandos da 2.0.57](v2.0.57/README.md): instalador para servidor novo e atualizador separado para dashboard existente. O cliente na 2.0.53 usa o pacote **update**; agentes V3 elegíveis podem receber a versão final em um único pedido. A publicação no laboratório e o canário final são separados da geração dos arquivos.
+
+## Instalador anterior — 2.0.53
 
 - [assessment-dashboard-installer-2.0.53.zip](v2.0.53/assessment-dashboard-installer-2.0.53.zip)
 - [Arquivo SHA-256 da 2.0.53](v2.0.53/assessment-dashboard-installer-2.0.53.zip.sha256)

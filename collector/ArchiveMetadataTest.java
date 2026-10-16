@@ -102,12 +102,12 @@ public final class ArchiveMetadataTest {
         byte[] zip64=jar(manifest(),empty());zip64[zip64.length-22+10]=(byte)255;zip64[zip64.length-22+11]=(byte)255;
         AssessmentScan unsupported=scan(true);new ArchiveMetadata(unsupported).inspect(write(root,"zip64.jar",zip64));
         check(unsupported.partial,"Unsupported ZIP64 marker must be rejected");
-        Map<String,byte[]> bombEntries=entries("classes/large.bin",new byte[9*1024*1024]);
+        Map<String,byte[]> bombEntries=entries("classes/large.bin",new byte[(int)ArchiveMetadata.READ_LIMIT + 1024*1024]);
         bombEntries.put("META-INF/MANIFEST.MF",utf("Manifest-Version: 1.0\nImplementation-Version: 2.4.240\n\n"));
         byte[] bomb=jar(null,bombEntries);
         File outer=write(root,"bomb-app.jar",jar(manifest("Main-Class","org.springframework.boot.loader.JarLauncher","Spring-Boot-Version","2.7.0"),entries("BOOT-INF/lib/h2-2.4.240.jar",bomb)));
         AssessmentScan limited=scan(true);Map result=new ArchiveMetadata(limited).inspect(outer);
-        check(limited.partial && limited.bytesRead<=ArchiveMetadata.READ_LIMIT,"Nested inflated bytes must stop at the shared 8MiB budget");
+        check(limited.partial && limited.bytesRead<=ArchiveMetadata.READ_LIMIT,"Nested inflated bytes must stop at the shared metadata budget");
         check(String.valueOf(library(result,"h2-2.4.240.jar").get("evidence")).contains("inferred"),"Unverified nested version must retain filename-inference evidence");
         check(limited.datasources.isEmpty(),"A rejected archive cannot create datasource observations");
     }

@@ -23,7 +23,7 @@ public final class WebLogicVersionTest {
         } finally { out.close(); }
         return file;
     }
-    static Map server(AssessmentScan scan, String name) { return scan.servers.get("WebLogic:" + name); }
+    static Map server(AssessmentScan scan, String name) { for (Map row : scan.servers.values()) if ("WebLogic".equals(row.get("type")) && name.equals(row.get("name"))) return row; return null; }
     static void process(File proc, String pid, File home, String name, String property) throws Exception {
         ProcessLaunchTest.process(proc, pid, "java", property + home.getCanonicalPath(),
             "-Dweblogic.Name=" + name, "weblogic.Server", "--password=PRIVATE_CANARY");

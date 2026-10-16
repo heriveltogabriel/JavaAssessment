@@ -8,7 +8,7 @@ import java.util.*;
 final class CsvExport {
     private static final String[] KINDS={"hosts","runtimes","processes","servers","libraries","applications","datasources","jobs"};
     private static final String[] COLUMNS={
-        "Tipo de registro","Ambiente","ID do ambiente","Máquina","ID da máquina","ID do registro","Nome","Versão","Tipo","Caminho","Estado","Observado em","Fornecedor","Diretório Java","Em uso","ID da aplicação","Aplicação","Servidor Java","Categoria","Uso","Evidência","Nível de evidência","Versão do framework","Driver JDBC","Versão do driver","Tipo de banco","Origem da configuração","Pool máximo configurado","Capacidade do pool","Conexões disponíveis","Conexões ativas","PID","Classe principal","Módulo","Sistema operacional","Distribuição","Arquitetura","Endereços IP","Versão do agente","Versão do Java do agente","Ciclo de vida do agente","Último contato","Última coleta","Estado da cobertura","CPUs lógicas","Memória total (bytes)","Criado em","Iniciado em","Concluído em","Resultado"
+        "Tipo de registro","Ambiente","ID do ambiente","Máquina","ID da máquina","ID do registro","Nome","Versão","Tipo","Caminho","Estado","Observado em","Fornecedor","Diretório Java","Em uso","ID da aplicação","Aplicação","Servidor Java","Categoria","Uso","Evidência","Nível de evidência","Versão do framework","Driver JDBC","Versão do driver","Tipo de banco","Origem da configuração","Pool máximo configurado","Capacidade do pool","Conexões disponíveis","Conexões ativas","PID","Classe principal","Módulo","Sistema operacional","Distribuição","Arquitetura","Endereços IP","Versão do agente","Versão do Java do agente","Ciclo de vida do agente","Último contato","Última coleta","Estado da cobertura","CPUs lógicas","Memória total (bytes)","Criado em","Iniciado em","Concluído em","Resultado","Host/IP do banco (configurado)","Portas do banco (configuradas)","Banco / serviço / SID (configurado)","Destino do banco (configurado)","IDs dos servidores associados","Domínio WebLogic","Caminho do domínio"
     };
 
     private CsvExport() {}
@@ -61,8 +61,29 @@ final class CsvExport {
             item.get("configuredMaxPoolSize"),item.get("poolCapacity"),item.get("poolAvailable"),item.get("activeConnections"),
             item.get("pid"),item.get("mainClass"),item.get("moduleName"),host.get("osName"),host.get("distribution"),first(item,"architecture")!=null?item.get("architecture"):host.get("architecture"),strings(host.get("ipAddresses")),
             host.get("collectorVersion"),host.get("collectorJavaVersion"),host.get("agentLifecycle"),host.get("lastSeen"),host.get("lastAssessmentAt"),
-            coverage.get("status"),host.get("logicalCpus"),host.get("memoryTotalBytes"),item.get("createdAt"),item.get("startedAt"),item.get("finishedAt"),job?first(item,"error","summary"):null
+            coverage.get("status"),host.get("logicalCpus"),host.get("memoryTotalBytes"),item.get("createdAt"),item.get("startedAt"),item.get("finishedAt"),job?first(item,"error","summary"):null,
+            endpoints(item,"host"),endpoints(item,"port"),first(item,"databaseName"),destination(item),associatedIds(item,"serverId"),first(item,"domainName"),first(item,"domainPath")
         };
+    }
+
+    private static List<Map<String,String>> endpointList(Map<?,?> item){
+        var result=new ArrayList<Map<String,String>>();
+        if(item.get("databaseEndpoints") instanceof List<?> entries)for(Object entry:entries)if(entry instanceof Map<?,?> endpoint){
+            Object host=first(endpoint,"host"),port=first(endpoint,"port");
+            if(host!=null&&!host.toString().isEmpty())result.add(Map.of("host",host.toString(),"port",port==null?"":port.toString()));
+        }
+        if(result.isEmpty()&&first(item,"databaseHost")!=null)result.add(Map.of("host",first(item,"databaseHost").toString(),"port",first(item,"databasePort")==null?"":first(item,"databasePort").toString()));
+        return result;
+    }
+    private static String endpoints(Map<?,?> item,String key){
+        Set<String> values=new LinkedHashSet<>();for(var endpoint:endpointList(item))if(!endpoint.get(key).isEmpty())values.add(endpoint.get(key));return String.join(" | ",values);
+    }
+    private static String destination(Map<?,?> item){
+        Set<String> values=new LinkedHashSet<>();for(var endpoint:endpointList(item)){
+            String host=endpoint.get("host"),port=endpoint.get("port");
+            values.add((host.contains(":")&&!host.startsWith("[")?"["+host+"]":host)+(port.isEmpty()?"":":"+port));
+        }
+        Object name=first(item,"databaseName");return String.join(" | ",values)+(name==null?"":(values.isEmpty()?"":" / ")+name);
     }
 
     /** Export only scalar values; nested metadata is deliberately never serialized. */
@@ -86,6 +107,12 @@ final class CsvExport {
             String name=text(relationship.get(field));if(!name.isEmpty())values.add(name);
         }
         return String.join(" | ",values);
+    }
+
+    private static String associatedIds(Map<?,?> item,String field){
+        Set<String> ids=new LinkedHashSet<>();Object direct=first(item,field);if(direct!=null)ids.add(direct.toString());
+        if(item.get("associations") instanceof List<?> values)for(Object value:values)if(value instanceof Map<?,?> relation){String id=text(relation.get(field));if(!id.isEmpty())ids.add(id);}
+        return String.join(" | ",ids);
     }
 
     private static String strings(Object value) {

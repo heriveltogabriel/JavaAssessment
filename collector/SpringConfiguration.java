@@ -24,11 +24,14 @@ final class SpringConfiguration {
     }
     final AssessmentScan scan; final AssessmentScan.ProcessContext context;
     final List<String> prefixes = new ArrayList<String>();
+    final List<File> classpathRoots = new ArrayList<File>();
     final Map<String,String> startup = new LinkedHashMap<String,String>(), values = new LinkedHashMap<String,String>();
     final Map<String,String> origins = new LinkedHashMap<String,String>(), environment = new LinkedHashMap<String,String>();
+    final Map<String,String> resourceOrigins = new LinkedHashMap<String,String>();
     final Map<String,Properties> cache = new LinkedHashMap<String,Properties>();
     final List<String> profiles = new ArrayList<String>();
-    File artifact; ZipFile zip; String archivePrefix; boolean partial; int files;
+    ArchiveMetadata.ConfigurationArchive packaged;
+    File artifact; ZipFile zip; String archivePrefix; boolean partial, artifactIdentityVerified; int files;
     final Set<String> duplicateEntries = new HashSet<String>();
     String rawEnvironment;
     SpringConfiguration(AssessmentScan scan, AssessmentScan.ProcessContext context) {
@@ -70,23 +73,34 @@ final class SpringConfiguration {
             artifact = scan.linkedPath(new File(jar));
             if (artifact == null || !artifact.isFile() || !"Spring Boot".equals(context.application.get("applicationType"))) return;
             if (artifact.length() > ArchiveMetadata.FILE_LIMIT) return;
-            long central = scan.archiveMetadata.preflight(artifact); scan.archiveMetadata.charge(central); zip = new ZipFile(artifact);
-            Set<String> seen = new HashSet<String>(); Enumeration<? extends ZipEntry> entries = zip.entries(); int count = 0;
-            while (entries.hasMoreElements() && count++ < ArchiveMetadata.ENTRY_LIMIT) { String name = entries.nextElement().getName(); if (!seen.add(name)) duplicateEntries.add(name); }
-            archivePrefix = zip.getEntry("BOOT-INF/classes/") != null || hasEntryPrefix("BOOT-INF/classes/") ? "BOOT-INF/classes/" : "WEB-INF/classes/";
+            packaged = scan.archiveMetadata.configuration(artifact);
+            if (packaged != null) { archivePrefix = packaged.prefix; partial |= packaged.partial; }
+            else {
+                long central = scan.archiveMetadata.preflight(artifact); scan.archiveMetadata.charge(central); zip = new ZipFile(artifact);
+                Set<String> seen = new HashSet<String>(); Enumeration<? extends ZipEntry> entries = zip.entries(); int count = 0;
+                while (entries.hasMoreElements() && count++ < ArchiveMetadata.ENTRY_LIMIT) { String name = entries.nextElement().getName(); if (!seen.add(name)) duplicateEntries.add(name); }
+                archivePrefix = zip.getEntry("BOOT-INF/classes/") != null || hasEntryPrefix("BOOT-INF/classes/") ? "BOOT-INF/classes/" : "WEB-INF/classes/";
+            }
         } else {
             // An exploded Boot launcher has an explicit process classpath, not a guessed working directory.
             for (String path : context.launch.classpath) {
+                if (!(ProcessLaunch.springLauncher(context.launch.mainClass) || context.springBootEvidence)) break;
                 File dir = scan.linkedPath(new File(path));
-                if (dir == null || !dir.isDirectory()) continue;
+                if (dir == null) { partial = true; classpathRoots.add(new File(path)); break; }
+                if (classpathRoots.size() >= 16) { partial = true; break; }
                 File boot = new File(dir, "BOOT-INF/classes");
-                if (boot.isDirectory()) dir = boot;
-                if (ProcessLaunch.springLauncher(context.launch.mainClass)) { artifact = dir; break; }
+                if (ProcessLaunch.springLauncher(context.launch.mainClass) && boot.isDirectory()) dir = boot;
+                if (artifact == null && (dir.isDirectory() || dir.isFile())) artifact = dir;
+                if (!classpathRoots.contains(dir)) classpathRoots.add(dir);
             }
             if (artifact == null) return;
+            selectClasspathArtifact();
             context.application.put("applicationType", "Spring Boot"); context.application.put("type", "Spring Boot");
             context.application.put("path", artifact.getPath());
             readExplodedIdentity();
+            context.process.put("applicationType", "Spring Boot");
+            if (context.springBootVersion != null) context.application.put("frameworkVersion", context.springBootVersion);
+            context.application.put("evidence", "Live Java process with Spring Boot launcher or verified Spring Boot library on its classpath; framework activation not verified");
         }
         rawEnvironment = scan.metadataText(new File(processDirectory, "environ"), 65536, false);
         for (String key : controlAndDatasourceKeys()) {
@@ -201,13 +215,50 @@ final class SpringConfiguration {
         for (Object raw : properties.keySet()) { String k = String.valueOf(raw); values.put(k, properties.getProperty(k)); origins.put(k, source(location)); }
         return true;
     }
-    String source(String loc) { return loc.startsWith("classpath:") ? artifact.getPath() + (zip == null ? "/" : "!/") + (zip == null ? "" : archivePrefix) + loc.substring(10) : loc; }
+    String source(String loc) {
+        if (resourceOrigins.containsKey(loc)) return resourceOrigins.get(loc);
+        return loc.startsWith("classpath:") ? artifact.getPath() + (zip == null && packaged == null ? "/" : "!/") + (zip == null && packaged == null ? "" : archivePrefix) + loc.substring(10) : loc;
+    }
+    byte[] classpathResource(String name) throws IOException {
+        if (!ArchiveMetadata.safeName(name)) throw new IOException("Unsafe resource");
+        for (File root : classpathRoots) {
+            if (!scan.available()) throw new IOException("Deadline");
+            File safeRoot = scan.linkedPath(root);
+            if (safeRoot == null || root.getName().equals("*")) throw new IOException("Classpath order not resolved");
+            if (safeRoot.isDirectory()) {
+                File file = scan.linkedPath(new File(safeRoot, name));
+                if (file == null) throw new IOException("Excluded resource");
+                if (!file.exists()) continue;
+                if (!scan.visitLinked(file) || !file.isFile() || file.length() > ArchiveMetadata.METADATA_LIMIT) throw new IOException("Resource limit");
+                InputStream input = new FileInputStream(file);
+                try { byte[] value = scan.archiveMetadata.read(input, ArchiveMetadata.METADATA_LIMIT); resourceOrigins.put("classpath:" + name, file.getPath()); return value; }
+                finally { input.close(); }
+            } else if (safeRoot.isFile() && safeRoot.getName().toLowerCase(Locale.ENGLISH).endsWith(".jar")) {
+                ArchiveMetadata.ConfigurationArchive jar = scan.archiveMetadata.classpathConfiguration(safeRoot);
+                if (jar.duplicates.contains(name)) throw new IOException("Duplicate resource");
+                byte[] value = jar.entries.get(name);
+                if (value != null) { resourceOrigins.put("classpath:" + name, safeRoot.getPath() + "!/" + name); return value; }
+                if (jar.partial) throw new IOException("Classpath configuration incomplete");
+            } else if (safeRoot.exists()) throw new IOException("Unsupported classpath entry");
+        }
+        return null;
+    }
     Properties readConfig(String location) {
         if (cache.containsKey(location)) return cache.get(location);
         if (!scan.available() || files >= 32) { partial = true; return null; }
         byte[] bytes = null;
         try {
-            if (location.startsWith("classpath:") && zip != null) {
+            if (location.startsWith("classpath:") && !classpathRoots.isEmpty()) {
+                bytes = classpathResource(location.substring(10));
+                if (bytes == null) { cache.put(location, null); return null; }
+                files++;
+            } else if (location.startsWith("classpath:") && packaged != null) {
+                String entryName = archivePrefix + location.substring(10);
+                if (packaged.duplicates.contains(entryName)) throw new IOException("Duplicate entry");
+                bytes = packaged.entries.get(entryName);
+                if (bytes == null) { cache.put(location, null); return null; }
+                files++;
+            } else if (location.startsWith("classpath:") && zip != null) {
                 String entryName = archivePrefix + location.substring(10);
                 if (duplicateEntries.contains(entryName)) throw new IOException("Duplicate entry");
                 if (!ArchiveMetadata.safeName(entryName)) { partial = true; return null; }
@@ -219,7 +270,7 @@ final class SpringConfiguration {
                 File file = location.startsWith("classpath:") ? new File(artifact, location.substring(10)) : new File(location);
                 File safe = scan.linkedPath(file); if (safe == null) { partial = true; return null; }
                 if (!safe.exists()) { cache.put(location, null); return null; }
-                files++; if (!safe.isFile() || safe.length() > ArchiveMetadata.METADATA_LIMIT) throw new IOException("Size");
+                files++; if (!scan.visitLinked(safe) || !safe.isFile() || safe.length() > ArchiveMetadata.METADATA_LIMIT) throw new IOException("Size");
                 InputStream in = new FileInputStream(safe);
                 try { bytes = scan.archiveMetadata.read(in, ArchiveMetadata.METADATA_LIMIT); } finally { in.close(); }
             }
@@ -255,6 +306,7 @@ final class SpringConfiguration {
         if (!jdbcUrl && driver == null && jndi == null) return;
         Map fields = new LinkedHashMap(); fields.put("configurationPresent", Boolean.TRUE);
         fields.put("configurationKey", prefix); fields.put("datasourceKey", prefix);
+        JdbcEndpoint.addTo(fields, url);
         if (db != null) fields.put("databaseType", db); if (driver != null) fields.put("driverName", driver);
         if (jndi != null) fields.put("jndiName", jndi);
         String name = ProcessLaunch.label(setting(prefix, "name")); if (name != null) fields.put("configuredName", name);
@@ -279,11 +331,45 @@ final class SpringConfiguration {
         scan.addConfiguredSpringDatasource(artifact.getPath(), fields, context.application, context);
         context.application.put("configurationResolution", partial ? "partial" : "local-candidate");
     }
+    void selectClasspathArtifact() {
+        if (ProcessLaunch.springLauncher(context.launch.mainClass)) { artifactIdentityVerified = true; return; }
+        if (context.launch.mainClass == null) return;
+        String name = context.launch.mainClass.replace('.', '/') + ".class";
+        for (File root : classpathRoots) try {
+            File safe = scan.linkedPath(root);
+            if (safe == null || root.getName().equals("*")) { partial = true; return; }
+            if (safe.isDirectory()) {
+                File main = scan.linkedPath(new File(safe, name));
+                if (main == null) { partial = true; return; }
+                if (main.isFile()) { artifact = safe; artifactIdentityVerified = true; return; }
+            } else if (safe.isFile() && safe.getName().toLowerCase(Locale.ENGLISH).endsWith(".jar")) {
+                ArchiveMetadata.ConfigurationArchive jar = scan.archiveMetadata.classpathConfiguration(safe);
+                if (jar.classEntries.contains(name)) { artifact = safe; artifactIdentityVerified = true; return; }
+                if (jar.partial) { partial = true; return; }
+            }
+        } catch (IOException e) { partial = true; return; }
+    }
     void readExplodedIdentity() {
         for (String name : new String[]{"META-INF/build-info.properties", "META-INF/MANIFEST.MF"}) {
-            File file = scan.linkedPath(new File(artifact, name)); if (file == null || !file.isFile()) continue;
-            String text = scan.metadataText(file, 65536, false); if (text == null) continue;
             try {
+                // Application identity uses its own artifact; dependency manifests are not application versions.
+                byte[] identity;
+                if (name.equals("META-INF/build-info.properties")) {
+                    identity = classpathResource(name);
+                } else if (!artifactIdentityVerified) continue;
+                else if (artifact.isFile()) {
+                    ArchiveMetadata.ConfigurationArchive jar = scan.archiveMetadata.classpathConfiguration(artifact);
+                    if (jar.duplicates.contains(name)) { partial = true; continue; }
+                    identity = jar.entries.get(name);
+                } else {
+                    File file = scan.linkedPath(new File(artifact, name));
+                    if (file == null || !file.isFile()) continue;
+                    if (!scan.visitLinked(file)) { partial = true; continue; }
+                    String text = scan.metadataText(file, 65536, false);
+                    identity = text == null ? null : text.getBytes("UTF-8");
+                }
+                if (identity == null) continue;
+                String text = new String(identity, "UTF-8");
                 String title = null, version = null, boot = null;
                 if (name.endsWith(".MF")) {
                     java.util.jar.Attributes attrs = new java.util.jar.Manifest(new ByteArrayInputStream(text.getBytes("UTF-8"))).getMainAttributes();

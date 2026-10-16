@@ -75,6 +75,14 @@ public final class JdbcOverviewHttpTest {
             Map<String,Object> one=obj(list(machine1.get("datasources")).get(0));
             Map<String,Object> item=ok("GET","/api/item?kind=datasources&id="+java.net.URLEncoder.encode((String)one.get("id"),java.nio.charset.StandardCharsets.UTF_8)+"&hostId="+h1,null,true,null,200);
             verify("configuration".equals(obj(item.get("item")).get("evidenceLevel")),"datasource detail retains configuration provenance");
+            Map<String,Object> expectedEndpoint=obj(list(tomcat.get("datasources")).stream().filter(raw->Objects.equals(obj(raw).get("id"),one.get("id"))).findFirst().orElseThrow());
+            for(String field:List.of("databaseHost","databasePort","databaseName","databaseEndpoints"))
+                verify(Objects.equals(Json.stringify(expectedEndpoint.get(field)),Json.stringify(obj(item.get("item")).get(field))),"parsed endpoint survives authenticated ingestion: "+field);
+            if("db-primary.example".equals(expectedEndpoint.get("databaseHost"))){
+                verify(list(obj(item.get("item")).get("databaseEndpoints")).size()==2,"all structured endpoints survive ingestion");
+                Map<String,Object> endpointSearch=ok("GET","/api/state?view=libraries&subset=datasources&hostId="+h1+"&q=db-secondary.example",null,true,null,200);
+                verify(number(obj(endpointSearch.get("pagination")).get("total"))==tomcatCount,"inventory search indexes secondary endpoint hosts");
+            }
             String serialized=Json.stringify(map("global",global,"environment",environment,"tomcat",machine1,"jboss",machine2,"item",item));
             for(String forbidden:List.of("PRIVATE_","jdbc:postgresql:","jdbc:h2:","jdbc:mysql:","jdbc:oracle:"))verify(!serialized.contains(forbidden),"no credential/connection URL in inventory: "+forbidden);
             Files.writeString(evidence.resolve("overview-fixtures.json"),serialized+"\n");

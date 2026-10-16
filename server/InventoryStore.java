@@ -408,6 +408,7 @@ public final class InventoryStore implements AutoCloseable {
     private static String searchText(Map<String,Object> document) {
         StringBuilder text=new StringBuilder();
         for(Map.Entry<String,Object> entry:document.entrySet())if(entry.getValue() instanceof String||entry.getValue() instanceof Number)text.append(entry.getValue()).append(' ');
+        if(document.get("databaseEndpoints") instanceof List<?> endpoints)for(Object value:endpoints)if(value instanceof Map<?,?> endpoint)for(String key:List.of("host","port")){Object field=endpoint.get(key);if(field instanceof String||field instanceof Number)text.append(field).append(' ');}
         return text.toString().toLowerCase(Locale.ROOT);
     }
     private static String encode(Object value) {String text=Json.stringify(value);if(text.length()>STATE_LIMIT)throw new IllegalArgumentException("Document exceeds storage limit");return text;}

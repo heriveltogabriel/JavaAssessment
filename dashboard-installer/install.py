@@ -2,6 +2,7 @@
 """Install a fresh Java Assessment dashboard on a systemd Linux host."""
 import argparse
 import hashlib
+import http.client
 import ipaddress
 import json
 import os
@@ -42,8 +43,17 @@ def fail(message):
 
 def command(args, *, input_data=None):
     result = subprocess.run(args, input=input_data, stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE, check=False)
+                            stderr=subprocess.PIPE, check=False,
+                            timeout=60 if Path(args[0]).name == "openssl" else None)
     if result.returncode:
+        if Path(args[0]).name == 'openssl':
+            detail = result.stderr.decode('utf-8', 'replace').lower()
+            reasons = [('unable to get local issuer certificate', 'CA or intermediate certificate missing'),
+                       ('certificate has expired', 'certificate expired'),
+                       ('unable to load', 'certificate or key file could not be read'),
+                       ('key values mismatch', 'certificate and private key do not match')]
+            reason = next((safe for needle, safe in reasons if needle in detail), 'verify certificate, key and CA files')
+            fail('OpenSSL ' + args[1] + ' failed: ' + reason)
         fail(f"Command failed: {Path(args[0]).name} ({result.returncode})")
     return result.stdout
 
@@ -332,7 +342,7 @@ def build_stage(stage, java_home, url, host, port, cert, key, ca, password, lega
                   '#!/bin/sh\nset -eu\numask 077\n'
                   f'cd {shlex.quote(str(DEST))}\n'
                   f'exec {shlex.quote(str(java_home / "bin/java"))} -Xms1536m -Xmx1536m '
-                  '-XX:+ExitOnOutOfMemoryError '
+                  '-XX:+ExitOnOutOfMemoryError -Djava.security.egd=file:/dev/urandom '
                   f'-Dorg.sqlite.tmpdir={shlex.quote(str(DEST / "data/native"))} '
                   '-XX:ErrorFile=logs/hs_err_pid%p.log '
                   '-Xlog:gc:file=logs/gc.log:time,uptime,level:filecount=3,filesize=5m '
@@ -387,17 +397,30 @@ def service_unit(port):
 
 def health_check(host, port, ca):
     context = ssl.create_default_context(cafile=str(ca))
+    expected = (SOURCE / 'VERSION').read_text().strip()
+    last = 'no response'
     for _ in range(20):
         try:
             with socket.create_connection(('127.0.0.1', port), timeout=2) as plain:
                 with context.wrap_socket(plain, server_hostname=host) as secure:
-                    secure.sendall(f'GET /health HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n'.encode('ascii'))
-                    response = secure.recv(4096)
-                    if b' 200 ' in response.split(b'\r\n', 1)[0]:
+                    secure.settimeout(2)
+                    secure.sendall(('GET /health HTTP/1.1\r\nHost: ' + host + '\r\nConnection: close\r\n\r\n').encode('ascii'))
+                    response = http.client.HTTPResponse(secure)
+                    response.begin()
+                    body = response.read(4097)
+                    if response.status != 200 or len(body) > 4096:
+                        raise ValueError('unexpected HTTP status or body size')
+                    payload = json.loads(body.decode('utf-8'))
+                    if (isinstance(payload, dict) and payload.get('status') == 'ok'
+                            and payload.get('storage') == 'sqlite' and payload.get('version') == expected):
                         return
-        except (OSError, ssl.SSLError):
-            time.sleep(1)
-    fail('Dashboard did not pass TLS /health. Inspect journalctl -u java-assessment-dashboard')
+                    last = 'unexpected application version or storage'
+        except ssl.CertificateError:
+            fail('Dashboard TLS certificate verification failed; verify CA, chain and DNS/IP SAN')
+        except (OSError, ssl.SSLError, ValueError, http.client.HTTPException) as error:
+            last = type(error).__name__
+        time.sleep(1)
+    fail('Dashboard process is not ready: TLS /health failed (' + last + '). Inspect journalctl -u java-assessment-dashboard')
 
 
 def ensure_java(explicit, allow_install):

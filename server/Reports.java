@@ -13,14 +13,14 @@ final class Reports {
     static final Map<String,List<String>> COLUMNS=new LinkedHashMap<>(), DEFAULTS=new LinkedHashMap<>();
     static final Map<String,String> TITLES=new LinkedHashMap<>(), FILTERS=new LinkedHashMap<>();
     static {
-        String[][] labels={{"jdbc","JDBC"},{"hostJdbc","JDBC da máquina"},{"javaVersion","Java do servidor"},{"path","Caminho do servidor"},{"pid","PID"},{"databaseType","Banco"},{"databaseVersion","Versão do banco"},{"databaseVersionEvidence","Origem da versão do banco"},{"datasourceKey","Identificador do datasource"},{"poolName","Pool"},{"configurationResolution","Resolução da configuração"},{"databaseHost","Servidor do banco"},{"databasePort","Porta do banco"},{"databaseName","Nome do banco"},{"applicationName","Aplicação associada"},{"driverReference","Referência do driver"},{"resourceType","Tipo de recurso"},{"datasourceState","Estado informado"},{"configuredMaxPoolSize","Pool máximo configurado"},{"machine","Máquina"},{"environment","Ambiente"},{"ip","IP de rede"},{"os","Sistema operacional"},{"architecture","Arquitetura"},{"cpus","CPUs lógicas"},{"memory","Memória (GiB)"},{"agentVersion","Versão do agente"},{"javaVersions","Versões Java"},{"servers","Servidores da máquina"},{"datasources","Datasources da máquina"},{"drivers","Drivers JDBC da máquina"},{"version","Versão"},{"javaHome","Diretório Java"},{"vendor","Fornecedor Java"},{"product","Servidor Java"},{"name","Nome do servidor"},{"datasource","Datasource / nome JNDI"},{"driver","Driver JDBC"},{"driverClass","Classe do driver"},{"driverVersion","Versão do driver"},{"serverName","Servidor associado"},{"machines","Máquinas"},{"javaCount","Instalações Java"},{"serverCount","Servidores Java"},{"datasourceCount","Datasources JDBC"}};
+        String[][] labels={{"jdbc","JDBC"},{"hostJdbc","JDBC da máquina"},{"javaVersion","Java do servidor"},{"path","Caminho do servidor"},{"pid","PID"},{"databaseType","Banco"},{"databaseVersion","Versão do banco"},{"databaseVersionEvidence","Origem da versão do banco"},{"datasourceKey","Identificador do datasource"},{"poolName","Pool"},{"configurationResolution","Resolução da configuração"},{"databaseHost","Host/IP do banco (configurado)"},{"databasePort","Portas do banco (configuradas)"},{"databaseName","Banco / serviço / SID (configurado)"},{"databaseDestination","Destino do banco (configurado)"},{"applicationName","Aplicação associada"},{"driverReference","Referência do driver"},{"resourceType","Tipo de recurso"},{"datasourceState","Estado informado"},{"configuredMaxPoolSize","Pool máximo configurado"},{"machine","Máquina"},{"environment","Ambiente"},{"ip","IP de rede"},{"os","Sistema operacional"},{"architecture","Arquitetura"},{"cpus","CPUs lógicas"},{"memory","Memória (GiB)"},{"agentVersion","Versão do agente"},{"javaVersions","Versões Java"},{"servers","Servidores da máquina"},{"datasources","Datasources da máquina"},{"drivers","Drivers JDBC da máquina"},{"version","Versão"},{"javaHome","Diretório Java"},{"vendor","Fornecedor Java"},{"product","Servidor Java"},{"name","Nome do servidor"},{"datasource","Datasource / nome JNDI"},{"driver","Driver JDBC"},{"driverClass","Classe do driver"},{"driverVersion","Versão do driver"},{"serverName","Servidor associado"},{"machines","Máquinas"},{"javaCount","Instalações Java"},{"serverCount","Servidores Java"},{"datasourceCount","Datasources JDBC"}};
         for(String[] l:labels)LABELS.put(l[0],l[1]);
-        model("machines","Inventário de máquinas","machine,environment,ip,os,javaVersions,servers,jdbc,datasources,drivers,architecture,cpus,memory,agentVersion","machine,environment,ip,os,javaVersions,servers,jdbc");
-        model("java","Instalações Java","machine,environment,ip,version,javaHome,vendor,os,architecture,jdbc","machine,environment,ip,version,javaHome,vendor,jdbc");
-        model("servers","Servidores Java","machine,environment,ip,product,name,version,javaVersion,os,jdbc,javaHome,path,pid,hostJdbc,datasources,drivers","machine,environment,ip,product,name,version,javaVersion,os,jdbc");
-        model("jdbc","Datasources e drivers JDBC","machine,environment,ip,datasource,databaseType,databaseVersion,databaseVersionEvidence,driver,driverVersion,driverClass,serverName,applicationName,jdbc,resourceType,datasourceState,driverReference,configuredMaxPoolSize,datasourceKey,poolName,configurationResolution,databaseHost,databasePort,databaseName,os","machine,environment,ip,datasource,databaseType,databaseVersion,databaseVersionEvidence,driver,driverVersion,driverClass,serverName,applicationName,jdbc");
-        model("environments","Resumo por ambiente","environment,machines,javaCount,serverCount,datasourceCount,jdbc","environment,machines,javaCount,serverCount,datasourceCount,jdbc");
-        for(String[] f:new String[][]{{"environmentId","Ambiente"},{"machine","Máquina"},{"os","Sistema operacional"},{"architecture","Arquitetura"},{"javaVersion","Versão Java"},{"serverType","Servidor Java"},{"serverVersion","Versão do servidor"},{"datasource","Datasource / nome JNDI"},{"driver","Driver JDBC"},{"driverVersion","Versão do driver"},{"databaseVersion","Versão do banco"},{"databaseType","Banco"},{"driverClass","Classe do driver"},{"driverReference","Referência do driver"},{"serverName","Servidor associado ao JDBC"},{"applicationName","Aplicação associada ao JDBC"},{"resourceType","Tipo de recurso JDBC"},{"datasourceState","Estado informado do JDBC"},{"jdbcPresence","Presença de JDBC"}})FILTERS.put(f[0],f[1]);
+        model("machines","Inventário de máquinas","machine,environment,ip,os,javaVersions,servers,jdbc,databaseHost,datasources,drivers,architecture,cpus,memory,agentVersion,databaseDestination,databasePort,databaseName","machine,environment,ip,os,javaVersions,servers,jdbc,databaseHost");
+        model("java","Instalações Java","machine,environment,ip,version,javaHome,vendor,os,architecture,jdbc,databaseHost,databaseDestination,databasePort,databaseName","machine,environment,ip,version,javaHome,vendor,jdbc,databaseHost");
+        model("servers","Servidores Java","machine,environment,ip,product,name,version,javaVersion,os,jdbc,databaseHost,javaHome,path,pid,hostJdbc,datasources,drivers,databaseDestination,databasePort,databaseName","machine,environment,ip,product,name,version,javaVersion,os,jdbc,databaseHost");
+        model("jdbc","Datasources e drivers JDBC","machine,environment,ip,datasource,databaseType,databaseVersion,databaseVersionEvidence,driver,driverVersion,driverClass,serverName,applicationName,jdbc,resourceType,datasourceState,driverReference,configuredMaxPoolSize,datasourceKey,poolName,configurationResolution,databaseHost,databasePort,databaseName,os,databaseDestination","machine,environment,ip,datasource,databaseType,databaseVersion,databaseVersionEvidence,driver,driverVersion,driverClass,serverName,applicationName,jdbc,databaseHost");
+        model("environments","Resumo por ambiente","environment,machines,javaCount,serverCount,datasourceCount,jdbc,databaseHost,databaseDestination,databasePort,databaseName","environment,machines,javaCount,serverCount,datasourceCount,jdbc,databaseHost");
+        for(String[] f:new String[][]{{"environmentId","Ambiente"},{"machine","Máquina"},{"os","Sistema operacional"},{"architecture","Arquitetura"},{"javaVersion","Versão Java"},{"serverType","Servidor Java"},{"serverVersion","Versão do servidor"},{"datasource","Datasource / nome JNDI"},{"driver","Driver JDBC"},{"driverVersion","Versão do driver"},{"databaseVersion","Versão do banco"},{"databaseType","Banco"},{"driverClass","Classe do driver"},{"driverReference","Referência do driver"},{"serverName","Servidor associado ao JDBC"},{"applicationName","Aplicação associada ao JDBC"},{"resourceType","Tipo de recurso JDBC"},{"datasourceState","Estado informado do JDBC"},{"databaseHost","Host/IP do banco (configurado)"},{"databasePort","Porta do banco (configurada)"},{"databaseName","Banco / serviço / SID (configurado)"},{"jdbcPresence","Presença de JDBC"}})FILTERS.put(f[0],f[1]);
     }
     private static void model(String key,String title,String columns,String defaults){TITLES.put(key,title);COLUMNS.put(key,List.of(columns.split(",")));DEFAULTS.put(key,List.of(defaults.split(",")));}
     static String s(Object value){return value==null?"":String.valueOf(value);}
@@ -39,16 +39,20 @@ final class Reports {
     private Map<String,Object> suggestions(){
         var result=new LinkedHashMap<String,Object>();
         var expressions=new LinkedHashMap<String,String>();
-        for(String key:List.of("databaseType","driverReference","resourceType","driverVersion","databaseVersion"))expressions.put(key,field("i",key));
+        for(String key:List.of("databaseType","driverReference","resourceType","driverVersion","databaseVersion","databaseName"))expressions.put(key,field("i",key));
         expressions.put("datasource",field("i","name"));expressions.put("driver",field("i","driverName"));expressions.put("driverClass",driverClass("i"));expressions.put("datasourceState",field("i","state"));
         for(var entry:expressions.entrySet())result.put(entry.getKey(),db.rows("SELECT DISTINCT "+entry.getValue()+" AS value FROM inventory i WHERE kind='datasources' AND length("+entry.getValue()+") BETWEEN 1 AND 200 ORDER BY value LIMIT 100").stream().map(r->s(r.get("value"))).toList());
         for(String key:List.of("serverName","applicationName")){
             String scalar=field("i",key), nested=associationField("a",key);
             result.put(key,db.rows("SELECT DISTINCT value FROM (SELECT "+scalar+" AS value FROM inventory i WHERE kind='datasources' UNION ALL SELECT "+nested+" AS value FROM inventory i,json_each("+associationArray("i")+") a WHERE i.kind='datasources') WHERE length(value) BETWEEN 1 AND 200 ORDER BY value LIMIT 100").stream().map(r->s(r.get("value"))).toList());
         }
+        for(String key:List.of("databaseHost","databasePort")) {
+            String member=key.equals("databaseHost")?"host":"port";
+            result.put(key,db.rows("SELECT DISTINCT value FROM (SELECT "+field("i",key)+" AS value FROM inventory i WHERE kind='datasources' UNION ALL SELECT "+associationField("ep",member)+" FROM inventory i,json_each("+endpointArray("i")+") ep WHERE i.kind='datasources') WHERE length(value) BETWEEN 1 AND 200 ORDER BY value LIMIT 100").stream().map(r->s(r.get("value"))).toList());
+        }
         return result;
     }
-    static String context(String model){return switch(model){
+    static String context(String model){return "Destinos de banco são configurações encontradas; não confirmam conexão ativa. " + switch(model){
         case "servers" -> "Java e JDBC associados ao servidor pelo inventário. JDBC da máquina está disponível nas colunas adicionais. Associação ausente não confirma ausência de uso.";
         case "java" -> "JDBC da máquina: não confirma uso por esta instalação Java. Cada entrada mantém datasource, driver e versão juntos.";
         case "environments" -> "JDBC distinto nas máquinas filtradas de cada ambiente. Datasource, driver e versão permanecem juntos.";
@@ -79,19 +83,41 @@ final class Reports {
     private static String associationField(String alias,String key){String value="CASE WHEN "+alias+".type='object' THEN "+alias+".value ELSE '{}' END";return "CASE WHEN json_type("+value+",'$."+key+"') IN ('text','integer','real') THEN json_extract("+value+",'$."+key+"') ELSE '' END";}
     private static String associatedText(String alias,String key){String scalar=field(alias,key),nested=associationField("assoc",key);return "(SELECT group_concat(value, char(10)) FROM (SELECT DISTINCT value FROM (SELECT "+scalar+" AS value UNION ALL SELECT "+nested+" FROM json_each("+associationArray(alias)+") assoc) WHERE value<>'' ORDER BY value))";}
     private static String driverClass(String alias){String name=field(alias,"driverName");return "coalesce(nullif("+field(alias,"driverClass")+",''),CASE WHEN "+name+" LIKE '%.%' AND "+name+" NOT LIKE '% %' THEN "+name+" ELSE '' END)";}
-    private static String tuple(String alias){return identified(field(alias,"name"))+" || ' — ' || "+identified("coalesce(nullif("+field(alias,"driverName")+",''),nullif("+driverClass(alias)+",''),'')")+" || ' · ' || "+identified(field(alias,"driverVersion"))+" || CASE WHEN "+field(alias,"databaseVersion")+"<>'' THEN ' · Banco: ' || "+identified(field(alias,"databaseType"))+" || ' ' || "+field(alias,"databaseVersion")+" || ' (' || "+databaseEvidence(alias)+" || ')' ELSE '' END";}
+    /** Structured destinations only: never read or reconstruct a raw JDBC URL. */
+    private static String endpointArray(String alias){return "CASE WHEN json_type("+alias+".payload,'$.databaseEndpoints')='array' THEN json_extract("+alias+".payload,'$.databaseEndpoints') ELSE '[]' END";}
+    private static String endpointText(String alias,String key){
+        String scalar=field(alias,key),member=key.equals("databaseHost")?"host":"port";
+        return "coalesce((SELECT group_concat(value, ', ') FROM (SELECT DISTINCT "+associationField("ep",member)+" AS value FROM json_each("+endpointArray(alias)+") ep WHERE "+associationField("ep","host")+"<>'' AND "+associationField("ep",member)+"<>'')),nullif("+scalar+",''),'')";
+    }
+    private static String address(String host,String port){return "(CASE WHEN instr("+host+",':')>0 AND substr("+host+",1,1)<>'[' THEN '[' || "+host+" || ']' ELSE "+host+" END || CASE WHEN "+port+"<>'' THEN ':' || "+port+" ELSE '' END)";}
+    private static String destination(String alias){
+        String host=field(alias,"databaseHost"),port=field(alias,"databasePort"),name=field(alias,"databaseName");
+        String endpoints="coalesce((SELECT group_concat(value, ', ') FROM (SELECT DISTINCT "+address(associationField("ep","host"),associationField("ep","port"))+" AS value FROM json_each("+endpointArray(alias)+") ep WHERE "+associationField("ep","host")+"<>'')),CASE WHEN "+host+"<>'' THEN "+address(host,port)+" ELSE '' END)";
+        return "("+endpoints+" || CASE WHEN "+name+"<>'' THEN ' / ' || "+name+" ELSE '' END)";
+    }
+    private static String destinationValue(String alias,String key){return key.equals("databaseDestination")?destination(alias):key.equals("databaseName")?field(alias,key):endpointText(alias,key);}
+    private static String tuple(String alias){return identified(field(alias,"name"))+" || ' — ' || "+identified("coalesce(nullif("+field(alias,"driverName")+",''),nullif("+driverClass(alias)+",''),'')")+" || ' · ' || "+identified(field(alias,"driverVersion"))+" || CASE WHEN "+field(alias,"databaseVersion")+"<>'' THEN ' · Banco: ' || "+identified(field(alias,"databaseType"))+" || ' ' || "+field(alias,"databaseVersion")+" || ' (' || "+databaseEvidence(alias)+" || ')' ELSE '' END"+" || ' · Destino configurado: ' || "+identified(destination(alias));}
     private static String databaseEvidence(String alias){return "CASE WHEN lower("+field(alias,"databaseVersionEvidence")+")='application-reported' THEN 'Informado pela aplicação' WHEN "+field(alias,"databaseVersionEvidence")+"='' THEN 'Origem não identificada' ELSE "+field(alias,"databaseVersionEvidence")+" END";}
     private static String serverAssociation(String ds,String server){
+        String id=field(server,"id"),otherId=field(ds,"serverId"),nestedId=associationField("assoc","serverId");
+        String hasId="("+otherId+"<>'' OR EXISTS (SELECT 1 FROM json_each("+associationArray(ds)+") assoc WHERE "+nestedId+"<>''))";
+        String matchId="("+otherId+"="+id+" OR EXISTS (SELECT 1 FROM json_each("+associationArray(ds)+") assoc WHERE "+nestedId+"="+id+"))";
         String name=field(server,"name"),pid=field(server,"pid"),otherPid=field(ds,"pid"),otherName=field(ds,"serverName");
         String direct="(CASE WHEN CAST("+pid+" AS INTEGER)>0 AND CAST("+otherPid+" AS INTEGER)>0 THEN CAST("+pid+" AS INTEGER)=CAST("+otherPid+" AS INTEGER) ELSE "+name+"<>'' AND "+name+"="+otherName+" END)";
         String nestedPid=associationField("assoc","pid"),nestedName=associationField("assoc","serverName");
-        return "("+direct+" OR EXISTS (SELECT 1 FROM json_each("+associationArray(ds)+") assoc WHERE CASE WHEN CAST("+pid+" AS INTEGER)>0 AND CAST("+nestedPid+" AS INTEGER)>0 THEN CAST("+pid+" AS INTEGER)=CAST("+nestedPid+" AS INTEGER) ELSE "+name+"<>'' AND "+name+"="+nestedName+" END))";
+        String legacy="("+direct+" OR EXISTS (SELECT 1 FROM json_each("+associationArray(ds)+") assoc WHERE CASE WHEN CAST("+pid+" AS INTEGER)>0 AND CAST("+nestedPid+" AS INTEGER)>0 THEN CAST("+pid+" AS INTEGER)=CAST("+nestedPid+" AS INTEGER) ELSE "+name+"<>'' AND "+name+"="+nestedName+" END))";
+        // An explicit relationship is authoritative; a same-name server in another domain must never inherit it.
+        return "(CASE WHEN "+hasId+" THEN "+id+"<>'' AND "+matchId+" ELSE "+legacy+" END)";
     }
     private static String runtimeAssociation(String runtime,String server){String home=field(server,"javaHome");return "("+home+"<>'' AND rtrim("+field(runtime,"javaHome")+",'/')=rtrim("+home+",'/'))";}
     private static String serverJava(){return "(SELECT group_concat(DISTINCT "+field("j","version")+") FROM inventory j WHERE j.host_id=h.id AND j.kind='runtimes' AND "+runtimeAssociation("j","i")+")";}
     private String jdbcAggregate(Selection f,List<Object> args,boolean linked,boolean json){
+        return jdbcAggregate(f,args,linked,json,"jdbc");
+    }
+    private String jdbcAggregate(Selection f,List<Object> args,boolean linked,boolean json,String key){
         var predicates=resourceFilters(f,"datasources","a",args);
-        return "(SELECT "+(json?"json_group_array(label)":"group_concat(label,char(10))")+" FROM (SELECT DISTINCT "+tuple("a")+" AS label FROM inventory a WHERE a.host_id=h.id AND a.kind='datasources'"+(linked?" AND "+serverAssociation("a","i"):"")+(predicates.isEmpty()?"":" AND "+String.join(" AND ",predicates))+" ORDER BY label))";
+        String expression=key.equals("jdbc")?tuple("a"):identified(field("a","name"))+" || ' → ' || "+identified(destinationValue("a",key));
+        return "(SELECT "+(json?"json_group_array(label)":"group_concat(label,char(10))")+" FROM (SELECT DISTINCT "+expression+" AS label FROM inventory a WHERE a.host_id=h.id AND a.kind='datasources'"+(linked?" AND "+serverAssociation("a","i"):"")+(predicates.isEmpty()?"":" AND "+String.join(" AND ",predicates))+" ORDER BY label))";
     }
     private static void term(List<String> where,List<Object> args,String expression,String value,boolean exact){
         if(value==null)return;
@@ -114,6 +140,14 @@ final class Reports {
             term(w,args,driverClass(alias),f.filters.get("driverClass"),false);
             term(w,args,field(alias,"state"),f.filters.get("datasourceState"),false);
             for(String key:List.of("serverName","applicationName"))term(w,args,associatedText(alias,key),f.filters.get(key),false);
+            term(w,args,field(alias,"databaseName"),f.filters.get("databaseName"),false);
+            // Host and port, when both selected, must match the same endpoint.
+            if(f.filters.containsKey("databaseHost")||f.filters.containsKey("databasePort")){
+                var direct=new ArrayList<String>();var nested=new ArrayList<String>();
+                for(String key:List.of("databaseHost","databasePort"))term(direct,args,field(alias,key),f.filters.get(key),key.equals("databasePort"));
+                for(String key:List.of("databaseHost","databasePort"))term(nested,args,associationField("ep",key.equals("databaseHost")?"host":"port"),f.filters.get(key),key.equals("databasePort"));
+                w.add("(("+String.join(" AND ",direct)+") OR EXISTS (SELECT 1 FROM json_each("+endpointArray(alias)+") ep WHERE "+associationField("ep","host")+"<>'' AND "+String.join(" AND ",nested)+"))");
+            }
         }
         return w;
     }
@@ -144,12 +178,13 @@ final class Reports {
             if(kind.equals("datasources"))for(String[] pair:new String[][]{{"name","datasource"},{"driverName","driver"},{"driverVersion","driverVersion"},{"driverClass","driverClass"},{"serverName","serverName"}})select.add((pair[0].equals("serverName")?associatedText("i","serverName"):pair[0].equals("driverClass")?driverClass("i"):field("i",pair[0]))+" AS "+pair[1]);
         }
         if(f.columns.contains("jdbc"))select.add((kind.equals("datasources")?tuple("i"):jdbcAggregate(f,args,kind.equals("servers"),f.model.equals("environments")))+" AS jdbc");
+        for(String key:List.of("databaseHost","databasePort","databaseName","databaseDestination"))if(f.columns.contains(key))select.add((kind.equals("datasources")?destinationValue("i",key):jdbcAggregate(f,args,kind.equals("servers"),f.model.equals("environments"),key))+" AS "+key);
         if(f.columns.contains("hostJdbc"))select.add(jdbcAggregate(f,args,false,false)+" AS hostJdbc");
         if(kind.equals("servers")){
             select.add(serverJava()+" AS javaVersion");select.add(field("i","path")+" AS path");select.add(field("i","pid")+" AS pid");
         }
         if(kind.equals("datasources")){
-            for(String key:List.of("databaseType","databaseVersion","driverReference","resourceType","configuredMaxPoolSize","datasourceKey","poolName","configurationResolution","databaseHost","databasePort","databaseName"))select.add(field("i",key)+" AS "+key);
+            for(String key:List.of("databaseType","databaseVersion","driverReference","resourceType","configuredMaxPoolSize","datasourceKey","poolName","configurationResolution"))select.add(field("i",key)+" AS "+key);
             select.add(databaseEvidence("i")+" AS databaseVersionEvidence");
             select.add("CASE WHEN upper("+field("i","state")+")='APPLICATION_REPORTED' THEN 'Informado pela aplicação' ELSE "+field("i","state")+" END AS datasourceState");select.add(associatedText("i","applicationName")+" AS applicationName");
         }
@@ -191,11 +226,11 @@ final class Reports {
             if(f.model.equals("environments")){
                 var row=grouped.computeIfAbsent(s(source.get("_envId")),key->map("environment",source.get("environment"),"machines",0L,"javaCount",0L,"serverCount",0L,"datasourceCount",0L));
                 row.put("machines",((Number)row.get("machines")).longValue()+1);
-                if(f.columns.contains("jdbc")){
-                    Set<String> tuples=envJdbc.computeIfAbsent(s(source.get("_envId")),key->new LinkedHashSet<>());
-                    Object entries=Json.parse(s(source.get("jdbc")));
+                for(String jdbcKey:List.of("jdbc","databaseHost","databasePort","databaseName","databaseDestination"))if(f.columns.contains(jdbcKey)){
+                    Set<String> tuples=envJdbc.computeIfAbsent(s(source.get("_envId"))+"/"+jdbcKey,key->new LinkedHashSet<>());
+                    Object entries=Json.parse(s(source.get(jdbcKey)));
                     if(entries instanceof List<?> values)for(Object value:values)if(value instanceof String text){tuples.add(text);if(tuples.stream().mapToInt(String::length).sum()+tuples.size()>MAX_CELL)throw new Failure(413,"JDBC do ambiente excede 8.192 caracteres. Refine os filtros ou use o relatório JDBC.");}
-                    row.put("jdbc",String.join("\n",tuples));
+                    row.put(jdbcKey,String.join("\n",tuples));
                 }
                 for(String key:List.of("javaCount","serverCount","datasourceCount"))row.put(key,((Number)row.get(key)).longValue()+((Number)source.get(key)).longValue());
             }else{

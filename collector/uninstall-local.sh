@@ -118,6 +118,15 @@ case "${1:-}" in
           test ! -L "$SYSTEMD/java-assessment-recovery.service" && cmp -s "$SYSTEMD/java-assessment-recovery.service" "$UPDATE/bootstrap/recovery.service" || fail
           systemctl disable --now java-assessment-recovery.service
           systemctl is-active --quiet java-assessment-recovery.service && fail
+          startup=$SYSTEMD/java-assessment-recovery.service.d
+          if test -e "$startup" || test -L "$startup"; then
+            trusted "$startup"
+            test "$(find "$startup" -mindepth 1 -maxdepth 1 | wc -l)" -eq 1 || fail
+            extension=$startup/10-java-assessment-start.conf
+            test -f "$extension" && test ! -L "$extension" && test "$(stat -c %u:%h "$extension")" = 0:1 || fail
+            test "$(sha256sum "$extension" | cut -d ' ' -f 1)" = 838b1dd41f8f2f6acdab3fcb64a0e951f5603659f8d61633a74dae312d219917 || fail
+            rm -- "$extension"; rmdir -- "$startup"
+          fi
           rm -f "$SYSTEMD/java-assessment-recovery.service"; systemctl daemon-reload
         elif test -f "$INIT/java-assessment-recovery"; then
           test ! -L "$INIT/java-assessment-recovery" && cmp -s "$INIT/java-assessment-recovery" "$UPDATE/bootstrap/recovery.init" || fail

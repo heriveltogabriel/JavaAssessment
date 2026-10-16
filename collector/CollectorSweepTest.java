@@ -82,7 +82,7 @@ public final class CollectorSweepTest {
             check(limited.filesVisited == limited.maxFiles && limited.partial && limited.fileLimitReached,
                 "An additional eligible file must stop traversal and preserve the partial warning");
             AssessmentScan defaults = scanner(jar, AssessmentScan.map());
-            check(defaults.maxFiles == 10000, "Collector fallback file budget must be 10000");
+            check(defaults.maxFiles == 50000, "Collector fallback file budget must be 50000");
         } finally { CollectorTest.remove(root); }
     }
     static void systemPackageRoots() throws Exception {
@@ -110,6 +110,6 @@ public final class CollectorSweepTest {
     }
     public static void main(String[] args) throws Exception {
         packageExclusion(); nearbyAndProcessLinked(); exactBudgetAndDefaults(); systemPackageRoots();
-        System.out.println("COLLECTOR_SWEEP_TESTS=PASS own-package-zero-budget nearby-apps process-linked-Boot-JDBC shared-JDK exact-limits default-10000");
+        System.out.println("COLLECTOR_SWEEP_TESTS=PASS own-package-zero-budget nearby-apps process-linked-Boot-JDBC shared-JDK exact-limits default-50000");
     }
 }

@@ -1,8 +1,14 @@
 # Avisos em cada nova versão
 
+## Controle de versão durante as correções
+
+Conforme orientação do usuário em 2026-10-16, o cliente já tem agentes instalados. Manter a versão atual enquanto as correções são desenvolvidas e validadas; reunir as mudanças planejadas em uma única entrega. Não incrementar a versão a cada correção ou tentativa de teste, nem publicar candidatos intermediários que exijam sucessivas atualizações dos agentes.
+
+Executar os testes em fontes e artefatos locais isolados, sem substituir os pacotes já publicados. Só após validar as correções previstas, incrementar a versão e montar a entrega consolidada. Verificar novamente a identificação, integridade, assinaturas e instalação/atualização dos pacotes finais antes de publicar. A validação deve incluir a atualização a partir da versão instalada no cliente; não prometer atualização direta sem comprovar a compatibilidade.
+
 ## Antes de entregar
 
-1. Incrementar a versão conforme o processo de release e manter a identificação dos pacotes coerente. Não substituir silenciosamente os artefatos de uma versão já publicada.
+1. Após validar as correções conforme a regra acima, incrementar a versão uma única vez para a entrega consolidada e manter a identificação dos pacotes coerente. Não substituir silenciosamente os artefatos de uma versão já publicada.
 2. Comparar o manifesto assinado, a geração mínima do atualizador e os hashes dos arquivos de suporte com os pacotes anteriores.
 3. Informar nas notas e na mensagem de entrega quais versões podem atualizar pelo painel e quais precisam do instalador completo. Não presumir compatibilidade só porque a versão instalada é maior que 1.5.10.
 4. Incluir o alerta abaixo, mesmo se a alteração parecer ser apenas de interface. O alerta pode esclarecer que já não há agentes pendentes, se isso foi verificado.
