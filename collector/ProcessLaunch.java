@@ -5,6 +5,8 @@ import java.util.*;
 
 /** An allowlisted description of a Java launcher. Never retains the original command line. */
 final class ProcessLaunch {
+    File cwd;
+    final Map<String,String> springSystem = new LinkedHashMap<String,String>(), springArguments = new LinkedHashMap<String,String>();
     String mainClass, jarPath, moduleName, serverType, serverHome, serverBase, serverName, applicationType;
     String serverConfigDirectory, serverConfigFile, webLogicHome, wlsHome;
     final List<String> classpath = new ArrayList<String>(), modulePaths = new ArrayList<String>();
@@ -39,6 +41,7 @@ final class ProcessLaunch {
         if (!arg.startsWith("-D")) return;
         int equals = arg.indexOf('='); if (equals < 0) return;
         String key = arg.substring(2, equals), value = arg.substring(equals + 1);
+        SpringConfiguration.input(springSystem, key, value);
         if (key.equals("catalina.home") || key.equals("jboss.home.dir")) serverHome = path(value, cwd);
         else if (key.equals("weblogic.home")) webLogicHome = path(value, cwd);
         else if (key.equals("wls.home")) wlsHome = path(value, cwd);
@@ -54,7 +57,7 @@ final class ProcessLaunch {
         return main != null && main.matches("org\\.springframework\\.boot\\.loader\\.(launch\\.)?(JarLauncher|WarLauncher|PropertiesLauncher)");
     }
     static ProcessLaunch parse(String[] args, File cwd) {
-        ProcessLaunch launch = new ProcessLaunch();
+        ProcessLaunch launch = new ProcessLaunch(); launch.cwd = cwd;
         if (args == null || args.length == 0) return launch;
         launch.javaCommand = javaExecutable(args[0]);
         int after = args.length;
@@ -112,6 +115,10 @@ final class ProcessLaunch {
                 } else if (arg.startsWith("--server-config=")) launch.serverConfigFile = arg.substring(16);
                 else if (arg.startsWith("--read-only-server-config=")) launch.serverConfigFile = arg.substring(26);
             }
+        }
+        for (int i = after; i < args.length; i++) {
+            String arg = args[i]; int equals = arg.indexOf('=');
+            if (arg.startsWith("--") && equals > 2) SpringConfiguration.input(launch.springArguments, arg.substring(2, equals), arg.substring(equals + 1));
         }
         return launch;
     }

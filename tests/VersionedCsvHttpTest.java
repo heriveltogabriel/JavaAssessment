@@ -39,7 +39,7 @@ public final class VersionedCsvHttpTest {
         String body=new String(response.body(),StandardCharsets.UTF_8);for(String forbidden:List.of("fixture-agent-secret","fixture-completion-secret","tokenHash","installationId","enrollmentToken"))check(!body.contains(forbidden),"CSV omits secret field: "+forbidden);
         return csv(response.body());
     }
-    static long count(List<Map<String,String>> rows,String kind){return rows.stream().filter(r->kind.equals(r.get("record_type"))).count();}
+    static long count(List<Map<String,String>> rows,String kind){return rows.stream().filter(r->kind.equals(r.get("Tipo de registro"))).count();}
     static String register(String code,String installation,String environment)throws Exception{
         var identity=ok("POST","/api/agent/register",registration(installation),false,code,200);String id=(String)identity.get("hostId");
         if(!environment.isEmpty())ok("PUT","/api/hosts/environment",map("hostId",id,"environmentId",environment),true,null,200);
@@ -69,9 +69,9 @@ public final class VersionedCsvHttpTest {
                 var host=app.store.get("hosts",h);host.put("agentToken","fixture-agent-secret");host.put("uninstall",map("completionToken","fixture-completion-secret"));app.store.put("hosts",host);return null;
             });
             var rows=exported("");check(count(rows,"hosts")==3&&count(rows,"runtimes")==203,"all rows across pages");
-            rows=exported("?environmentId="+env);check(count(rows,"hosts")==1&&count(rows,"runtimes")==201,"selected environment full inventory");check(rows.stream().allMatch(r->h.equals(r.get("host_id"))),"no other environment host");
-            check(rows.stream().anyMatch(r->"Java, \"produção\"\nsegunda linha".equals(r.get("name"))),"quoted unicode multiline roundtrip");
-            rows=exported("?environmentId=__unassigned__");check(count(rows,"hosts")==1&&count(rows,"runtimes")==1&&rows.stream().allMatch(r->hu.equals(r.get("host_id"))),"unassigned scope");
+            rows=exported("?environmentId="+env);check(count(rows,"hosts")==1&&count(rows,"runtimes")==201,"selected environment full inventory");check(rows.stream().allMatch(r->h.equals(r.get("ID da máquina"))),"no other environment host");
+            check(rows.stream().anyMatch(r->"Java, \"produção\"\nsegunda linha".equals(r.get("Nome"))),"quoted unicode multiline roundtrip");
+            rows=exported("?environmentId=__unassigned__");check(count(rows,"hosts")==1&&count(rows,"runtimes")==1&&rows.stream().allMatch(r->hu.equals(r.get("ID da máquina"))),"unassigned scope");
             rows=exported("?hostId="+h2);check(count(rows,"hosts")==1&&count(rows,"runtimes")==1,"single machine scope");
             rows=exported("?environmentId="+env+"&page=2&pageSize=1&q=no-match&view=runtimes&from=2099-01-01&version=none");check(count(rows,"runtimes")==201,"CSV ignores hidden table filters");
             check(exported("?environmentId="+empty).isEmpty(),"empty scope has valid header");

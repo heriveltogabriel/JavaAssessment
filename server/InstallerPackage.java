@@ -9,6 +9,7 @@ import java.util.zip.*;
 final class InstallerPackage {
     private static final long LIMIT=64L*1024*1024;
     private static final int METADATA_LIMIT=16384;
+    private static final Set<String> FULL_UPDATE=Set.of("full-update/bundle.zip","full-update/manifest.json","full-update/manifest.sig");
     /** ASCII filename derived from the current display name, never from its stable identity. */
     static String filename(String environmentName) {
         String normalized=Normalizer.normalize(environmentName==null?"":environmentName.toLowerCase(Locale.ENGLISH),Normalizer.Form.NFD);
@@ -27,6 +28,7 @@ final class InstallerPackage {
                 if(++count>100||!safe(name)||!names.add(name)||e.isDirectory()||e.getSize()<0||(total+=e.getSize())>LIMIT)throw new IOException("Invalid generic installer package");
             }
             for(String name:new String[]{"install.sh","system-install.sh","bootstrap-config.sh","collector.jar","conf/ca.pem"})if(!names.contains(name))throw new IOException("Incomplete generic installer package");
+            if(names.stream().anyMatch(FULL_UPDATE::contains)&&!names.containsAll(FULL_UPDATE))throw new IOException("Incomplete full-update installer package");
             version=readVersion();
             valid=true;
         }finally{if(!valid)source.close();}
@@ -45,12 +47,22 @@ final class InstallerPackage {
     }
     /** The version belongs to the ZIP being served, independently of the dashboard release. */
     String version(){return version;}
+    byte[] publicCa()throws IOException {
+        ZipEntry entry=source.getEntry("conf/ca.pem");
+        if(entry==null||entry.getSize()<1||entry.getSize()>65536)throw new IOException("Installer CA unavailable");
+        try(InputStream input=source.getInputStream(entry)){
+            byte[] bytes=input.readNBytes(65537);
+            if(bytes.length>65536)throw new IOException("Installer CA too large");
+            return bytes;
+        }
+    }
     String filename(){return "assessment-collector-"+version+".zip";}
     String filenameForEnvironment(String environmentName){
         String base=filename(environmentName);
         return base.substring(0,base.length()-4)+"-"+version+".zip";
     }
     private boolean safe(String name){
+        if(FULL_UPDATE.contains(name))return true;
         if(name.matches("[A-Za-z0-9_-]+\\.sh"))return true;
         if(name.matches("lib/[A-Za-z0-9_.-]+\\.jar"))return true;
         return Arrays.asList("collector.jar","update-public.der","README.md","INSTALL.md","conf/collector.properties.example","conf/ca.pem","SHA256SUMS","DEPENDENCIES.json","BOUNCY-CASTLE-LICENSE.txt").contains(name);

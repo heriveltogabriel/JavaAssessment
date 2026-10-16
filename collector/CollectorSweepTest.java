@@ -85,8 +85,31 @@ public final class CollectorSweepTest {
             check(defaults.maxFiles == 10000, "Collector fallback file budget must be 10000");
         } finally { CollectorTest.remove(root); }
     }
+    static void systemPackageRoots() throws Exception {
+        File root = CollectorTest.temp("system-package-roots").getCanonicalFile();
+        try {
+            File legacy = new File(root, "java-assessment-collector/collector.jar"); write(legacy, plainJar());
+            File versioned = new File(root, "java-assessment-collector/releases/release-123/collector.jar"); write(versioned, plainJar());
+            File runtime = JdkInventoryTest.home(root, "java-assessment-runtime/jdk6", true);
+            for (File jar : new File[]{legacy, versioned}) {
+                AssessmentScan scan = scanner(jar, settings());
+                check(legacy.getParent().equals(scan.collectorInstallationRoot), "Both layouts resolve the installation root");
+                for (String name : new String[]{"java-assessment-collector", "java-assessment-update", "java-assessment-uninstall", "java-assessment-runtime"}) {
+                    File directory = new File(root, name); File library = new File(directory, "managers/manager-123/lib/bcprov.jar"); write(library, plainJar());
+                    scan.walk(directory, 0); scan.walk(library, 14);
+                }
+                check(scan.filesVisited == 0 && scan.bytesRead == 0 && scan.deferredArchives.isEmpty() && !scan.partial, "Internal trees consume no file or metadata budget");
+                check(scan.addRuntime(runtime,true,"fixture",scan.timestamp,"1.6","fixture",null)==null && scan.runtimes.isEmpty(), "Dedicated runtime never enters installation inventory");
+                File nearby = new File(root, "java-assessment-update-app/orders.war"); write(nearby, plainJar()); scan.walk(nearby,0);
+                check(scan.filesVisited == 1, "Similar prefix belonging to a customer remains eligible");
+                File proc = new File(root,"proc");
+                ProcessLaunchTest.process(proc,"98766901",new File(runtime,"bin/java").getPath(),"-cp",new File(root,"java-assessment-update/managers/manager-123/helper.jar").getPath(),"assessment.AgentUpdateWorker");
+                scan.discoverProcesses(proc); check(scan.processes.isEmpty(), "Versioned manager is not a customer application");
+            }
+        } finally {CollectorTest.remove(root);}
+    }
     public static void main(String[] args) throws Exception {
-        packageExclusion(); nearbyAndProcessLinked(); exactBudgetAndDefaults();
+        packageExclusion(); nearbyAndProcessLinked(); exactBudgetAndDefaults(); systemPackageRoots();
         System.out.println("COLLECTOR_SWEEP_TESTS=PASS own-package-zero-budget nearby-apps process-linked-Boot-JDBC shared-JDK exact-limits default-10000");
     }
 }

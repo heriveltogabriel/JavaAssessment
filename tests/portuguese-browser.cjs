@@ -1,0 +1,14 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{chromium}=require('playwright'),{startFixture}=require('./fixtures/environments-fixture.cjs');
+(async()=>{const root=path.resolve(__dirname,'..'),out=path.join(root,'output/portuguese-ui');fs.mkdirSync(out,{recursive:true});const fixture=await startFixture(path.join(root,'web'));let browser;
+try{browser=await chromium.launch({channel:'chrome',headless:true});const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.route('**/*',route=>{const u=new URL(route.request().url());if(u.origin!==fixture.base)return route.abort();if(u.pathname==='/health')return route.fulfill({json:{status:'ok',version:'2.0.35',builtAt:'2026-10-15T22:00:00Z'}});if(/^\/[a-z-]+\.(js|css)$/.test(u.pathname))return route.fulfill({path:path.join(root,'web',u.pathname.slice(1))});return route.continue();});
+await page.goto(fixture.base);await page.locator('#login-layer').waitFor({state:'hidden'});await page.locator('.dashboard').waitFor();assert.match(await page.locator('#side-nav').innerText(),/Visão geral/);assert.match(await page.locator('#side-nav').innerText(),/Solicitações/);
+await page.screenshot({path:path.join(out,'overview.png'),fullPage:true});
+for(const tab of ['hosts','applications','servers','runtimes','libraries']){await page.evaluate(tab=>document.querySelector('[data-tab="'+tab+'"]').click(),tab);await page.waitForTimeout(150);const text=await page.locator('#main-content').innerText();assert.doesNotMatch(text,/Search and Filter|All environments|Managed instance|Application version|Java servers discovered|No items found/);await page.screenshot({path:path.join(out,tab+'.png'),fullPage:true});}
+await page.evaluate(()=>document.querySelector('[data-tab="environments"]').click());await page.locator('[data-edit-environment="env-a"]').click();
+const inspection=page.locator('.environment-setting').filter({has:page.locator('[data-override="inspectArchives"]')});
+if(await page.locator('.environment-settings').getAttribute('open')===null)await page.locator('.environment-settings summary').click();
+assert.match(await inspection.innerText(),/Personalizar inspeção de arquivos Java/);assert.match(await inspection.innerText(),/Identifica versões de aplicações, frameworks, drivers e datasources/);
+await page.locator('[data-env-close]').first().click();
+await page.locator('#about').click();assert.match(await page.locator('#drawer-content').innerText(),/reúne instalações Java/);await page.screenshot({path:path.join(out,'about.png')});assert.deepEqual(errors,[]);console.log('PORTUGUESE_BROWSER=PASS overview/machines/applications/servers/runtimes/libraries/about; '+out);
+}finally{if(browser)await browser.close();await fixture.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

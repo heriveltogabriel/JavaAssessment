@@ -44,7 +44,32 @@ public final class InstallerPackageVersionTest {
             check(binaryVersion.equals(installer.version()),"real ZIP metadata matches the binary manifest: "+file.getFileName());
             check(installer.filename().equals("assessment-collector-"+binaryVersion+".zip"),"real ZIP generic name follows binary version");
             check(installer.filenameForEnvironment("Produção").equals("assessment-producao-"+binaryVersion+".zip"),"real ZIP configured name follows binary version");
+            ByteArrayOutputStream configured=new ByteArrayOutputStream();
+            installer.write(configured,"https://fixture.invalid","fixture-code","env-fixture");
+            Map<String,byte[]> original=entries(Files.readAllBytes(file)),downloaded=entries(configured.toByteArray());
+            check(downloaded.size()==original.size()+1,"real ZIP adds only bootstrap");
+            for(var member:original.entrySet())check(Arrays.equals(member.getValue(),downloaded.get(member.getKey())),"real ZIP preserves member: "+member.getKey());
         }finally{installer.close();}
+    }
+    private static void fullUpdateFiles(Path directory)throws Exception {
+        List<String> trio=List.of("full-update/bundle.zip","full-update/manifest.json","full-update/manifest.sig");
+        for(int mask=0;mask<8;mask++){
+            Map<String,byte[]> members=entries(Files.readAllBytes(fixture(directory,metadata("2.0.25"))));
+            for(int i=0;i<3;i++)if((mask&(1<<i))!=0)members.put(trio.get(i),utf8("public fixture"));
+            Path path=directory.resolve("full-"+mask+".zip");writeEntries(path,members);
+            boolean accepted=false;
+            try{InstallerPackage installer=new InstallerPackage(path.toFile());installer.close();accepted=true;}catch(IOException expected){}
+            check(accepted==(mask==0||mask==7),"only complete full-update trio or legacy ZIP accepted: "+mask);
+        }
+        for(String unexpected:List.of("full-update/extra.sh","full-update/../install.sh","full-update/bundle.zip/evil")){
+            Map<String,byte[]> members=entries(Files.readAllBytes(fixture(directory,metadata("2.0.25"))));members.put(unexpected,utf8("unexpected"));
+            Path path=directory.resolve("unsafe.zip");writeEntries(path,members);boolean accepted=false;
+            try{InstallerPackage installer=new InstallerPackage(path.toFile());installer.close();accepted=true;}catch(IOException expected){}
+            check(!accepted,"unknown full-update entry rejected");
+        }
+    }
+    private static void writeEntries(Path path,Map<String,byte[]> members)throws IOException {
+        try(ZipOutputStream zip=new ZipOutputStream(Files.newOutputStream(path))){for(var member:members.entrySet()){zip.putNextEntry(new ZipEntry(member.getKey()));zip.write(member.getValue());zip.closeEntry();}}
     }
     private static void pathReplacement(Path directory)throws Exception {
         Path original=fixture(directory,metadata("1.4.4")),replacement=fixture(directory,metadata("1.5.0"));
@@ -97,6 +122,7 @@ public final class InstallerPackageVersionTest {
             for(Object version:Arrays.asList(null,15,true,List.of("1.5.0"),"","1","latest"," 1.5.0","1.5.0 ","1.5.0/other","1.5.0\\other","1.5.0\r\nInjected: value","1.5.0\".zip","1.5.0-","1.5.0+build","1.５.0","1."+"2".repeat(64)))rejected(directory,metadata(version),"invalid version rejected");
             rejected(directory,"{\"version\":\"1.5.0\",\"padding\":\""+"x".repeat(16384)+"\"}","oversized compressed metadata rejected");
             pathReplacement(directory);
+            fullUpdateFiles(directory);
             for(String arg:args)realPackage(Path.of(arg));
             System.out.println("INSTALLER_PACKAGE_VERSION_TESTS=PASS checks="+checks+" realPackages="+args.length);
         }finally{try(var paths=Files.walk(directory)){for(Path path:paths.sorted(Comparator.reverseOrder()).toList())Files.delete(path);}}

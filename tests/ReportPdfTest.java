@@ -28,7 +28,7 @@ public final class ReportPdfTest {
         return map("title","Relatório JDBC · Inventário Java","generatedAt","15/10/2026 08:00 BRT","summary",map("machines",68,"environments",2,"records",68),"filters",List.of(map("label","Ambiente","value","Todos os ambientes"),map("label","Datasource","value","Financeiro / Aplicação")),"columns",columns,"rows",rows);
     }
     private static String bytes(Map<String,Object> report)throws Exception {ByteArrayOutputStream out=new ByteArrayOutputStream();ReportPdf.write(out,report);return out.toString(StandardCharsets.ISO_8859_1);}
-    private static String text(String pdf) {
+    static String text(String pdf) {
         StringBuilder out=new StringBuilder();Matcher m=Pattern.compile("<([0-9a-f]*)> Tj").matcher(pdf);
         while(m.find()){String hex=m.group(1);byte[] b=new byte[hex.length()/2];for(int i=0;i<b.length;i++)b[i]=(byte)Integer.parseInt(hex.substring(i*2,i*2+2),16);out.append(new String(b,java.nio.charset.Charset.forName("windows-1252"))).append('\n');}
         return out.toString();

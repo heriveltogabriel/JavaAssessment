@@ -8,7 +8,7 @@
   ];
   const jdbcFields = [
     ['datasource', 'Datasource / nome JNDI', 'Ex.: jdbc/Pedidos'], ['databaseType', 'Banco de dados', 'Ex.: PostgreSQL'],
-    ['driver', 'Driver JDBC', 'Nome ou classe do driver'], ['driverVersion', 'Versão do driver', 'Versão exata'],
+    ['driver', 'Driver JDBC', 'Nome ou classe do driver'], ['driverVersion', 'Versão do driver', 'Versão exata'], ['databaseVersion', 'Versão do banco', 'Versão exata informada'],
     ['driverClass', 'Classe do driver', 'Ex.: org.postgresql.Driver'], ['driverReference', 'Referência do driver', 'Nome ou referência registrada'],
     ['serverName', 'Servidor associado', 'Ex.: AdminServer'], ['applicationName', 'Aplicação associada', 'Nome da aplicação'],
     ['resourceType', 'Tipo de recurso', 'Ex.: javax.sql.DataSource'], ['datasourceState', 'Estado observado', 'Estado informado pelo inventário']
@@ -19,13 +19,13 @@
     servers: 'Uma linha por servidor', jdbc: 'Uma linha por datasource',
     environments: 'Totais por ambiente'
   };
-  const modelLabels = {machines:'Máquinas',java:'Java',servers:'Java Servers',jdbc:'JDBC',environments:'Resumo por ambiente'};
+  const modelLabels = {machines:'Máquinas',java:'Java',servers:"Servidores de aplicação Java",jdbc:'JDBC',environments:'Resumo por ambiente'};
   const symbols = {machines: '▤', java: '◉', servers: '▥', jdbc: '≋', environments: '▦'};
   const esc = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const text = value => value == null || value === '' ? 'Não identificado' : Array.isArray(value) ? value.join(' · ') : String(value);
   const initial = () => ({model: 'machines', environmentId: '', columns: [], page: 1, pageSize: 20});
   let deps, options, draft = initial(), applied, result, loading = false, exporting = false;
-  let sequence = 0, epoch = 0, error = '', exportError = '', collapsed = false, columnOpen = false, mounted;
+  let sequence = 0, epoch = 0, error = '', exportError = '', collapsed = true, columnOpen = false, mounted;
   const mount = () => document.getElementById('reports-view');
   const visible = () => { const el = mount(); return el && !el.hidden && !el.closest('[hidden]'); };
   const model = () => options && options.models.find(item => item.key === draft.model);
@@ -48,9 +48,10 @@
   }
   function clear() {
     epoch++; sequence++; options = undefined; draft = initial(); applied = result = undefined;
-    loading = exporting = false; error = exportError = ''; collapsed = columnOpen = false;
+    loading = exporting = false; error = exportError = ''; collapsed = true; columnOpen = false;
     if (mount()) mount().replaceChildren();
   }
+  function enter() {collapsed = true; columnOpen = false;}
   function render() {
     if (deps && visible()) paint();
   }
@@ -151,7 +152,7 @@
   function click(event) {
     const button=event.target.closest('button');if(!button||button.disabled)return;
     if(button.hasAttribute('data-report-model')) {
-      draft.model=button.dataset.reportModel;draft.columns=model().defaults.slice();draft.page=1;columnOpen=false;query();
+      draft.model=button.dataset.reportModel;draft.columns=model().defaults.slice();draft.page=1;columnOpen=false;collapsed=true;query();
     }else if(button.hasAttribute('data-report-toggle')) {collapsed=!collapsed;paint();}
     else if(button.hasAttribute('data-report-columns')) {columnOpen=!columnOpen;paint();}
     else if(button.hasAttribute('data-report-reset')) {const current=draft.model;draft=initial();draft.model=current;draft.columns=model().defaults.slice();query();}
@@ -173,5 +174,5 @@
       exportError=failure.status===409?'O inventário mudou desde a consulta. Atualize os resultados e exporte novamente.':failure.message||'Não foi possível exportar. Atualize os resultados e tente novamente.';
     } finally {if(session===epoch){exporting=false;if(visible())paint();}}
   }
-  global.AssessmentReports={init,render,refresh,clear};
+  global.AssessmentReports={init,render,refresh,clear,enter};
 })(window);

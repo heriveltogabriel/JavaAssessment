@@ -1,5 +1,5 @@
 {
-  "version": "2.0.17",
+  "version": "2.0.53",
   "releases": [
     {
       "version": "1.0.1-beta",
@@ -183,6 +183,257 @@
       "builtAt": "2026-10-15T12:23:41.174238+00:00",
       "status": "prepared",
       "bridgeVersion": "2.0.16",
+      "candidateOnly": true
+    },
+    {
+      "version": "2.0.18",
+      "builtAt": "2026-10-15T19:05:08.369532+00:00",
+      "status": "bridge-prepared",
+      "kind": "agent-bridge",
+      "targetVersion": "2.0.19"
+    },
+    {
+      "version": "2.0.19",
+      "builtAt": "2026-10-15T19:05:08.369532+00:00",
+      "status": "failed",
+      "bridgeVersion": "2.0.18"
+    },
+    {
+      "version": "2.0.20",
+      "builtAt": "2026-10-15T19:13:21.362297+00:00",
+      "status": "bridge-prepared",
+      "kind": "agent-bridge",
+      "targetVersion": "2.0.21"
+    },
+    {
+      "version": "2.0.21",
+      "builtAt": "2026-10-15T19:13:21.362297+00:00",
+      "status": "failed",
+      "bridgeVersion": "2.0.20",
+      "candidateOnly": true
+    },
+    {
+      "version": "2.0.22",
+      "builtAt": "2026-10-15T19:17:25.003253+00:00",
+      "status": "bridge-prepared",
+      "kind": "agent-bridge",
+      "targetVersion": "2.0.23"
+    },
+    {
+      "version": "2.0.23",
+      "builtAt": "2026-10-15T19:17:25.003253+00:00",
+      "status": "prepared",
+      "bridgeVersion": "2.0.22",
+      "candidateOnly": true
+    },
+    {
+      "version": "2.0.24",
+      "builtAt": "2026-10-15T20:23:28.730881+00:00",
+      "status": "bridge-prepared",
+      "kind": "agent-bridge",
+      "targetVersion": "2.0.25"
+    },
+    {
+      "version": "2.0.25",
+      "builtAt": "2026-10-15T20:23:28.730881+00:00",
+      "status": "prepared",
+      "bridgeVersion": "2.0.24",
+      "candidateOnly": true
+    },
+    {
+      "version": "2.0.26",
+      "builtAt": "2026-10-15T21:08:24.248287+00:00",
+      "status": "bridge-reserved",
+      "kind": "agent-bridge",
+      "targetVersion": "2.0.27"
+    },
+    {
+      "version": "2.0.27",
+      "builtAt": "2026-10-15T21:08:24.248287+00:00",
+      "status": "failed",
+      "bridgeVersion": "2.0.26",
+      "candidateOnly": true
+    },
+    {
+      "version": "2.0.28",
+      "builtAt": "2026-10-15T21:12:32.736959+00:00",
+      "status": "bridge-prepared",
+      "kind": "agent-bridge",
+      "targetVersion": "2.0.29"
+    },
+    {
+      "version": "2.0.29",
+      "builtAt": "2026-10-15T21:12:32.736959+00:00",
+      "status": "prepared",
+      "bridgeVersion": "2.0.28",
+      "candidateOnly": true
+    },
+    {
+      "version": "2.0.30",
+      "builtAt": "2026-10-15T21:29:11.219602+00:00",
+      "status": "bridge-prepared",
+      "kind": "agent-bridge",
+      "targetVersion": "2.0.31"
+    },
+    {
+      "version": "2.0.31",
+      "builtAt": "2026-10-15T21:29:11.219602+00:00",
+      "status": "prepared",
+      "bridgeVersion": "2.0.30",
+      "candidateOnly": true
+    },
+    {
+      "version": "2.0.32",
+      "builtAt": "2026-10-15T22:07:57.284353+00:00",
+      "status": "bridge-reserved",
+      "kind": "agent-bridge",
+      "targetVersion": "2.0.33"
+    },
+    {
+      "version": "2.0.33",
+      "builtAt": "2026-10-15T22:07:57.284353+00:00",
+      "status": "failed",
+      "bridgeVersion": "2.0.32",
+      "candidateOnly": true
+    },
+    {
+      "version": "2.0.34",
+      "builtAt": "2026-10-15T22:10:48.682678+00:00",
+      "status": "bridge-prepared",
+      "kind": "agent-bridge",
+      "targetVersion": "2.0.35"
+    },
+    {
+      "version": "2.0.35",
+      "builtAt": "2026-10-15T22:10:48.682678+00:00",
+      "status": "prepared",
+      "bridgeVersion": "2.0.34",
+      "candidateOnly": true
+    },
+    {
+      "version": "2.0.36",
+      "builtAt": "2026-10-15T22:14:09.225560+00:00",
+      "status": "bridge-prepared",
+      "kind": "agent-bridge",
+      "targetVersion": "2.0.37"
+    },
+    {
+      "version": "2.0.37",
+      "builtAt": "2026-10-15T22:14:09.225560+00:00",
+      "status": "prepared",
+      "bridgeVersion": "2.0.36",
+      "candidateOnly": true
+    },
+    {
+      "version": "2.0.38",
+      "builtAt": "2026-10-15T22:58:21.651531+00:00",
+      "status": "bridge-reserved",
+      "kind": "agent-bridge",
+      "targetVersion": "2.0.39"
+    },
+    {
+      "version": "2.0.39",
+      "builtAt": "2026-10-15T22:58:21.651531+00:00",
+      "status": "failed",
+      "bridgeVersion": "2.0.38",
+      "candidateOnly": true
+    },
+    {
+      "version": "2.0.40",
+      "builtAt": "2026-10-15T22:58:56.636660+00:00",
+      "status": "bridge-reserved",
+      "kind": "agent-bridge",
+      "targetVersion": "2.0.41"
+    },
+    {
+      "version": "2.0.41",
+      "builtAt": "2026-10-15T22:58:56.636660+00:00",
+      "status": "failed",
+      "bridgeVersion": "2.0.40",
+      "candidateOnly": true
+    },
+    {
+      "version": "2.0.42",
+      "builtAt": "2026-10-15T23:01:34.222234+00:00",
+      "status": "bridge-prepared",
+      "kind": "agent-bridge",
+      "targetVersion": "2.0.43"
+    },
+    {
+      "version": "2.0.43",
+      "builtAt": "2026-10-15T23:01:34.222234+00:00",
+      "status": "prepared",
+      "bridgeVersion": "2.0.42",
+      "candidateOnly": true
+    },
+    {
+      "version": "2.0.44",
+      "builtAt": "2026-10-15T23:18:31.259805+00:00",
+      "status": "bridge-prepared",
+      "kind": "agent-bridge",
+      "targetVersion": "2.0.45"
+    },
+    {
+      "version": "2.0.45",
+      "builtAt": "2026-10-15T23:18:31.259805+00:00",
+      "status": "prepared",
+      "bridgeVersion": "2.0.44",
+      "candidateOnly": true
+    },
+    {
+      "version": "2.0.46",
+      "builtAt": "2026-10-15T23:24:44.547107+00:00",
+      "status": "bridge-prepared",
+      "kind": "agent-bridge",
+      "targetVersion": "2.0.47"
+    },
+    {
+      "version": "2.0.47",
+      "builtAt": "2026-10-15T23:24:44.547107+00:00",
+      "status": "prepared",
+      "bridgeVersion": "2.0.46",
+      "candidateOnly": true
+    },
+    {
+      "version": "2.0.48",
+      "builtAt": "2026-10-16T00:19:34.507388+00:00",
+      "status": "bridge-prepared",
+      "kind": "agent-bridge",
+      "targetVersion": "2.0.49"
+    },
+    {
+      "version": "2.0.49",
+      "builtAt": "2026-10-16T00:19:34.507388+00:00",
+      "status": "prepared",
+      "bridgeVersion": "2.0.48",
+      "candidateOnly": true
+    },
+    {
+      "version": "2.0.50",
+      "builtAt": "2026-10-16T01:12:57.501886+00:00",
+      "status": "bridge-prepared",
+      "kind": "agent-bridge",
+      "targetVersion": "2.0.51"
+    },
+    {
+      "version": "2.0.51",
+      "builtAt": "2026-10-16T01:12:57.501886+00:00",
+      "status": "prepared",
+      "bridgeVersion": "2.0.50",
+      "candidateOnly": true
+    },
+    {
+      "version": "2.0.52",
+      "builtAt": "2026-10-16T02:18:30.769026+00:00",
+      "status": "bridge-prepared",
+      "kind": "agent-bridge",
+      "targetVersion": "2.0.53"
+    },
+    {
+      "version": "2.0.53",
+      "builtAt": "2026-10-16T02:18:30.769026+00:00",
+      "status": "prepared",
+      "bridgeVersion": "2.0.52",
       "candidateOnly": true
     }
   ]

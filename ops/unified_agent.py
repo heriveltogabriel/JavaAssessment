@@ -113,14 +113,13 @@ def build_bridge(root, out, origin_zip, bridge_version, target_version, java,
     independently pinned; the original collector is embedded for post-ACK
     recovery. No signing private key is used by this compilation function.
     """
-    from agent_update_signing import legacy_bridge_profile, validate_jar, VERSION
+    from agent_update_signing import legacy_bridge_profile, validate_jar, validate_helper_hashes, VERSION
     require(VERSION.fullmatch(bridge_version) and VERSION.fullmatch(target_version), 'Invalid bridge version')
     original, profile = legacy_bridge_profile(origin_zip, origin_sha256)
     numeric = lambda value: tuple(map(int, value.split('.')))
     require(numeric('1.5.12') <= numeric(profile['fromVersion']) < numeric(bridge_version) < numeric(target_version), 'Invalid bridge ordering')
     helpers = list(allowed_helper_hashes or [profile['fromCollectorSha256']])
-    require(profile['fromCollectorSha256'] in helpers and len(helpers) <= 16 and len(set(helpers)) == len(helpers)
-            and all(re.fullmatch('[a-f0-9]{64}', value) for value in helpers), 'Bridge helper hashes must be explicit known baselines')
+    validate_helper_hashes(helpers, profile['fromCollectorSha256'])
     metadata = {'schema': 1, **profile, 'bridgeVersion': bridge_version, 'targetVersion': target_version,
                 'recoveryResource': 'migration/baseline/collector.jar', 'allowedHelperHashes': helpers}
     target = out / 'build' / ('assessment-bridge-' + bridge_version + '-' + profile['fromVersion'] + '.jar')

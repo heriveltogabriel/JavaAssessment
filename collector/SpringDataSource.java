@@ -21,8 +21,9 @@ final class SpringDataSource {
         return value.equals(URL) || value.equals(HIKARI_URL) || value.equals(DRIVER) || value.equals(HIKARI_DRIVER) || value.equals(POOL);
     }
     static boolean condition(String value) { return value.equals("spring.config.activate.onprofile") || value.equals("spring.config.activate.oncloudplatform") || value.equals("spring.profiles"); }
-    static final class AllowedProperties extends Properties {
+    static class AllowedProperties extends Properties {
         boolean conditional;
+        Object storeAllowed(String key, String value) { return super.put(key, value); }
         public synchronized Object put(Object rawKey, Object rawValue) {
             if (!(rawKey instanceof String) || !(rawValue instanceof String)) return null;
             String key = key((String)rawKey), value = ((String)rawValue).trim();
@@ -108,7 +109,7 @@ final class SpringDataSource {
         int matches = 0; String version = null;
         for (Object value : libraries) if (value instanceof Map) {
             Map library = (Map)value; Object rawPath = library.get("path");
-            if (!(rawPath instanceof String) || !"JDBC".equals(library.get("category")) || ((String)rawPath).indexOf("!/BOOT-INF/lib/") < 0) continue;
+            if (!(rawPath instanceof String) || !"JDBC".equals(library.get("category"))) continue;
             if (!type.equals(libraryDatabase((String)rawPath))) continue;
             matches++;
             Object rawVersion = library.get("version");
@@ -165,6 +166,8 @@ final class SpringDataSource {
         return value;
     }
     static String yamlScalar(String value) throws IOException {
+        // Preserve exact Spring placeholders as inert text; the passive resolver handles only allowlisted sources.
+        if (value.startsWith("${") && value.endsWith("}") && value.indexOf("${", 2) < 0) return value;
         if (value.startsWith("'") && value.endsWith("'")) {
             String body = value.substring(1, value.length() - 1); StringBuilder result = new StringBuilder();
             for (int i = 0; i < body.length(); i++) {

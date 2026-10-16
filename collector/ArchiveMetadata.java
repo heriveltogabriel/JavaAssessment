@@ -9,9 +9,9 @@ import java.util.zip.*;
 /** Reads bounded archive metadata without extracting files or loading application classes. */
 public final class ArchiveMetadata {
     static final long READ_LIMIT = 8L * 1024 * 1024;
-    static final long FILE_LIMIT = 128L * 1024 * 1024;
+    static final long FILE_LIMIT = 1024L * 1024 * 1024; // File size is independent from the bounded metadata/central-directory budget.
     static final int METADATA_LIMIT = 65536, ENTRY_LIMIT = 5000, CENTRAL_LIMIT = 2 * 1024 * 1024;
-    static final Pattern FILE_VERSION = Pattern.compile("^(?:ojdbc[0-9]*|classes12|derby(?:client|net|shared|tools|run)?|mysql-connector-(?:java|j)|postgresql|mssql-jdbc|sqljdbc[0-9]*|jtds|db2jcc[0-9]*|mariadb-java-client|h2|hsqldb|tomcat-embed-core)[-_]([0-9][A-Za-z0-9._+\\-]*)\\.jar$", Pattern.CASE_INSENSITIVE);
+    static final Pattern FILE_VERSION = Pattern.compile("^(?:ojdbc[0-9]*|classes12|derby(?:client|net|shared|tools|run)?|mysql-connector-(?:java|j)|postgresql|mssql-jdbc|sqljdbc[0-9]*|jtds|db2jcc[0-9]*|mariadb-java-client|h2|hsqldb|tomcat-embed-core|jetty-server|undertow-core)[-_]([0-9][A-Za-z0-9._+\\-]*)\\.jar$", Pattern.CASE_INSENSITIVE);
     final AssessmentScan scan;
     final Map<String, Map> cache = new LinkedHashMap<String, Map>();
     int libraryRows;
@@ -23,7 +23,7 @@ public final class ArchiveMetadata {
         return isJdbc(name) || isDerby(name) || isTomcat(name) || name.equals("weblogic.jar")
             || name.equals("jboss-modules.jar") || name.startsWith("jboss-as-server") || name.startsWith("jboss-as-version")
             || name.startsWith("jboss-as-product") || name.startsWith("wildfly-server") || name.startsWith("wildfly-version")
-            || name.startsWith("wildfly-product");
+            || name.startsWith("wildfly-product") || name.startsWith("jetty-server-") || name.startsWith("undertow-core-");
     }
 
     public Map inspect(File file) {
@@ -91,8 +91,8 @@ public final class ArchiveMetadata {
         for (ZipEntry entry : metadataEntries) if (entry.getName().equalsIgnoreCase("META-INF/MANIFEST.MF")) readOuterMetadata(doc, archive, entry);
         boolean boot = bootMain(doc.main) || doc.boot != null && doc.start != null;
         if (boot) {
-            if (profileConfiguration) scan.note("Profile-specific Spring configuration was not resolved: " + doc.path);
-            if (springEntries.size() > 1) scan.note("Multiple base Spring configuration formats found; properties preferred when present; effective precedence and overrides were not evaluated: " + doc.path);
+            // Profile resolution is performed separately for each live process.
+
             for (String name : SpringDataSource.BASE_FILES) if (springEntries.containsKey(name)) {
                 if (duplicateSpringEntries.contains(name)) { scan.warn("Duplicate base Spring configuration entries were skipped: " + doc.path); break; }
                 ZipEntry entry = springEntries.get(name);
@@ -259,6 +259,7 @@ public final class ArchiveMetadata {
 
     static boolean metadata(String name) {
         return name.equalsIgnoreCase("META-INF/MANIFEST.MF") || name.equals("META-INF/services/java.sql.Driver")
+            || name.equals("META-INF/build-info.properties") || name.equals("BOOT-INF/classes/META-INF/build-info.properties") || name.equals("WEB-INF/classes/META-INF/build-info.properties")
             || name.equals("org/apache/catalina/util/ServerInfo.properties")
             || name.startsWith("META-INF/maven/") && name.endsWith("/pom.properties");
     }
@@ -306,7 +307,11 @@ public final class ArchiveMetadata {
             }
         } else {
             Properties p = new Properties(); p.load(new ByteArrayInputStream(content));
-            if (name.equals("org/apache/catalina/util/ServerInfo.properties")) {
+            if (name.endsWith("META-INF/build-info.properties")) {
+                String title = ProcessLaunch.label(p.getProperty("build.name")), buildVersion = p.getProperty("build.version");
+                if (title != null) doc.title = title;
+                if (buildVersion != null && buildVersion.matches("[0-9][A-Za-z0-9._+\\-]{0,127}")) doc.version = buildVersion;
+            } else if (name.equals("org/apache/catalina/util/ServerInfo.properties")) {
                 doc.tomcatInfo = value(p.getProperty("server.info")); doc.tomcatNumber = value(p.getProperty("server.number"));
             } else {
                 String artifact = value(p.getProperty("artifactId")), group = value(p.getProperty("groupId"));
@@ -337,6 +342,15 @@ public final class ArchiveMetadata {
         result.put("serverType", serverType); result.put("serverVersion", serverVersion);
         result.put("evidence", evidence(doc) + (boot ? "; Spring Boot launcher/framework manifest evidence" : ""));
         result.put("libraries", rows);
+        if (boot) {
+            List embedded = new ArrayList();
+            for (Object raw : rows) {
+                Map library = (Map)raw; String filename = base(String.valueOf(library.get("path")));
+                String product = filename.startsWith("tomcat-embed-core") ? "Tomcat" : filename.startsWith("jetty-server-") ? "Jetty" : filename.startsWith("undertow-core-") ? "Undertow" : null;
+                if (product != null) embedded.add(AssessmentScan.map("type", product, "version", library.get("version"), "evidence", "Packaged embedded server library; runtime activation not verified"));
+            }
+            if (!embedded.isEmpty()) result.put("embeddedServers", embedded);
+        }
         if (boot && doc.springDataSource != null) {
             SpringDataSource.matchPackagedDriver(doc.springDataSource, rows);
             result.put("configuredDataSource", doc.springDataSource);
@@ -347,7 +361,7 @@ public final class ArchiveMetadata {
     List libraries(Document doc) {
         List result = new ArrayList(); String lower = doc.filename.toLowerCase(Locale.ENGLISH);
         boolean jdbc = isJdbc(lower) || doc.driverProvider || doc.jdbcPomTitle != null;
-        if (!(jdbc || isDerby(lower) || lower.startsWith("tomcat-embed-core") && lower.endsWith(".jar"))) return result;
+        if (!(jdbc || isDerby(lower) || (lower.startsWith("tomcat-embed-core") || lower.startsWith("jetty-server-") || lower.startsWith("undertow-core-")) && lower.endsWith(".jar"))) return result;
         if (libraryRows >= 1000) { scan.warn("Library metadata row limit reached"); return result; }
         String title = first(doc.title, first(doc.jdbcPomTitle, doc.filename));
         String version = first(doc.version, doc.jdbcPomVersion), source = doc.version != null ? "manifest version" : doc.jdbcPomVersion != null ? "Maven pom.properties version" : null;

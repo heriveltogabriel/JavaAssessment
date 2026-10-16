@@ -248,8 +248,8 @@ public final class AgentV3UninstallInventory {
         Map actual=tree(boot);actual.remove("bootstrap-owned.json");actual.remove("recovery.service");actual.remove("recovery.init");need(actual.equals(expected)&&expected.equals(seal.get("files")));
     }
     static boolean rootData(String name) {
-        return name.matches("conf/(collector[.]properties|java[.]path|installation-id|root-service-mode|uninstall-capability|update-capability|ca[.]pem)")||name.equals("trust/ca.pem")||name.equals("current.json")
-            ||name.matches("logs/(collector[.]log([.][123])?|service[.]log([.][123])?|install[.]log|first-cycle[.]tmp|install-events-[A-Za-z0-9_.-]+[.]json([.]sent)?)")
+        return name.matches("conf/(collector[.]properties|java[.]path|installation-id|installation-id[.]lock|root-service-mode|uninstall-capability|update-capability|ca[.]pem)")||name.equals("trust/ca.pem")||name.equals("current.json")
+            ||name.matches("logs/(collector[.]log([.][123])?|service[.]log([.][123])?|install[.]log|permission-check[.]json|first-cycle[.]tmp|install-events-[A-Za-z0-9_.-]+[.]json([.]sent)?)")
             ||name.matches("collector-spool/(pending-[A-Za-z0-9_.-]+[.]json|latest-snapshot[.]json|last-ack[.]json|[.]collector[.]lock|uninstall-request[.]json|[.]poll-lock/pid)")
             ||name.matches("run/(service[.]pid|service[.]stop)");
     }
@@ -274,7 +274,14 @@ public final class AgentV3UninstallInventory {
             if(name.equals("state/retained.json")){Map retained=AgentInstallLayout.read(at(layout.home,name));need(AgentInstallLayout.number(retained.get("schema"))==1);for(String key:new String[]{"current","previous"})if(retained.get(key)!=null){need(retained.get(key) instanceof Map);layout.validatePointer((Map)retained.get(key));}continue;}
             if(name.matches("state/(current-manager[.]json|last-good[.]json|recovery[.](pid|stop)|diagnostic[.](tmp|txt))|history/[a-f0-9-]{36}[.]json|scheduler|java[.]path|supervisor[.]pid|stop|diagnostic[.](tmp|txt)|collector[.](service|timer|init)|helper[.](service|init)"))continue;
             if(name.equals("helper.jar")){need(origin!=null&&update.get(item).equals(origin.get("helperSha256")));continue;}
-            if(name.matches("(root-trust|lifecycle-lock|update-local|update-service)[.]sh|update-public[.]der|lib/[A-Za-z0-9_.-]+[.]jar")){need(origin!=null&&update.get(item).equals(((Map)origin.get("files")).get(name)));continue;}
+            if(name.equals("update-public.der")){
+                need(origin!=null);Map original=(Map)origin.get("files");
+                need(update.get(item).equals(original.get(name))
+                    ||Boolean.TRUE.equals(origin.get("localInstall"))&&!original.containsKey(name)
+                    &&update.get(item).equals(AgentBundleManifest.hash(at(helper,"v3-public.der")))
+                    &&update.get(item).equals(AgentBundleManifest.hash(at(layout.root,name))));continue;
+            }
+            if(name.matches("(root-trust|lifecycle-lock|update-local|update-service)[.]sh|lib/[A-Za-z0-9_.-]+[.]jar")){need(origin!=null&&update.get(item).equals(((Map)origin.get("files")).get(name)));continue;}
             throw new IOException("Unexpected updater file; uninstall refused");
         }
         directories(layout.root,layout.root,root,"conf|trust|logs|run|collector-spool|collector-spool/.poll-lock|backups|lib|releases");
@@ -291,11 +298,19 @@ public final class AgentV3UninstallInventory {
             for(String key:new String[]{"releaseId","managerId"})need(record.get(key)==null||AgentInstallLayout.identifier(text(record.get(key))));
             Map expected=(Map)record.get("files");for(Object item:expected.keySet()){
                 String relative=text(item);need(AgentInstallLayout.digest(text(expected.get(item)))&&(
-                    relative.matches("manifest[.](json|sig)|bundle[.]zip|uninstall-(owner|write)[.]json|previous-services/collector[.](service|timer|init)|prepared-[1-8]/[A-Za-z0-9_./-]+")
+                    relative.matches("manifest[.](json|sig)|bundle[.]zip|uninstall-(owner|write)[.]json|previous-services/collector[.](service|timer|init)|prepared-[0-8]/[A-Za-z0-9_./-]+")
                     ||relative.equals("uninstall-before/snapshot.json")||relative.equals("uninstall-before/unit")||relative.equals("uninstall-before/capability")
                     ||relative.startsWith("uninstall-before/files/")&&helperStatic(relative.substring(23))));File owned=at(layout.transaction(op),relative);
                 if(owned.exists())need(owned.isFile()&&expected.get(item).equals(AgentBundleManifest.hash(owned)));
                 result.put("transactions/"+op+"/"+relative,expected.get(item));
+            }
+            // The immutable initial bootstrap predates queueing uninstall-owner.
+            // Accept only the exact current, independently verified helper seal.
+            File owner=at(layout.transaction(op),"uninstall-owner.json");
+            if(owner.isFile()&&!expected.containsKey("uninstall-owner.json")){
+                String digest=AgentBundleManifest.hash(owner);
+                need(digest.equals(AgentBundleManifest.hash(at(helper,"v3-inventory.json"))));
+                result.put("transactions/"+op+"/uninstall-owner.json",digest);
             }
             result.put("state/cleanup/"+file.getName(),AgentBundleManifest.hash(file));
         }

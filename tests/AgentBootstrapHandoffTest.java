@@ -163,7 +163,15 @@ public final class AgentBootstrapHandoffTest {
             Boundary boundary=new Boundary(fixture);boundary.stopLeavesRunning=true;reject(boundary::call,"stop not confirmed");check(boundary.queues==0&&boundary.starts==0,"no queue or automatic restore after unresolved stop");
         }
         try(var fixture=new Fixture()){
-            Boundary boundary=new Boundary(fixture);boundary.stopLeavesFailed=true;reject(boundary::call,"helper failed is not the requested inactive stop confirmation");check(boundary.queues==0&&boundary.starts==0,"failed helper state never queues bootstrap or triggers a speculative restore");
+            Boundary boundary=new Boundary(fixture);boundary.stopLeavesFailed=true;boundary.call();
+            check(boundary.queues==1&&boundary.starts==0,"OL7 failed/143 quiescent helper permits handoff without restarting it");
+        }
+        for(String pending:List.of("main","control","job","deactivating","missing"))try(var fixture=new Fixture()){
+            Boundary boundary=new Boundary(fixture);boundary.afterStop=()->boundary.helper=state(
+                pending.equals("missing")?"not-found":"loaded",pending.equals("deactivating")?"deactivating":"failed",
+                pending.equals("main")?200:0,pending.equals("control")?201:0,pending.equals("job")?202:0);
+            reject(boundary::call,"failed stop with unresolved "+pending);
+            check(boundary.queues==0&&boundary.starts==0,"never hand off or restart with unresolved "+pending);
         }
         try(var fixture=new Fixture()){
             Boundary boundary=new Boundary(fixture);boundary.stopResult=30;reject(boundary::call,"stop timeout is not evidence that helper stopped");check(boundary.queues==0&&boundary.starts==0,"stop timeout cannot queue or trigger speculative restoration");

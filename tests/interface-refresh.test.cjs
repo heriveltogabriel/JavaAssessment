@@ -13,8 +13,8 @@ function dom(){
 }
 function runtime(){const view=dom();return {...view,globals:{window:{},document:view.document,URLSearchParams,AbortController,CSS:{escape:String},console,Date,Map,Set,Promise,Error,FormData:class{constructor(form){this.values=form.values||{};}get(key){return this.values[key]??null;}},setInterval:()=>1,clearInterval(){},setTimeout:()=>1,clearTimeout(){},sessionStorage:{getItem:()=>null,setItem(){},removeItem(){}}}};}
 function appHarness(){
-  const test=runtime(),calls=[],notices=[];let epoch=1,readable=true;const stateQueue=[],workQueue=[],adminQueue=[];
-  const modules={AssessmentDashboard:{},AssessmentEnrollment:{init(){}},AssessmentMachines:{init(){}},AssessmentAgentUpdates:{init(){}},AssessmentEnvironments:{stored:()=>'',init(){},openAssignment(){}}};
+  const test=runtime(),calls=[],notices=[];let epoch=1,readable=true;const stateQueue=[],workQueue=[],adminQueue=[],reportsQueue=[];
+  const modules={AssessmentMachineCleanup:{init(){},clear(){},sync(){}},AssessmentReports:{init(context){assert.equal(typeof context.api,'function');assert.equal(typeof context.download,'function');},render(){},clear(){},refresh(background){calls.push({reports:true,background});const request=reportsQueue.shift();assert.ok(request,'Unexpected reports refresh');return request.promise;}},AssessmentDashboard:{},AssessmentEnrollment:{init(){}},AssessmentMachines:{init(){}},AssessmentAgentUpdates:{init(){}},AssessmentEnvironments:{stored:()=>'',init(){},openAssignment(){}}};
   Object.assign(test.globals,modules,{history:{},location:{hash:'#environment/hosts?env=prod'},AssessmentAccess:{canInventory:()=>readable,isAdmin:()=>true,getRevision:()=>epoch,init(){},request(path,options){calls.push({path,options});return stateQueue.shift().promise;},refreshAdministration(quiet){calls.push({admin:true,quiet});return adminQueue.shift().promise;}},AssessmentWorkRequests:{init(){},refresh(background){calls.push({work:true,background});return workQueue.shift().promise;}}});
   Object.assign(test.globals.window,{matchMedia:()=>({matches:false,addEventListener(){}}),addEventListener(){}});
   const instrumented=source('app.js').replace('  setNavigation(!narrowNavigation.matches);render();AssessmentAccess.start();',`
@@ -22,7 +22,7 @@ function appHarness(){
     window.test={loadState,refreshCurrentView,configure(value){current=value.current||'hosts';environmentScope=value.environmentId||'prod';contextKind=value.contextKind||'environment';machineId=value.machineId||'';query=value.query||'';page=value.page||1;size=value.size||20;dateFrom=value.from||'';dateTo=value.to||'';renderedHash=value.route||'#environment/hosts?env=prod';data=value.data||{existing:true};},expire(){manualRefresh=null;refreshing=false;updateRefreshState();},getData:()=>data};
   `);
   test.globals.window.notices=notices;vm.runInNewContext(instrumented,test.globals);
-  return {...test,api:test.globals.window.test,calls,notices,stateQueue,workQueue,adminQueue,expire(){epoch++;readable=false;test.globals.window.test.expire();}};
+  return {...test,api:test.globals.window.test,calls,notices,stateQueue,workQueue,adminQueue,reportsQueue,expire(){epoch++;readable=false;test.globals.window.test.expire();}};
 }
 function workHarness(){
   const test=runtime(),queue=[],calls=[];
@@ -55,6 +55,13 @@ function accessHarness(){
   }
   {
     const h=appHarness(),request=deferred();h.adminQueue.push(request);h.api.configure({current:'administration',route:'#administration?env=all'});const run=h.api.refreshCurrentView();assert.equal(h.calls[0].admin,true);assert.equal(h.get('refresh').getAttribute('aria-busy'),'true');request.resolve(true);await run;assert.equal(h.calls.length,1);assert.equal(h.notices.at(-1).message,'Dados atualizados.');checks++;
+  }
+  for(const success of [true,false]){
+    const h=appHarness(),request=deferred();h.reportsQueue.push(request);h.api.configure({current:'reports',route:'#reports'});
+    assert.equal(await h.api.loadState(true),true);assert.equal(h.calls.length,0,'background polling does not query reports');
+    const refresh=h.api.refreshCurrentView();assert.equal(h.calls.length,1);assert.equal(h.calls[0].reports,true);assert.equal(h.calls[0].background,false);assert.equal(h.get('refresh').disabled,true);
+    request.resolve(success);await refresh;assert.equal(h.calls.length,1,'reports refresh does not also request inventory or work requests');assert.equal(h.get('refresh').disabled,false);
+    assert.equal(h.notices.at(-1).message,success?'Dados atualizados.':'Não foi possível atualizar todos os dados. O último estado conhecido foi mantido.');assert.equal(!!h.notices.at(-1).error,!success);checks++;
   }
   for(const transition of ['navigation','logout']){
     const h=appHarness(),request=deferred();h.adminQueue.push(request);h.api.configure({current:'administration',route:'#administration?env=all'});const run=h.api.refreshCurrentView();if(transition==='navigation')h.api.configure({current:'jobs',route:'#jobs?env=all'});else h.expire();request.resolve(true);await run;assert.equal(h.notices.length,0);assert.equal(h.calls.length,1);assert.equal(h.get('refresh').disabled,false);checks++;

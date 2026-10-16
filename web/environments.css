@@ -54,3 +54,71 @@
 .environment-card-actions{justify-content:space-between}
 @media(max-width:900px){.environment-card-entry{padding:19px;gap:11px}.environment-card-title{font-size:19px}}
 @media(max-width:600px){.environment-card-entry{grid-template-columns:42px minmax(0,1fr) auto}.environment-card-entry-cta{font-size:10px;padding:5px 8px}}
+
+/* Persistent installation access is isolated from temporary browser ZIP downloads. */
+.install-access-dialog{width:800px;max-height:calc(100dvh - 32px);padding:0;overflow:hidden}
+.install-access-dialog[open]{display:flex;flex-direction:column}
+.install-access-dialog>.modal-header,.install-access-dialog>.modal-footer,.install-access-dialog>.install-access-status,.install-access-dialog>.form-error{flex-shrink:0}
+.install-access-dialog>.modal-body{min-height:0;max-height:none;overflow:auto;overscroll-behavior:contain;padding:24px 28px}
+.install-access-dialog>.form-error{margin:0 28px 12px}
+.install-access-dialog>.modal-footer{padding:14px 28px;background:#fbfaf7;border-top:1px solid #e5e7dd}
+.install-access-identity{display:flex;justify-content:space-between;align-items:center;gap:16px}
+.install-access-identity h3{margin:5px 0 0;font-size:23px;color:#3e5135;overflow-wrap:anywhere}
+.install-access-identity>div{min-width:0}
+.install-access-badge{font-size:11px;color:#7a6651;white-space:nowrap;padding:7px 10px;background:#f5efe6;border:1px solid #e5d9c8;border-radius:20px}
+.install-access-badge.active{color:#49683e;background:#edf4e7;border-color:#d5e2c9}
+.install-access-dialog .install-access-intro{margin:16px 0;line-height:1.7;font-size:13px}
+.install-access-security{border:1px solid #e3d6b7;background:#fcf8ed;color:#776132;border-radius:6px;padding:13px 16px;font-size:12px;line-height:1.7}
+.install-access-security p{margin:4px 0 0;font-size:12px;line-height:1.7}
+.install-access-package{display:grid;grid-template-columns:1fr auto;gap:5px 16px;margin:20px 0 24px;padding-bottom:16px;border-bottom:1px solid #e5e8df;font-size:12px;color:#6b745e}
+.install-access-package strong{color:#45673d;font-weight:600}
+.install-access-package code{grid-column:1/-1;overflow-wrap:anywhere}
+.install-access-step h3{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:600;color:#3b4a34;margin:18px 0 8px}
+.install-access-step h3>span{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;border:1px solid #ccd8bf;background:#f1f5e9;color:#526c41;font-size:12px}
+.install-access-step p,.install-access-dialog .install-access-legacy{font-size:12px;line-height:1.7;color:#717962;margin:8px 0}
+.install-access-tabs{display:flex;gap:4px;margin-top:12px;border-bottom:1px solid #dce3d1}
+.install-access-tabs button{border:0;border-bottom:2px solid transparent;background:transparent;padding:9px 18px;color:#727b65;font:600 12px ui-monospace,monospace}
+.install-access-tabs button[aria-selected=true]{border-bottom-color:#547744;color:#3d5e31;background:#f0f5ea}
+.install-access-tabs button:focus-visible{outline:2px solid #60864d;outline-offset:-3px}
+.install-access-dialog .environment-command pre{max-height:190px;overflow:auto;overscroll-behavior:contain;white-space:pre-wrap}
+.install-access-dialog .environment-callout{font-size:11px;margin-top:18px}
+.install-access-dialog .install-access-legacy{margin-top:16px;font-size:11px}
+.install-access-controls{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;margin-top:18px;padding-top:16px;border-top:1px solid #e0e5d7}
+.install-access-controls>.text-button{font-size:11px;padding:5px 0;color:#537044}
+.install-access-controls>.install-access-revoke{color:#985b3f}
+.install-access-confirm{width:100%;border:1px solid #e4d3b8;background:#fcf8ef;border-radius:6px;padding:16px;font-size:13px;color:#745a32}
+.install-access-confirm p{font-size:12px;line-height:1.7;margin:8px 0 14px}
+.install-access-confirm>div{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+.install-access-status{min-height:0;margin:0;padding:0 28px 10px;font-size:11px;color:#516f44;line-height:1.65}
+.install-access-status:empty{padding-bottom:0}
+.install-access-disabled{border:1px dashed #cbd6bf;background:#f6f8f1;text-align:center;border-radius:8px;padding:27px 22px;margin:22px 0}
+.install-access-disabled h3{font-size:18px;color:#4a603d;margin:0 0 10px}
+.install-access-disabled p{font-size:12px;line-height:1.7;margin:8px 0 19px}
+.environment-card-actions [data-install-environment]{margin-left:0}
+@media(max-width:600px){.install-access-dialog{max-width:calc(100vw - 20px);max-height:calc(100dvh - 20px)}.install-access-dialog>.modal-header{padding:17px}.install-access-dialog>.modal-header h2{font-size:21px}.install-access-dialog>.modal-body{padding:18px}.install-access-dialog>.modal-footer{padding:12px 18px}.install-access-identity{align-items:flex-start;flex-direction:column;gap:9px}.install-access-identity h3{font-size:21px}.install-access-dialog .environment-command pre{font-size:10px;padding:10px;max-height:170px}.install-access-security{padding:12px}.install-access-status{padding-left:18px;padding-right:18px}.install-access-dialog>.form-error{margin-left:18px;margin-right:18px}.install-access-controls{gap:10px;flex-direction:column;align-items:flex-start}.install-access-confirm{box-sizing:border-box}.install-access-dialog .install-access-package{gap:7px;font-size:11px}}
+
+/* One entry point; independent ZIP and terminal registration methods. */
+.agent-method-tabs{display:flex;flex-shrink:0;gap:8px;padding:0 28px;border-bottom:1px solid #dce3d1;background:#fbfaf7}
+.agent-method-tabs[hidden],.environment-package-dialog [hidden]{display:none!important}
+.agent-method-tabs button{border:0;border-bottom:3px solid transparent;background:transparent;padding:15px 12px;font-family:inherit;font-size:13px;font-weight:600;color:#69745f}
+.agent-method-tabs button[aria-selected=true]{border-bottom-color:#527b61;color:#36573d}
+.agent-method-tabs button:focus-visible{outline:2px solid #527b61;outline-offset:-4px}
+.environment-package-dialog .install-access-panel{order:0;min-height:0;overflow:auto}
+.environment-package-dialog .modal-footer{order:2}
+.environment-package-dialog #environment-error{order:1}
+.install-access-panel .environment-command pre{max-height:190px;overflow:auto;white-space:pre-wrap}
+.install-access-panel .install-access-intro,.install-access-panel .install-access-legacy{font-size:12px;line-height:1.7}
+.install-access-panel .install-access-status{padding:12px 0 0}
+.install-script-actions{display:flex;flex-direction:column;align-items:flex-start;gap:8px;margin-top:12px}
+.install-script-actions p{margin:0}.install-script-actions code{max-width:100%;overflow-wrap:anywhere;font-size:11px}
+.install-script-actions small{font-size:11px;line-height:1.6;color:#717962}
+@media(max-width:600px){.agent-method-tabs{padding:0 12px;gap:0}.agent-method-tabs button{padding:13px 10px;font-size:12px}.install-access-panel .environment-command pre{max-height:170px}}
+
+.environment-presence{display:flex;flex-direction:column;align-items:flex-start;gap:5px}
+.environment-presence-link{border:0;background:none;padding:0;text-align:left;font:inherit;color:#3d6b4b;cursor:pointer;line-height:1.5}
+.environment-presence-link:hover{text-decoration:underline}
+.environment-presence-link:focus-visible{outline:2px solid #39728b;outline-offset:3px;border-radius:2px}
+.environment-presence-link.silent{color:#ad3026;font-weight:600}
+.environment-presence-link.delayed{color:#805b20}
+.environment-presence-link.revoked,.environment-presence-link.uninstalled,.environment-presence-link.awaiting,.environment-presence-link.unknown{color:#65665b}
+@media(max-width:480px){.environment-card-insights{grid-template-columns:1fr}}

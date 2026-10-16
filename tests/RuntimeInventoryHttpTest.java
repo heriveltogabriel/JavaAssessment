@@ -53,7 +53,7 @@ public final class RuntimeInventoryHttpTest {
             check(list(json.get("runtimes")).size()==1&&list(json.get("applications")).size()==2,"JSON exports observed runtime and applications");
             List<Map<String,String>> csv=VersionedCsvHttpTest.exported("?environmentId="+env);
             check(VersionedCsvHttpTest.count(csv,"runtimes")==1&&VersionedCsvHttpTest.count(csv,"applications")==2,"CSV includes runtime without compiler");
-            check(csv.stream().anyMatch(v->"runtimes".equals(v.get("record_type"))&&"JRE".equals(v.get("type"))&&"21.0.12".equals(v.get("version"))&&home.equals(v.get("java_home"))),"CSV runtime type/version/path");
+            check(csv.stream().anyMatch(v->"runtimes".equals(v.get("Tipo de registro"))&&"JRE".equals(v.get("Tipo"))&&"21.0.12".equals(v.get("Versão"))&&home.equals(v.get("Diretório Java"))),"CSV runtime type/version/path");
             check(!Json.stringify(json).contains(token)&&!Json.stringify(csv).contains(token),"exports omit agent credential");
             check(Boolean.TRUE.equals(ok("POST","/api/agent/results",snapshot,false,token,200).get("duplicate")),"result retry is idempotent");
             stop();start();

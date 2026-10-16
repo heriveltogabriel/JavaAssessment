@@ -56,9 +56,9 @@ public final class SpringDataSourceTest {
         config(base, "application-prod.properties", "spring.datasource.url=jdbc:postgresql://PROFILE_SECRET_CANARY/database\n");
         config(base, "application.yaml", "spring:\n  datasource:\n    url: jdbc:mysql://YAML_SECRET_CANARY/database\n");
         File jar = boot(root, "base-and-profile.jar", base); AssessmentScan multiple = scan(root, jar, true, 2);
-        check(multiple.datasources.size() == 1 && "H2".equals(((Map)multiple.datasources.get(0)).get("databaseType")), "Multiple base formats and profile siblings must not inflate datasource counts");
+        check(multiple.datasources.size() == 2 && "H2".equals(((Map)multiple.datasources.get(0)).get("databaseType")), "One datasource per process; multiple formats and inactive profile siblings do not add rows");
         Map row = (Map)multiple.datasources.get(0);
-        check(((List)row.get("associations")).size() == 2 && row.get("pid") == null && row.get("applicationId") == null, "One packaged default datasource retains separate process associations without claiming a single owner");
+        check(((List)row.get("associations")).size() == 1 && row.get("pid") != null && row.get("applicationId") != null, "Datasource candidates keep their process owner even when the packaged artifact is shared");
         check(multiple.archivesInspected == 2, "Two processes sharing an artifact must reuse the same outer/nested archive reads");
         check(scan(root, jar, false, 1).datasources.isEmpty(), "inspectArchives=false must suppress configuration discovery");
         AssessmentScan disabled = ArchiveMetadataTest.scan(false); disabled.archiveMetadata.inspect(jar);

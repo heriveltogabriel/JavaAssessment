@@ -1,0 +1,12 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const locale=require('../web/locale.js'),dash=require('../web/dashboard.js');
+assert.equal(locale.status('PROCESS_RUNNING'),'Processo observado');assert.equal(locale.status('daily'),'Diária');assert.equal(locale.status('CUSTOM_STATE'),'CUSTOM_STATE');
+assert.equal(locale.message('Assessment received — 4 Java installation(s), 2 server(s)'),'Coleta recebida — 4 instalação(ões) Java, 2 servidor(es)');
+assert.equal(locale.message('Symlink path skipped: /opt/My Application'), 'Link simbólico ignorado: /opt/My Application');assert.equal(locale.message('My Java Application'),'My Java Application');assert.equal(locale.number(1234.5),'1.234,5');
+assert.equal(locale.field('filesVisited'),'Arquivos examinados');assert.equal(locale.stage('heartbeat'),'Contato do agente');
+const fixture={scoped:true,workloads:[{type:'Tomcat',priority:2,evidence:{kind:'process',label:'Process observed',short:'process'}}]};assert.equal(dash.workloads(fixture)[0].evidence.short,'processo');assert.equal(fixture.workloads[0].evidence.short,'process');
+for(const name of fs.readdirSync('web').filter(n=>n.endsWith('.js')))new vm.Script(fs.readFileSync('web/'+name,'utf8'),{filename:name});
+const html=fs.readFileSync('web/index.html','utf8');assert.match(html,/lang="pt-BR"/);assert(html.indexOf('/locale.js')<html.indexOf('/app.js'));
+for(const name of ['access.js','environments.js','install-access.js','machines.js','app.js'])assert.doesNotMatch(fs.readFileSync('web/'+name,'utf8'),/\.key\s*===?\s*["'](?:Início|Fim|Aba)["']/);
+console.log('LOCALE=PASS states, legacy summaries, paths, unknown data, Brazilian numbers, evidence display, all JS syntax');

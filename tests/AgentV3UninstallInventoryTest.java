@@ -87,7 +87,14 @@ public final class AgentV3UninstallInventoryTest {
                 delete(f.layout.releases);delete(f.layout.managers);f.tool.checkHelperOwned();f.tool.checkRemoval();f.tool.remove();f.tool.checkHelperCleanup();f.external();
             }
             try(Fixture f=new Fixture(source,mode)){
-                f.active();f.tool.checkRemoval();f.tool.remove();check(!f.layout.root.exists()&&!f.layout.home.exists(),"signed code/update trees removed");check(f.helper.isDirectory(),"independent completion helper survives removal");f.tool.remove();f.tool.checkHelperCleanup();f.external();
+                f.active();
+                Map localOrigin=AgentInstallLayout.read(new File(f.layout.state,"origin/origin.json"));
+                localOrigin.put("localInstall",Boolean.TRUE);((Map)localOrigin.get("files")).remove("update-public.der");
+                Files.deleteIfExists(new File(f.layout.state,"origin/files/update-public.der").toPath());
+                AgentInstallLayout.durable(new File(f.layout.state,"origin/origin.json"),localOrigin);
+                put(new File(f.layout.root,"conf/installation-id.lock"),"");
+                put(new File(f.layout.root,"logs/permission-check.json"),"{\"readablePaths\":2,\"inaccessiblePaths\":0}\n");
+                f.tool.checkRemoval();f.tool.remove();check(!f.layout.root.exists()&&!f.layout.home.exists(),"signed code/update trees and installer diagnostic/identity lock removed");check(f.helper.isDirectory(),"independent completion helper survives removal");f.tool.remove();f.tool.checkHelperCleanup();f.external();
                 put(new File(f.helper,"unexpected.jar"),"preserve unknown helper data");refused(()->f.tool.checkHelperCleanup(),"unexpected helper cleanup file");
             }
         }
@@ -114,10 +121,19 @@ public final class AgentV3UninstallInventoryTest {
         }
         try(Fixture f=new Fixture(source,"systemd")){
             f.active();f.tool.snapshot(OP);Map files=AgentV3UninstallInventory.inventoryForCleanup(f.layout,OP);
+            put(new File(f.layout.transaction(OP),"prepared-0/code/collector.jar"),"completed initial extraction fixture");
+            files.put("prepared-0/code/collector.jar",AgentBundleManifest.hash(new File(f.layout.transaction(OP),"prepared-0/code/collector.jar")));
+            // Initial immutable bootstrap did not include the separately sealed owner.
+            AgentInstallLayout.copy(new File(f.helper,"v3-inventory.json"),new File(f.layout.transaction(OP),"uninstall-owner.json"));
+            files.remove("uninstall-owner.json");
             Map queued=AssessmentScan.map("schema",new Long(1),"operationId",OP,"failed",Boolean.FALSE,"attempts",new Long(0),"notBefore",new Long(System.currentTimeMillis()+86400000L),"files",files,"releaseId","test-code","managerId","test-manager");
             AgentInstallLayout.durable(new File(f.layout.state,"cleanup/"+OP+".json"),queued);
             put(new File(f.layout.state,"cleanup.next"),Long.toString(System.currentTimeMillis()/1000L+86400L)+"\n");
             AgentInstallLayout.durable(new File(f.layout.state,"retained.json"),AssessmentScan.map("schema",new Long(1),"current",f.layout.current(),"previous",null));
+            f.tool.checkRemoval();
+            put(new File(f.layout.transaction(OP),"uninstall-owner.json"),"modified owner must survive");
+            refused(()->f.tool.checkRemoval(),"unqueued owner must exactly equal verified helper seal");
+            AgentInstallLayout.copy(new File(f.helper,"v3-inventory.json"),new File(f.layout.transaction(OP),"uninstall-owner.json"));
             f.tool.checkRemoval();put(new File(f.layout.transaction(OP),"customer.jar"),"not in exact cleanup queue");refused(()->f.tool.checkRemoval(),"unknown queued transaction member");
             check(new File(f.layout.transaction(OP),"customer.jar").delete(),"remove test-owned unknown file");f.tool.remove();f.tool.checkHelperCleanup();f.external();
         }

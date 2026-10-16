@@ -13,12 +13,12 @@ for(const [name,data] of Object.entries(fixtures)){
  assert.equal(dash.count(data,'datasources'),expected);checks++;
  assert.equal(dash.datasourceSummary(data).configured,expected);checks++;
  assert.equal(dash.datasourceSummary(data).runtime,0);checks++;
- assert.match(html,/JDBC datasources/);checks++;
+ assert.match(html,/Datasources JDBC/);checks++;
  assert.match(html,/data-inventory="libraries" data-subset="datasources"/);checks++;
  assert.match(html,new RegExp('>'+expected+'</strong>'));checks++;
  assert.ok(!html.includes('PRIVATE_'));checks++;
  if(id){
-  assert.match(html,/Configuration found/);checks++;
+  assert.match(html,/Configuração encontrada/);checks++;
   for(const row of data.datasources){assert.ok(html.includes(dash.esc(row.name)));checks++;}
  }
 }

@@ -2,6 +2,7 @@ package assessment;
 
 import java.nio.file.*;
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import static assessment.AssessmentServer.map;
 
@@ -51,6 +52,23 @@ public final class ReportsEnrichmentTest {
             check(((List<?>)suggestions.get("applicationName")).contains("Shared")&&((List<?>)suggestions.get("driverClass")).contains("org.postgresql.Driver"),"array/class suggestions");
             check(suggestions.values().stream().allMatch(v->((List<?>)v).size()<=100),"bounded options");
             check(!suggestions.toString().contains("hidden-secret"),"suggestions allowlist");
+            check(value(detail,"databaseVersion").equals("Não identificada"),"old snapshot database version remains unknown");
+            orders.put("databaseVersion","16.4");orders.put("databaseVersionEvidence","application-reported");orders.put("state","APPLICATION_REPORTED");orders.put("evidenceLevel","application-reported");orders.put("datasourceKey","orders");orders.put("poolName","orders-pool");orders.put("configurationResolution","partial");
+            app.store.putInventory("datasources","host-0",List.of(orders,billing,orphan,wrong));
+            var enriched=query(app,"model","jdbc","machine","app-00","databaseVersion","16.4");
+            check(records(enriched)==1&&value(enriched,"driverVersion").equals("42.7")&&value(enriched,"databaseVersion").equals("16.4"),"driver and database versions separate");
+            check(value(enriched,"databaseVersionEvidence").equals("Informado pela aplicação"),"application provenance explicit");
+            check(records(query(app,"model","jdbc","databaseVersion","16"))==0,"database version filter exact");
+            check(records(query(app,"model","machines","machine","app-00","databaseVersion","16.4","driverVersion","8.4"))==0,"database version and driver same datasource");
+            var extras=query(app,"model","jdbc","machine","app-00","datasource","Orders","columns","datasource,datasourceState,datasourceKey,poolName,configurationResolution,databaseHost");
+            check(value(extras,"datasourceState").equals("Informado pela aplicação")&&value(extras,"poolName").equals("orders-pool")&&value(extras,"databaseHost").equals("Não identificada"),"optional metadata and honest state");
+            check(value(query(app,"model","servers","machine","app-00","serverType","WebLogic"),"jdbc").contains("Banco: PostgreSQL 16.4 (Informado pela aplicação)"),"database version and provenance in shared JDBC projection");
+            var scope=new InventoryQueries.Scope();scope.host="host-0";
+            Map<String,Object> summary=app.store.readSnapshot(()->new InventoryQueries(app.store).datasourceSummary(scope));
+            check(((Number)summary.get("applicationReported")).intValue()==1&&((Number)summary.get("runtime")).intValue()==0,"application reported counted independently");
+            var csv=new StringWriter();Reports.csv(csv,enriched);check(csv.toString().contains("Versão do banco")&&csv.toString().contains("16.4")&&csv.toString().contains("42.7")&&csv.toString().contains("Informado pela aplicação"),"CSV same enriched projection");
+            var pdf=new ByteArrayOutputStream();ReportPdf.write(pdf,enriched);String pdfText=ReportPdfTest.text(pdf.toString(StandardCharsets.ISO_8859_1));check(pdfText.contains("16.4")&&pdfText.contains("42.7")&&pdfText.contains("Informado pela aplicação"),"PDF same enriched projection");
+            check(((List<?>)((Map<?,?>)app.store.readSnapshot(()->new Reports(app.store).options()).get("suggestions")).get("databaseVersion")).contains("16.4"),"database version suggestions");
             orders.put("associations",List.of("malformed",map("serverName",map("password","nested-secret"))));app.store.putInventory("datasources","host-0",List.of(orders));
             check(!String.valueOf(query(app,"model","jdbc","machine","app-00")).contains("nested-secret"),"malformed association scalars suppressed");
             check(!String.valueOf(app.store.readSnapshot(()->new Reports(app.store).options())).contains("nested-secret"),"malformed suggestions safe");

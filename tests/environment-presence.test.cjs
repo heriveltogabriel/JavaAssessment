@@ -1,0 +1,14 @@
+'use strict';
+const assert=require('node:assert/strict');
+globalThis.AssessmentDashboard=require('../web/dashboard.js');
+const envs=require('../web/environments.js');
+const now='2026-10-15T12:00:00Z',base={serverTime:now,environments:[{id:'dev',name:'Desenvolvimento'}],hosts:[]};
+const fixture=(id,seconds,extra={})=>({id,environmentId:'dev',lastSeen:new Date(Date.parse(now)-seconds*1000).toISOString(),...extra});
+base.hosts=[fixture('live',10),fixture('silent',300),fixture('delay',150),fixture('revoked',600,{credentialStatus:'revoked'}),fixture('uninstalled',600,{agentLifecycle:'uninstalled',credentialStatus:'revoked'}),fixture('awaiting',0,{lastSeen:''}),fixture('invalid',0,{lastSeen:'invalid'})];
+let html=envs.page(base);for(const text of ['1 Agente Conectado','1 Agente Desconectado','1 Agente com contato atrasado','1 Agente com acesso revogado','1 Agente com agente desinstalado','1 Agente aguardando primeiro contato','1 Agente com horário de contato indisponível'])assert.ok(html.includes(text),text);
+assert.ok(!html.includes('Cobertura da coleta'));assert.ok(!html.includes('observações de cobertura'));
+base.hosts[1].lastSeen=now;html=envs.page(base);assert.ok(html.includes('2 Agentes Conectados'));assert.ok(!html.includes('data-presence="silent"'));
+const scoped={...base,scoped:true,scope:{environmentId:''},hosts:[],summary:{hosts:200},environments:[{id:'dev',name:'Dev',counts:{hosts:200},presence:{recent:100,silent:100},lastAssessmentAt:now}]};
+html=envs.page(scoped);assert.ok(html.includes('100 Agentes Desconectados'));assert.ok(html.includes('100 Agentes Conectados'));assert.ok(html.includes('<time datetime="'+now+'">'));
+assert.ok(envs.page({...base,hosts:[]}).includes('Nenhuma máquina'));
+console.log('ENVIRONMENT_PRESENCE_JS=PASS statuses, clock boundaries, scoped aggregates, empty and heartbeat recovery');

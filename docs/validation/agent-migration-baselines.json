@@ -140,6 +140,78 @@
       "sha256": "b166de4ae60127c6d5670bcb7077650d164956b26ae9f11f76a46eb73fa532fd",
       "bytes": 30571221,
       "migrationOrigin": true
+    },
+    {
+      "version": "2.0.17",
+      "sha256": "8d5c23b900fbca4e0773dc6ea59d2245b311854018432f529714a577d8989b65",
+      "bytes": 30571216,
+      "migrationOrigin": true
+    },
+    {
+      "version": "2.0.23",
+      "sha256": "8871e70efb0e4d93cb4f2b64830152c4708845ad337cb8e62738d416ed14076a",
+      "bytes": 30623666,
+      "migrationOrigin": true
+    },
+    {
+      "version": "2.0.25",
+      "sha256": "0f29cf5cfbc4b725d0e59395c934e8ee73eb21e08e1d25ab8fa372fddb8585cb",
+      "bytes": 30623692,
+      "migrationOrigin": true
+    },
+    {
+      "version": "2.0.29",
+      "sha256": "7ab4278a969911f43d9e812a09d14d3791abc3191ccf4bc860aa670bf1093a37",
+      "bytes": 30623690,
+      "migrationOrigin": true
+    },
+    {
+      "version": "2.0.31",
+      "sha256": "28a31ce05c7c95a66d4ba491bcc5aa69510e6cd58928bd67329b274a50f1083d",
+      "bytes": 30623688,
+      "migrationOrigin": true
+    },
+    {
+      "version": "2.0.35",
+      "sha256": "2bc785f4113685bcd28c3ac8eab612476b1bc55c371283ba2cf4eca8b449f441",
+      "bytes": 30623694,
+      "migrationOrigin": true
+    },
+    {
+      "version": "2.0.37",
+      "sha256": "0556b1e6ba14e6095b40e9eda26f1fa499caf39bde341810397d1c8c65b2db9f",
+      "bytes": 30623653,
+      "migrationOrigin": true
+    },
+    {
+      "version": "2.0.43",
+      "sha256": "7a6f6600106bdeaf18b13eee276efd8d379b87eefd9a240e201c0b0502816423",
+      "bytes": 30623604,
+      "migrationOrigin": true
+    },
+    {
+      "version": "2.0.45",
+      "sha256": "a0e93d378ad722948b5ebbfc7a7caac7dbdf924edb8f8cbc310ebbd2ba2c3ef8",
+      "bytes": 30623640,
+      "migrationOrigin": true
+    },
+    {
+      "version": "2.0.47",
+      "sha256": "1d7fe48f3f4828e3177e9b0ff8ecc95a85f33e9bd736552a5fda99ca76738a76",
+      "bytes": 30624140,
+      "migrationOrigin": true
+    },
+    {
+      "version": "2.0.49",
+      "sha256": "1617c8c2ad0436089454dfaf9135568dac8d60cda63f1b9109528748b5583e18",
+      "bytes": 30624536,
+      "migrationOrigin": true
+    },
+    {
+      "version": "2.0.51",
+      "sha256": "382cc48141cffd9102af0ffa8ea9408a21aedaa0b22cff2178a0687483360b79",
+      "bytes": 30624517,
+      "migrationOrigin": true
     }
   ],
   "reviewedSupportGroups": [

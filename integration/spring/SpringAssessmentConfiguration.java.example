@@ -1,0 +1,46 @@
+// Example for Spring Boot 2/3/4. Review/adapt package names and the exact DataSource bean first.
+// Copy JavaAssessmentReporter.java into the application's source tree separately.
+package example.assessment;
+
+import java.io.File;
+import java.util.Collections;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import javax.sql.DataSource;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+@ConditionalOnProperty(name = "assessment.integration.enabled", havingValue = "true", matchIfMissing = false)
+public class SpringAssessmentConfiguration {
+    @Bean(destroyMethod = "shutdownNow")
+    ScheduledExecutorService assessmentReporter(
+            @Qualifier("dataSource") final DataSource dataSource,
+            @Value("${assessment.integration.application-path}") final String applicationPath,
+            @Value("${assessment.integration.report-file}") final String reportFile) {
+        final JavaAssessmentReporter reporter = new JavaAssessmentReporter();
+        ScheduledExecutorService worker = Executors.newSingleThreadScheduledExecutor(new ThreadFactory() {
+            public Thread newThread(Runnable task) {
+                Thread thread = new Thread(task, "assessment-local-report"); thread.setDaemon(true); return thread;
+            }
+        });
+        worker.scheduleWithFixedDelay(new Runnable() {
+            public void run() {
+                try {
+                    reporter.write(true, new File(applicationPath), new File(reportFile),
+                        Collections.singletonMap("dataSource", dataSource),
+                        Collections.singletonMap("dataSource", "spring.datasource"));
+                } catch (Exception failure) {
+                    // Send a generic error to your application's logger; do not log JDBC exception text.
+                    System.err.println("Java Assessment: optional local metadata report unavailable");
+                }
+            }
+        }, 30, 300, TimeUnit.SECONDS);
+        return worker;
+    }
+}

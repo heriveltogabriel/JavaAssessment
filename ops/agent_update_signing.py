@@ -12,6 +12,7 @@ import tempfile
 import zipfile
 
 MAX_JAR = 32 * 1024 * 1024
+MAX_HELPER_BASELINES = 32
 VERSION = re.compile(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)')
 ASSET = re.compile(r'(?:[a-z][a-z0-9-]*\.sh|lib/[A-Za-z0-9_.-]+\.jar|update-public\.der)')
 
@@ -23,6 +24,13 @@ def require(condition, message):
 
 def sha(data):
     return hashlib.sha256(data).hexdigest()
+
+
+def validate_helper_hashes(helpers, required):
+    require(isinstance(helpers, list) and 0 < len(helpers) <= MAX_HELPER_BASELINES
+            and all(isinstance(value, str) and re.fullmatch('[a-f0-9]{64}', value) for value in helpers)
+            and len(helpers) == len(set(helpers)) and required in helpers,
+            'Bridge helper allowlist must contain bounded explicit known binary hashes')
 
 
 def openssl(*args):
@@ -320,9 +328,7 @@ def sign_bridge_release(root, origin_zip, bridge_jar, bridge_version, target_ver
                 and metadata['recoveryResource'] == 'migration/baseline/collector.jar'
                 and jar.read(metadata['recoveryResource']) == original['collector.jar'], 'Bridge recovery provenance differs from pinned original')
         helpers = metadata['allowedHelperHashes']
-        require(isinstance(helpers, list) and helpers and len(helpers) <= 16 and len(helpers) == len(set(helpers))
-                and profile['fromCollectorSha256'] in helpers and all(re.fullmatch('[a-f0-9]{64}', value) for value in helpers),
-                'Bridge helper allowlist must contain explicit known binary hashes')
+        validate_helper_hashes(helpers, profile['fromCollectorSha256'])
     manifest = {'schema': 1, 'type': 'ASSESSMENT_AGENT_UPDATE_V1', 'version': bridge_version,
                 'format': 'collector-jar-v1', 'minUpdater': min_updater, 'sha256': sha(payload),
                 'bytes': len(payload), 'requiredFiles': profile['supportFiles']}

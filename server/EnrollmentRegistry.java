@@ -21,15 +21,24 @@ final class EnrollmentRegistry {
         String status=str(e.get("status"));if(!activeEnvironment(e,ids))status="revoked";else if("active".equals(status)&&num(e.get("expiresMillis"))<=System.currentTimeMillis())status="expired";else if("active".equals(status)&&num(e.get("usedCount"))>=num(e.get("maxUses")))status="exhausted";
         return AssessmentServer.map("id",e.get("id"),"label",e.get("label"),"createdAt",e.get("createdAt"),"expiresAt",e.get("expiresAt"),"maxUses",e.get("maxUses"),"usedCount",e.get("usedCount"),"status",status,"environmentId",str(e.get("environmentId")));
     }
-    List<Object> summaries(Set<String> ids){List<Object> result=new ArrayList<>();for(Map<String,Object> e:store.documents("SELECT payload FROM enrollments ORDER BY rowid DESC LIMIT 500"))result.add(summary(e,ids));return result;}
+    List<Object> summaries(Set<String> ids){List<Object> result=new ArrayList<>();for(Map<String,Object> e:store.documents("SELECT payload FROM enrollments WHERE json_extract(payload,'$.installAccessGeneration') IS NULL ORDER BY rowid DESC LIMIT 500"))result.add(summary(e,ids));return result;}
     Map<String,Object> issue(String label,int minutes,int maxUses,Map<String,Object> settings,boolean autoCollect,String environmentId,Set<String> ids)throws IOException{
+        return issue(label,minutes,maxUses,settings,autoCollect,environmentId,ids,null);
+    }
+    Map<String,Object> issueInstallAccess(String label,String environmentId,String generation,Set<String> ids)throws IOException{
+        return issue(label,1440,1000,AssessmentServer.map(),true,environmentId,ids,generation);
+    }
+    private Map<String,Object> issue(String label,int minutes,int maxUses,Map<String,Object> settings,boolean autoCollect,String environmentId,Set<String> ids,String generation)throws IOException{
         return store.transaction(()->{
-            if(store.scalar("SELECT count(*) FROM enrollments")>=MAX_ENROLLMENTS){
+            String category=generation==null?"json_extract(payload,'$.installAccessGeneration') IS NULL":"json_extract(payload,'$.installAccessGeneration') IS NOT NULL";
+            int limit=generation==null?MAX_ENROLLMENTS:2000;
+            if(store.scalar("SELECT count(*) FROM enrollments WHERE "+category)>=limit){
                 store.exec("DELETE FROM enrollments WHERE status <> 'active' OR expires_millis <= ? OR (coalesce(json_extract(payload,'$.environmentId'),'') <> '' AND json_extract(payload,'$.environmentId') NOT IN (SELECT id FROM environments))",System.currentTimeMillis());
-                if(store.scalar("SELECT count(*) FROM enrollments")>=MAX_ENROLLMENTS)throw new Failure(409,"Enrollment history limit reached");
+                if(store.scalar("SELECT count(*) FROM enrollments WHERE "+category)>=limit)throw new Failure(409,"Enrollment history limit reached");
             }
             String code=token(),id="enr-"+UUID.randomUUID();long expires=System.currentTimeMillis()+minutes*60000L;
             Map<String,Object> e=AssessmentServer.map("id",id,"label",label,"createdAt",AssessmentServer.now(),"expiresAt",stamp(expires),"expiresMillis",expires,"maxUses",maxUses,"usedCount",0,"status","active","tokenHash",InventoryStore.hash(code),"settings",settings,"autoCollect",autoCollect,"environmentId",environmentId);
+            if(generation!=null)e.put("installAccessGeneration",generation);
             store.put("enrollments",e);return AssessmentServer.map("enrollment",summary(e,ids),"enrollmentToken",code);
         });
     }
@@ -38,7 +47,7 @@ final class EnrollmentRegistry {
         return store.transaction(()->{
             List<Map<String,Object>> es=store.documents("SELECT payload FROM enrollments WHERE token_hash=? LIMIT 1",InventoryStore.hash(code));
             if(es.isEmpty())throw new Failure(401,"Invalid enrollment credential");Map<String,Object> e=es.get(0);
-            if(!activeEnvironment(e,ids)||!"active".equals(e.get("status"))||num(e.get("expiresMillis"))<=System.currentTimeMillis())throw new Failure(403,"Enrollment has expired or was revoked");
+            if(!activeEnvironment(e,ids)||!EnvironmentInstallAccess.enrollmentAllowed(store,e)||!"active".equals(e.get("status"))||num(e.get("expiresMillis"))<=System.currentTimeMillis())throw new Failure(403,"Enrollment has expired or was revoked");
             List<Map<String,Object>> prior=store.documents("SELECT payload FROM identities WHERE installation_id=? LIMIT 1",installationId);
             if(!prior.isEmpty()){
                 Map<String,Object> h=prior.get(0);if(!e.get("id").equals(h.get("enrollmentId")))throw new Failure(409,"Installation already registered with a different code; administrator recovery is required when its operational credential is missing");

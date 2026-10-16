@@ -71,7 +71,12 @@ public final class AssessmentScan {
             File jar = codeLocation.getCanonicalFile();
             if (!"collector.jar".equals(jar.getName()) || !jar.isFile()) return null;
             File root = jar.getParentFile();
-            return root != null && root.getParentFile() != null ? root.getPath() : null;
+            if (root == null || root.getParentFile() == null) return null;
+            // Full updates execute from <installation>/releases/<release>/collector.jar.
+            File releases = root.getParentFile(), installation = releases.getParentFile();
+            if ("releases".equals(releases.getName()) && installation != null
+                && "java-assessment-collector".equals(installation.getName())) return installation.getPath();
+            return root.getPath();
         } catch (IOException e) { return null; }
     }
     static String privateRuntimeRoot(File codeLocation) {
@@ -95,6 +100,15 @@ public final class AssessmentScan {
     boolean privateRuntime(String path) {
         return collectorPrivateRuntimeRoot != null && under(path, collectorPrivateRuntimeRoot)
             || collectorExternalRuntimeRoot != null && under(path, collectorExternalRuntimeRoot);
+    }
+
+    boolean internalSweepPath(String path) {
+        if (collectorInstallationRoot != null && under(path, collectorInstallationRoot)) return true;
+        if (privateRuntime(path)) return true;
+        if (collectorInstallationRoot == null || !"java-assessment-collector".equals(new File(collectorInstallationRoot).getName())) return false;
+        File parent = new File(collectorInstallationRoot).getParentFile();
+        return under(path, new File(parent, "java-assessment-update").getPath())
+            || under(path, new File(parent, "java-assessment-uninstall").getPath());
     }
 
     String visitedKey(String path) {
@@ -196,8 +210,7 @@ public final class AssessmentScan {
     public Map scan(String jobId) {
         Map host = host();
         discoverProcesses();
-        // Enrich any application-observed use of the private runtime, while a
-        // collector-only copy remains outside the application Java inventory.
+        // Dedicated collector runtimes remain outside the application Java inventory.
         addRuntime(new File(System.getProperty("java.home")), false, "Collector runtime properties; collector alone is excluded from application usage", timestamp,
             System.getProperty("java.version"), System.getProperty("java.vendor"), System.getProperty("os.arch"));
         Object includes = settings.get("includePaths");
@@ -310,7 +323,7 @@ public final class AssessmentScan {
             path = file.getCanonicalPath();
             // Sweep exclusions do not apply to explicit process-linked evidence.
             // Apply them before budgets: intentionally skipped trees are not gaps.
-            if (excluded(path) || (collectorInstallationRoot != null && under(path, collectorInstallationRoot)) || privateRuntime(path)) return;
+            if (excluded(path) || internalSweepPath(path)) return;
             key = visitedKey(path);
             if (visited.contains(key)) return;
             if (!file.getAbsolutePath().equals(path)) { note("Symlink path skipped: " + file.getPath()); return; }
@@ -369,7 +382,7 @@ public final class AssessmentScan {
             Map existing = runtimes.get(path);
             boolean compiler = new File(path, "bin/javac").isFile();
             if (!new File(path, "bin/java").isFile() || (!compiler && !used && existing == null)) return null;
-            if (!used && existing == null && privateRuntime(path)) return null;
+            if (privateRuntime(path)) return null;
             if (existing != null) {
                 if (used) { existing.put("inUse", Boolean.TRUE); existing.put("evidence", evidence + (existing.get("runtimeMetadataSource") == null ? "" : "; runtime metadata " + existing.get("runtimeMetadataSource"))); existing.put("observedAt", observedAt); }
                 if (version != null) existing.put("version", version);
@@ -515,6 +528,8 @@ public final class AssessmentScan {
                 if (app != null) app.put("serverName", serverName);
             }
             discoverLinked(context);
+            SpringConfiguration.discover(this, context, directory);
+            SpringIntegration.enrich(this, context, directory);
         }
         if (restrictedProcesses > 0) warn("Process permissions limited executable, working-directory or command metadata for " + restrictedProcesses + " Java process(es); readable launcher evidence was retained");
         if (restrictedArtifacts > 0) warn("The collector user could not access " + restrictedArtifacts + " process-linked artifact location(s); versions and JDBC inventory may be incomplete");
@@ -650,6 +665,7 @@ public final class AssessmentScan {
             if (appType != null) { application.put("type", appType); application.put("applicationType", appType); }
             if (metadata.get("version") != null) application.put("version", metadata.get("version"));
             if (metadata.get("frameworkVersion") != null) application.put("frameworkVersion", metadata.get("frameworkVersion"));
+            if (metadata.get("embeddedServers") != null) application.put("embeddedServers", metadata.get("embeddedServers"));
             if (main != null) application.put("mainClass", main);
             if (context != null && launchArtifact) {
                 String title = ProcessLaunch.label(clean(metadata.get("title")));
@@ -684,22 +700,23 @@ public final class AssessmentScan {
                 for (String field : new String[]{"pid", "applicationId", "applicationName", "serverName"}) { if (associations.size() == 1 && association.containsKey(field)) row.put(field, association.get(field)); else row.remove(field); }
             }
         }
-        if (context != null && launchArtifact && application != null && "Spring Boot".equals(appType) && metadata.get("configuredDataSource") instanceof Map)
-            addConfiguredSpringDatasource(path, (Map)metadata.get("configuredDataSource"), application, context);
+        // Per-process Spring resolution follows discovery, after all driver libraries are associated.
     }
     void addConfiguredSpringDatasource(String path, Map configuration, Map application, ProcessContext context) {
         if (!Boolean.TRUE.equals(configuration.get("configurationPresent"))) return;
-        String key = "spring-default:" + path;
+        // Datasource candidates belong to a live application instance. URLs are not retained,
+        // so PID isolation also prevents identical driver metadata from merging distinct endpoints.
+        String key = "spring-config:" + path + ":pid:" + context.pid + ":" + Json.stringify(configuration);
         Map row = configuredDatasourceRows.get(key);
         if (row == null) {
             if (datasources.size() >= 512) { warn("Datasource row limit reached; remaining configuration findings were not retained"); return; }
             String name = ProcessLaunch.label(clean(application.get("name"))); if (name == null) name = "Spring Boot";
-            row = map("id", id("datasource", hostId + key), "hostId", hostId, "name", name + " datasource",
+            row = map("id", id("datasource", hostId + key), "hostId", hostId, "name", configuration.get("configuredName") != null ? configuration.get("configuredName") : name + " datasource",
                 "sourcePath", path, "configurationSource", clean(configuration.get("configurationSource")),
                 "state", "CONFIGURED", "evidenceLevel", "configuration", "scanScope", "process-linked",
-                "evidence", "Base Spring datasource settings found in packaged configuration; effective overrides, profile activation, driver loading and database connectivity were not verified; no pool runtime metrics collected",
+                "evidence", "Local Spring datasource configuration candidate; programmatic overrides, driver loading and database connectivity were not verified",
                 "observedAt", timestamp);
-            for (String field : new String[]{"driverName", "driverVersion", "databaseType", "configuredMaxPoolSize"})
+            for (String field : new String[]{"driverName", "driverVersion", "databaseType", "configuredMaxPoolSize", "configurationKey", "datasourceKey", "configurationResolution", "activeProfiles", "jndiName"})
                 if (configuration.get(field) != null) row.put(field, configuration.get(field));
             if (row.get("driverVersion") != null) row.put("driverVersionEvidence", "Matching packaged JDBC library; runtime loading not verified");
             configuredDatasourceRows.put(key, row); datasources.add(row);

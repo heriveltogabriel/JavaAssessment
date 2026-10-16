@@ -14,7 +14,8 @@ final class InventoryQueries {
     @SuppressWarnings("unchecked") static Map<String,Object> obj(Object o){return (Map<String,Object>)o;}
     static final class Scope {
         String environment="",host="",view="overview",q="",version="",mode="family",subset="",from="",to="";
-        int page=1,size=20;
+        int page=1,size=20,minimumSeconds=300;
+        Instant now=Instant.now();
         final List<Object> args=new ArrayList<>();
         String where(){args.clear();String w="1=1";if(!environment.isEmpty()){w+=" AND h.environment_id=?";args.add(environment.equals("__unassigned__")?"":environment);}if(!host.isEmpty()){w+=" AND h.id=?";args.add(host);}return w;}
     }
@@ -23,6 +24,18 @@ final class InventoryQueries {
         if(raw.isEmpty())return "";
         try{if(raw.length()==10)return (end?LocalDate.parse(raw).plusDays(1):LocalDate.parse(raw)).atStartOfDay(ZoneOffset.UTC).toInstant().toString();return Instant.parse(raw).toString();}
         catch(Exception e){throw new IllegalArgumentException("Invalid date filter");}
+    }
+    static final Set<String> PRESENCE_STATES=Set.of("recent","delayed","silent","awaiting","revoked","uninstalled","unknown");
+    private String presenceCase(Scope f,List<Object> args){
+        args.add(f.now.plusSeconds(60).toString());
+        args.add(f.now.minusSeconds(150).toString());
+        args.add(f.now.minusSeconds(300).toString());
+        return "CASE WHEN json_extract(h.payload,'$.agentLifecycle')='uninstalled' THEN 'uninstalled' "
+            +"WHEN EXISTS (SELECT 1 FROM identities idn WHERE idn.id=h.id AND idn.status='revoked') THEN 'revoked' "
+            +"WHEN coalesce(h.last_seen,'')='' THEN 'awaiting' "
+            +"WHEN julianday(h.last_seen) IS NULL OR julianday(h.last_seen)>julianday(?) THEN 'unknown' "
+            +"WHEN julianday(h.last_seen)>julianday(?) THEN 'recent' "
+            +"WHEN julianday(h.last_seen)>julianday(?) THEN 'delayed' ELSE 'silent' END";
     }
     private String conditions(Scope f,String kind,List<Object> a){
         String w=f.where();a.addAll(f.args);
@@ -33,9 +46,15 @@ final class InventoryQueries {
         String stamp=kind.equals("hosts")?"h.last_seen":kind.equals("jobs")?"j.created_at":"i.observed_at";
         if(!f.from.isEmpty()){w+=" AND (coalesce("+stamp+",'')='' OR julianday("+stamp+") >= julianday(?))";a.add(f.from);}
         if(!f.to.isEmpty()){w+=" AND (coalesce("+stamp+",'')='' OR julianday("+stamp+") < julianday(?))";a.add(f.to);}
-        if(kind.equals("runtimes")&&!f.version.isEmpty()){w+=" AND i."+(f.mode.equals("exact")?"version":"major")+"=?";a.add(f.version.equals("Version unknown")?"":f.mode.equals("exact")?f.version:f.version.replaceFirst("^Java ",""));}
+        if(kind.equals("runtimes")&&!f.version.isEmpty()){w+=" AND i."+(f.mode.equals("exact")?"version":"major")+"=?";a.add((f.version.equals("Version unknown")||f.version.equals("Versão desconhecida"))?"":f.mode.equals("exact")?f.version:f.version.replaceFirst("^Java ",""));}
         if(kind.equals("servers")&&f.subset.equals("runtime"))w+=" AND coalesce(json_extract(i.payload,'$.state'),'') <> ''";
         if(kind.equals("libraries")&&f.subset.equals("jdbc"))w+=" AND lower(coalesce(json_extract(i.payload,'$.category'),''))='jdbc'";
+        if(kind.equals("hosts")&&PRESENCE_STATES.contains(f.subset)){
+            w+=" AND ("+presenceCase(f,a)+")=?";a.add(f.subset);
+        }
+        if(kind.equals("hosts")&&(f.subset.equals("disconnected")||f.subset.equals("silent"))){
+            w+=" AND julianday(h.last_seen) <= julianday(?)";a.add(f.now.minusSeconds(f.minimumSeconds).toString());
+        }
         return w;
     }
     Map<String,Object> page(Scope f,String kind){
@@ -66,16 +85,16 @@ final class InventoryQueries {
         result.put("jdbcLibraries",db.scalar("SELECT count(*) FROM inventory i JOIN hosts h ON h.id=i.host_id WHERE i.kind='libraries' AND lower(json_extract(i.payload,'$.category'))='jdbc' AND "+w,a));
         return result;
     }
-    static final String DS_CLASS="CASE WHEN lower(coalesce(json_extract(i.payload,'$.evidenceLevel'),''))='configuration' OR upper(coalesce(json_extract(i.payload,'$.state'),''))='CONFIGURED' THEN 'configured' WHEN lower(coalesce(json_extract(i.payload,'$.evidenceLevel'),''))='runtime' OR upper(coalesce(json_extract(i.payload,'$.state'),'')) IN ('RUNNING','SUSPENDED','SHUTDOWN','OVERLOADED','UNHEALTHY') OR coalesce(json_extract(i.payload,'$.evidence'),'') LIKE '%Existing WebLogic JMX snapshot%' OR lower(coalesce(json_extract(i.payload,'$.evidence'),'')) LIKE 'confirmed%' THEN 'runtime' ELSE 'unknown' END";
-    Map<String,Object> datasourceSummary(Scope f){String w=f.where();Map<String,Object> counts=map("configured",0L,"runtime",0L,"unknown",0L);for(Map<String,Object> row:db.rows("SELECT "+DS_CLASS+" category,count(*) count FROM inventory i JOIN hosts h ON h.id=i.host_id WHERE i.kind='datasources' AND "+w+" GROUP BY category",f.args.toArray()))counts.put(s(row.get("category")),row.get("count"));return counts;}
+    static final String DS_CLASS="CASE WHEN lower(coalesce(json_extract(i.payload,'$.evidenceLevel'),''))='application-reported' OR upper(coalesce(json_extract(i.payload,'$.state'),''))='APPLICATION_REPORTED' THEN 'applicationReported' WHEN lower(coalesce(json_extract(i.payload,'$.evidenceLevel'),''))='configuration' OR upper(coalesce(json_extract(i.payload,'$.state'),''))='CONFIGURED' THEN 'configured' WHEN lower(coalesce(json_extract(i.payload,'$.evidenceLevel'),''))='runtime' OR upper(coalesce(json_extract(i.payload,'$.state'),'')) IN ('RUNNING','SUSPENDED','SHUTDOWN','OVERLOADED','UNHEALTHY') OR coalesce(json_extract(i.payload,'$.evidence'),'') LIKE '%Existing WebLogic JMX snapshot%' OR lower(coalesce(json_extract(i.payload,'$.evidence'),'')) LIKE 'confirmed%' THEN 'runtime' ELSE 'unknown' END";
+    Map<String,Object> datasourceSummary(Scope f){String w=f.where();Map<String,Object> counts=map("configured",0L,"runtime",0L,"applicationReported",0L,"unknown",0L);for(Map<String,Object> row:db.rows("SELECT "+DS_CLASS+" category,count(*) count FROM inventory i JOIN hosts h ON h.id=i.host_id WHERE i.kind='datasources' AND "+w+" GROUP BY category",f.args.toArray()))counts.put(s(row.get("category")),row.get("count"));return counts;}
     List<Map<String,Object>> javaGroups(Scope f,boolean exact){return javaGroups(f,exact,2000,0,false);}
     List<Map<String,Object>> javaGroups(Scope f,boolean exact,int limit,int offset,boolean selected){
         String w=f.where(),column=exact?"i.version":"i.major";List<Object> args=new ArrayList<>(f.args);
-        if(selected&&!f.version.isEmpty()){w+=" AND "+column+"=?";args.add(f.version.equals("Version unknown")?"":exact?f.version:f.version.replaceFirst("^Java ",""));}
+        if(selected&&!f.version.isEmpty()){w+=" AND "+column+"=?";args.add((f.version.equals("Version unknown")||f.version.equals("Versão desconhecida"))?"":exact?f.version:f.version.replaceFirst("^Java ",""));}
         args.add(limit);args.add(offset);
-        return db.rows("SELECT "+(exact?"coalesce(nullif(i.version,''),'Version unknown')":"CASE WHEN i.major='' THEN 'Version unknown' ELSE 'Java ' || i.major END")+" name,count(*) count,count(DISTINCT i.host_id) hostCount FROM inventory i JOIN hosts h ON h.id=i.host_id WHERE i.kind='runtimes' AND "+w+" GROUP BY "+column+" ORDER BY count DESC,name LIMIT ? OFFSET ?",args.toArray());
+        return db.rows("SELECT "+(exact?"coalesce(nullif(i.version,''),'Versão desconhecida')":"CASE WHEN i.major='' THEN 'Versão desconhecida' ELSE 'Java ' || i.major END")+" name,count(*) count,count(DISTINCT i.host_id) hostCount FROM inventory i JOIN hosts h ON h.id=i.host_id WHERE i.kind='runtimes' AND "+w+" GROUP BY "+column+" ORDER BY count DESC,name LIMIT ? OFFSET ?",args.toArray());
     }
-    List<Map<String,Object>> osGroups(Scope f){String w=f.where();return db.rows("SELECT coalesce(nullif(json_extract(h.payload,'$.distribution'),''),nullif(json_extract(h.payload,'$.osName'),''),'OS not reported') name,count(*) count FROM hosts h WHERE "+w+" GROUP BY name ORDER BY count DESC,name LIMIT 1000",f.args.toArray());}
+    List<Map<String,Object>> osGroups(Scope f){String w=f.where();return db.rows("SELECT coalesce(nullif(json_extract(h.payload,'$.distribution'),''),nullif(json_extract(h.payload,'$.osName'),''),'Sistema operacional não informado') name,count(*) count FROM hosts h WHERE "+w+" GROUP BY name ORDER BY count DESC,name LIMIT 1000",f.args.toArray());}
     List<Map<String,Object>> productGroups(Scope f,String kind,long total){
         boolean server=kind.equals("servers");if(!server&&!kind.equals("datasources"))throw new IllegalArgumentException("Unsupported distribution");
         String name=server?"coalesce(nullif(i.type,''),'Java server')":"coalesce(nullif(json_extract(i.payload,'$.name'),''),'Datasource sem nome')";
@@ -92,20 +111,26 @@ final class InventoryQueries {
         List<Object> warnings=new ArrayList<>();if(partial>0)warnings.add(partial+" machine(s) have coverage notes");if(pending>0)warnings.add(pending+" machine(s) await an assessment");
         return map("status",complete+partial==0?"pending":partial+pending>0?"partial":"complete","warnings",warnings,"lastAssessmentAt",latest,"completeHosts",complete,"partialHosts",partial,"pendingHosts",pending,"stats",map());
     }
-    Map<String,Object> presence(Scope f){String w=f.where();String recent=java.time.Instant.now().minusSeconds(150).toString(),silent=java.time.Instant.now().minusSeconds(300).toString();List<Object> a=new ArrayList<>(List.of(recent,silent));a.addAll(f.args);Map<String,Object> result=map("recent",0,"delayed",0,"silent",0,"awaiting",0,"revoked",0,"uninstalled",0);for(Map<String,Object> r:db.rows("SELECT CASE WHEN json_extract(h.payload,'$.agentLifecycle')='uninstalled' THEN 'uninstalled' WHEN idn.status='revoked' THEN 'revoked' WHEN h.last_seen='' THEN 'awaiting' WHEN julianday(h.last_seen)>=julianday(?) THEN 'recent' WHEN julianday(h.last_seen)>=julianday(?) THEN 'delayed' ELSE 'silent' END status,count(*) count FROM hosts h LEFT JOIN identities idn ON idn.id=h.id WHERE "+w+" GROUP BY 1",a.toArray()))result.put(s(r.get("status")),r.get("count"));return result;}
+    Map<String,Object> presence(Scope f){
+        String w=f.where();List<Object> args=new ArrayList<>();String status=presenceCase(f,args);args.addAll(f.args);
+        Map<String,Object> result=map("recent",0,"delayed",0,"silent",0,"awaiting",0,"revoked",0,"uninstalled",0,"unknown",0);
+        for(Map<String,Object> row:db.rows("SELECT "+status+" status,count(*) count FROM hosts h WHERE "+w+" GROUP BY 1",args.toArray()))
+            result.put(s(row.get("status")),row.get("count"));
+        return result;
+    }
     void decorateHosts(List<Map<String,Object>> hosts){
         for(Map<String,Object> host:hosts){Scope scope=new Scope();scope.host=s(host.get("id"));Map<String,Object> counts=summary(scope);host.put("counts",counts);host.put("javaVersions",javaGroups(scope,false));host.put("exactJavaVersions",javaGroups(scope,true));host.put("datasourceSummary",datasourceSummary(scope));
             host.put("workloads",db.rows("SELECT i.kind kind,coalesce(nullif(json_extract(i.payload,'$.applicationType'),''),nullif(i.type,''),'Java application') type,max(CASE WHEN json_extract(i.payload,'$.state')='PROCESS_RUNNING' THEN 2 WHEN coalesce(json_extract(i.payload,'$.state'),'') NOT IN ('','FOUND','FILE','FILE_FOUND','UNKNOWN') THEN 3 ELSE 1 END) priority FROM inventory i WHERE i.host_id=? AND i.kind IN ('servers','applications') GROUP BY kind,type LIMIT 20",scope.host));
         }
     }
     Map<String,Object> view(Scope f){
-        Map<String,Object> result=map("scoped",true,"version",DashboardVersion.VERSION,"fleet",db.metadata("fleet"),"settings",db.metadata("settings"),"summary",summary(f),"coverage",coverage(f),"javaGroups",javaGroups(f,false,6,0,false),"exactJavaGroups",javaGroups(f,true,6,0,false),"osGroups",osGroups(f),"datasourceSummary",datasourceSummary(f),"presence",presence(f),"serverTime",AssessmentServer.now(),"pilot",false,"scope",map("environmentId",f.environment,"hostId",f.host));
+        Map<String,Object> result=map("scoped",true,"version",DashboardVersion.VERSION,"fleet",db.metadata("fleet"),"settings",db.metadata("settings"),"summary",summary(f),"coverage",coverage(f),"javaGroups",javaGroups(f,false,6,0,false),"exactJavaGroups",javaGroups(f,true,6,0,false),"osGroups",osGroups(f),"datasourceSummary",datasourceSummary(f),"presence",presence(f),"serverTime",f.now.toString(),"pilot",false,"scope",map("environmentId",f.environment,"hostId",f.host));
         if(f.view.equals("versions")){
             boolean exact=f.mode.equals("exact");String key=exact?"exactJavaGroups":"javaGroups";
             if(f.version.isEmpty()){long total=n(obj(result.get("summary")).get(exact?"distinctVersions":"majorVersions"));int pages=(int)Math.max(1,(total+f.size-1)/f.size),page=Math.min(f.page,pages);result.put(key,javaGroups(f,exact,f.size,(page-1)*f.size,false));result.put("pagination",map("collection","versionGroups","page",page,"pageSize",f.size,"total",total,"pages",pages));}
             else result.put(key,javaGroups(f,exact,1,0,true));
         }else{
-            List<Map<String,Object>> groups=(List<Map<String,Object>>)result.get("javaGroups");long shown=0;for(Map<String,Object> group:groups)shown+=n(group.get("count"));long others=n(obj(result.get("summary")).get("runtimes"))-shown;if(others>0)groups.add(map("name","Other versions","count",others,"hostCount",0,"other",true));
+            List<Map<String,Object>> groups=(List<Map<String,Object>>)result.get("javaGroups");long shown=0;for(Map<String,Object> group:groups)shown+=n(group.get("count"));long others=n(obj(result.get("summary")).get("runtimes"))-shown;if(others>0)groups.add(map("name","Outras versões","count",others,"hostCount",0,"other",true));
         }
         for(String kind:KINDS)result.put(kind,new ArrayList<>());result.put("jobs",new ArrayList<>());List<Map<String,Object>> hosts=new ArrayList<>();String kind=f.view.equals("versions")?"runtimes":f.view;
         if(kind.equals("libraries")&&f.subset.equals("datasources"))kind="datasources";
@@ -133,7 +158,7 @@ final class InventoryQueries {
         decorateHosts(hosts);result.put("hosts",hosts);
         List<Map<String,Object>> environments=db.documents("SELECT payload FROM environments ORDER BY name,id LIMIT 200");
         Map<String,Long> environmentHosts=new HashMap<>();for(Map<String,Object> count:db.rows("SELECT environment_id,count(*) count FROM hosts GROUP BY environment_id"))environmentHosts.put(s(count.get("environment_id")),n(count.get("count")));
-        for(Map<String,Object> env:environments){env.put("counts",map("hosts",environmentHosts.getOrDefault(s(env.get("id")),0L)));if(f.view.equals("environments")){Scope e=new Scope();e.environment=s(env.get("id"));env.put("counts",summary(e));env.put("coverage",coverage(e));env.put("lastAssessmentAt",obj(env.get("coverage")).get("lastAssessmentAt"));}}
+        for(Map<String,Object> env:environments){env.put("counts",map("hosts",environmentHosts.getOrDefault(s(env.get("id")),0L)));if(f.view.equals("environments")){Scope e=new Scope();e.now=f.now;e.environment=s(env.get("id"));env.put("presence",presence(e));env.put("counts",summary(e));env.put("coverage",coverage(e));env.put("lastAssessmentAt",obj(env.get("coverage")).get("lastAssessmentAt"));}}
         result.put("environments",environments);return result;
     }
 }

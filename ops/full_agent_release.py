@@ -15,7 +15,8 @@ import zipfile
 
 from agent_update_signing import (ensure_keypair, legacy_bridge_profile, package_entries,
                                  sha, sign_bridge_release, sign_bundle_release,
-                                 sign_release, _signed_bytes, require, VERSION, bundle_entries, openssl)
+                                 sign_release, _signed_bytes, require, VERSION, bundle_entries, openssl,
+                                 validate_helper_hashes)
 from unified_agent import build_bridge
 
 
@@ -125,7 +126,7 @@ def build_assets(product_root, signing_root, output, agent, target, bridge, orig
     for row, profile in reviewed:
         known_helpers = sorted({p['fromCollectorSha256'] for p in ([p for _, p in reviewed] + helper_profiles)
                                 if numbers(p['fromVersion']) <= numbers(profile['fromVersion'])})
-        require(len(known_helpers) <= 16, 'Too many known helper baselines; split reviewed origin inventory')
+        validate_helper_hashes(known_helpers, profile['fromCollectorSha256'])
         staged = output / 'bridge-builds' / sha(json.dumps(profile, sort_keys=True).encode())
         payload = build_bridge(product_root, staged, Path(row['path']), bridge, target,
                                Path(java), row['sha256'], known_helpers)

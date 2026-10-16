@@ -11,21 +11,32 @@ Arquivos para instalar o dashboard e os agentes na infraestrutura do cliente. Os
 - [Manual ilustrado da solução](Manual.pdf): arquitetura, inventário, atualização de agentes, relatórios e filtros JDBC.
 - [Guia de instalação](Guia-instalacao.pdf): requisitos, comandos, configuração do dashboard e instalação dos agentes.
 
-## Instalador atual — 2.0.17
+## Instalador atual — 2.0.53
+
+- [assessment-dashboard-installer-2.0.53.zip](v2.0.53/assessment-dashboard-installer-2.0.53.zip)
+- [Arquivo SHA-256 da 2.0.53](v2.0.53/assessment-dashboard-installer-2.0.53.zip.sha256)
+- [O que mudou na 2.0.53](../docs/RELEASE_2.0.53.md)
+
+Inclui a interface em português, relatórios PDF/CSV com JDBC, instalação por ZIP ou curl/wget, descoberta Spring Boot, indicadores de comunicação e limpeza do inventário. Esta entrega inclui os ajustes finais publicados na interface: resumo “1 coleta concluída com observações.”, filtros de relatórios recolhidos ao entrar/trocar de modelo e correção do guia de instalação do agente.
+
+Este ZIP instala um dashboard novo; não execute o instalador sobre um dashboard existente para atualizá-lo. Requer Enterprise Linux 8+ de 64 bits e JDK 17+. O suporte legado do agente não se aplica ao servidor do dashboard. Linux/Java de 32 bits ainda não foi validado.
+
+```sh
+# Linux
+sha256sum -c assessment-dashboard-installer-2.0.53.zip.sha256
+# macOS
+shasum -a 256 -c assessment-dashboard-installer-2.0.53.zip.sha256
+```
+
+O resultado deve ser `OK`. Os PDFs mantêm nomes genéricos; consulte também o guia incluído no ZIP, as notas da versão, [a instalação via terminal](../docs/ENVIRONMENT_INSTALL_ACCESS.md) e [a limpeza do inventário](../docs/MACHINE_CLEANUP.md).
+
+**Atenção: atualize também os agentes.** Publicar o dashboard não atualiza as máquinas automaticamente. Abra **Revisar agentes**: instalações V3 e perfis legados conhecidos a partir de 1.5.12 podem usar o painel quando elegíveis pelo catálogo assinado. Instalações não elegíveis precisam do pacote configurado do ambiente com `--system-root`. Acompanhe em **Solicitações**, confirme a versão final e solicite nova coleta para obter os novos dados. Comece por uma máquina.
+
+## Instalador anterior — 2.0.17
 
 - [assessment-dashboard-installer-2.0.17.zip](v2.0.17/assessment-dashboard-installer-2.0.17.zip)
 - [Arquivo SHA-256 da 2.0.17](v2.0.17/assessment-dashboard-installer-2.0.17.zip.sha256)
 - [O que mudou na 2.0.17](../docs/RELEASE_2.0.17.md)
-
-Inclui relatórios de máquinas, Java, servidores, JDBC e ambientes com filtros, seleção de colunas e exportação PDF/CSV. Todos os modelos apresentam contexto JDBC; o relatório de servidores também apresenta IP e versão Java associada. Os filtros JDBC incluem datasource, banco, driver, versão, classe, referência, servidor, aplicação, tipo de recurso, estado e presença no inventário.
-
-Este ZIP instala um dashboard novo; não execute o instalador sobre um dashboard existente para atualizá-lo. Os relatórios usam o inventário já recebido, respeitando as associações registradas entre servidores e datasources.
-
-Confira com `sha256sum -c assessment-dashboard-installer-2.0.17.zip.sha256` no Linux ou `shasum -a 256 -c assessment-dashboard-installer-2.0.17.zip.sha256` no macOS. O resultado deve ser `OK`.
-
-Os PDFs têm nomes estáveis e descrevem a operação atual. Nos comandos, substitua `X.Y.Z` pela versão do pacote baixado. Consulte também o guia incluído no ZIP e as notas da 2.0.17. O dashboard requer Enterprise Linux 8+ de 64 bits e JDK 17+; o suporte legado do agente não se aplica ao servidor do dashboard. Linux/Java de 32 bits ainda não foi validado.
-
-**Atenção: atualize também os agentes.** Publicar o dashboard não atualiza as máquinas automaticamente. Abra **Revisar agentes**: instalações V3 e perfis legados conhecidos a partir de 1.5.12 podem usar o painel quando forem elegíveis; a versão numérica sozinha não comprova compatibilidade. Instalações desconhecidas ou sem atualizador funcional precisam do pacote configurado do ambiente com `--system-root`. Acompanhe o Work request e confirme a versão final. Teste primeiro uma máquina.
 
 ## Instalador anterior — 2.0.13
 

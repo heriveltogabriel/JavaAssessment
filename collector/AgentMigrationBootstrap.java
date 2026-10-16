@@ -359,7 +359,10 @@ public final class AgentMigrationBootstrap {
             int stopped = commands.run(new String[]{commands.executable("systemctl"), "stop", LEGACY_SERVICE}, 60000L);
             AgentInstallLayout.require(stopped == 0, "SERVICE_FAILED");
             ServiceState helper = commands.status(LEGACY_SERVICE);
-            AgentInstallLayout.require("loaded".equals(helper.load) && "inactive".equals(helper.active) && helper.stopped(), "SERVICE_FAILED");
+            // Older systemd may retain failed/143 after a successful stop of the
+            // shell supervisor. Only quiescence permits handoff, not exit status:
+            // loaded + inactive/failed + zero main/control PID + no pending job.
+            AgentInstallLayout.require("loaded".equals(helper.load) && helper.stopped(), "SERVICE_FAILED");
             preparedIdentity(transaction);
             String unit = "java-assessment-bootstrap-" + operation + ".service";
             int result = commands.run(new String[]{commands.executable("systemd-run"), "--unit=" + unit,

@@ -8,14 +8,7 @@ import java.util.*;
 final class CsvExport {
     private static final String[] KINDS={"hosts","runtimes","processes","servers","libraries","applications","datasources","jobs"};
     private static final String[] COLUMNS={
-        "record_type","environment","environment_id","hostname","host_id","record_id",
-        "name","version","type","path","state","observed_at","vendor","java_home","in_use",
-        "application_id","application_name","server_name","category","usage","evidence","evidence_level",
-        "framework_version","driver_name","driver_version","database_type","configuration_source",
-        "configured_max_pool_size","pool_capacity","pool_available","active_connections",
-        "pid","main_class","module_name","os","distribution","architecture","ip_addresses",
-        "collector_version","collector_java_version","agent_lifecycle","last_seen","last_assessment_at",
-        "coverage_status","logical_cpus","memory_total_bytes","created_at","started_at","finished_at","summary"
+        "Tipo de registro","Ambiente","ID do ambiente","Máquina","ID da máquina","ID do registro","Nome","Versão","Tipo","Caminho","Estado","Observado em","Fornecedor","Diretório Java","Em uso","ID da aplicação","Aplicação","Servidor Java","Categoria","Uso","Evidência","Nível de evidência","Versão do framework","Driver JDBC","Versão do driver","Tipo de banco","Origem da configuração","Pool máximo configurado","Capacidade do pool","Conexões disponíveis","Conexões ativas","PID","Classe principal","Módulo","Sistema operacional","Distribuição","Arquitetura","Endereços IP","Versão do agente","Versão do Java do agente","Ciclo de vida do agente","Último contato","Última coleta","Estado da cobertura","CPUs lógicas","Memória total (bytes)","Criado em","Iniciado em","Concluído em","Resultado"
     };
 
     private CsvExport() {}

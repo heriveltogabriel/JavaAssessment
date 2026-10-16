@@ -131,13 +131,13 @@ public final class JdkInventoryTest {
             ProcessLaunchTest.process(proc, "98766003", new File(nested, "bin/java").getPath(), "org.apache.catalina.startup.Bootstrap", "start");
             AssessmentScan observed = scanner(jar); observed.discoverProcesses(proc);
             Map privateRow = add(observed, nested, false, "1.6.0_45");
-            check(privateRow != null && observed.runtimes.size() == 1 && Boolean.TRUE.equals(privateRow.get("inUse")) && "1.6.0_45".equals(privateRow.get("version")),
-                "Another application's use must retain private JDK and permit own-JVM metadata enrichment");
+            check(privateRow == null && observed.runtimes.isEmpty(),
+                "Dedicated runtime remains excluded even when another application uses it");
             Map process = (Map)observed.processes.get(0), app = (Map)observed.applications.get(0), server = (Map)observed.servers.values().iterator().next();
             check(privateJdk.getPath().equals(process.get("javaHome")) && privateJdk.getPath().equals(app.get("javaHome")) && privateJdk.getPath().equals(server.get("javaHome")),
                 "Application-observed private JDK keeps process, application and server links");
             observed.walk(privateJdk, 0);
-            check(observed.runtimes.size() == 1, "Later filesystem discovery must preserve the in-use private JDK without duplication");
+            check(observed.runtimes.isEmpty(), "Later filesystem discovery must not reintroduce the dedicated runtime");
         } finally { CollectorTest.remove(root); }
     }
     static void externalPrivateRuntime() throws Exception {
@@ -156,7 +156,7 @@ public final class JdkInventoryTest {
             check(scan.processes.isEmpty() && scan.runtimes.isEmpty(), "Updater processes are not customer applications");
             ProcessLaunchTest.process(proc, "98766103", new File(nested, "bin/java").getPath(), "com.example.RealApplication");
             scan.discoverProcesses(proc);
-            check(scan.processes.size() == 1 && scan.runtimes.size() == 1 && Boolean.TRUE.equals(scan.runtimes.get(jdk.getPath()).get("inUse")), "Real application on private runtime remains inventoried");
+            check(scan.processes.size() == 1 && scan.runtimes.isEmpty(), "Real application remains visible while dedicated runtime is excluded");
             File other = home(root, "java-assessment-runtime-extra/jdk", true);
             check(add(scan, other, false, "17") != null, "External private root respects path boundaries");
             ProcessLaunch external = ProcessLaunch.parse(new String[]{"java", "-cp", new File(root, "app/helper.jar").getPath(), "assessment.AgentUpdateWorker"}, root);

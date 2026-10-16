@@ -64,7 +64,7 @@ public final class UserAccessHttpTest {
             expected(401,"POST","/api/login",map("password",LEGACY),null);
             Response cross=request("POST","/api/auth/bootstrap",map("currentPassword",LEGACY,"name","Admin","email","admin@example.com","password",ADMIN_PASS),null,"https://foreign.invalid",null);check(cross.code==403,"cross-origin setup refused");
             Response wrongLegacy=expected(401,"POST","/api/auth/bootstrap",map("currentPassword","wrong","name","Admin","email","admin@example.com","password",ADMIN_PASS),null);
-            check("Current administrative password is incorrect".equals(wrongLegacy.body.get("error")),"bootstrap error identifies the legacy password");
+            check("A senha administrativa atual está incorreta.".equals(wrongLegacy.body.get("error")),"bootstrap error identifies the legacy password");
             expected(400,"POST","/api/auth/bootstrap",map("currentPassword",LEGACY,"name","Admin","email","admin@example.com","password","Abc123!"),null);
             ExecutorService race=Executors.newFixedThreadPool(2);
             Response first,second;

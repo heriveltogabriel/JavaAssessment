@@ -11,3 +11,10 @@ spoolDirectory=/opt/java-assessment-collector/collector-spool
 # Remote origins require HTTPS with the package's verified TLS provider.
 # tlsProvider=BCJSSE
 # tlsCaFile=/absolute/path/java-assessment/conf/ca.pem
+
+# Optional passive Spring datasource prefixes (default: spring.datasource only).
+# spring.datasourcePrefixes=app.datasource.orders,app.datasource.audit
+# Optional application-provided JDBC metadata; disabled unless explicitly mapped.
+# spring.integration.orders.applicationPath=/opt/orders/orders.jar
+# spring.integration.orders.file=/var/lib/orders-assessment/report.json
+# See docs/SPRING_DISCOVERY.md and docs/SPRING_INTEGRATION.md.

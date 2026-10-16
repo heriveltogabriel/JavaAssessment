@@ -18,6 +18,9 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
     final InventoryStore store;
     private final InventoryQueries queries;
     private final EnrollmentRegistry registry;
+    private final EnvironmentInstallAccess installAccess;
+    private final Semaphore installDownloadSlots=new Semaphore(2);
+    private final Map<String,long[]> installDownloadAttempts=new HashMap<>();
     private final UninstallRegistry uninstalls;
     private final AgentUpdateCatalog updateCatalog;
     private final AgentUpdateRegistry updates;
@@ -53,17 +56,30 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
         this.root=root.getCanonicalFile();data=new File(root,"data");conf=new Properties();try(InputStream in=new FileInputStream(new File(root,"conf/server.properties"))){conf.load(in);}
         for(String k:new String[]{"agentToken","hostId"})if(conf.getProperty(k,"").length()<4)throw new IllegalArgumentException("Missing server configuration: "+k);
         boolean legacy=Boolean.parseBoolean(conf.getProperty("seedLegacyHost","true"));
-        Map<String,Object> defaults=map("fleet",map("name",conf.getProperty("fleetName","Java Assessment"),"description","Java estate assessment","createdAt",now()),"hosts",new ArrayList<>(),"jobs",new ArrayList<>(),"environments",new ArrayList<>(),"settings",map("enabled",false,"frequency","once","timeZone","America/Sao_Paulo","windowStart","00:00","windowEnd","06:00","maxDurationSeconds",120,"maxFiles",10000,"batchSize",100,"pauseMillis",30,"includePaths",legacy?Arrays.asList("/home/opc/oracle","/usr/java","/usr/lib/jvm","/opt"):Arrays.asList("/usr/java","/usr/lib/jvm","/opt","/u01"),"excludePaths",Arrays.asList("/proc","/sys","/dev","/tmp"),"inspectArchives",false),"coverage",map("status","pending","warnings",new ArrayList<>()),"eventIds",new ArrayList<>(),"scheduleRevision",UUID.randomUUID().toString());
+        Map<String,Object> defaults=map("fleet",map("name",conf.getProperty("fleetName","Java Assessment"),"description","Java estate assessment","createdAt",now()),"hosts",new ArrayList<>(),"jobs",new ArrayList<>(),"environments",new ArrayList<>(),"settings",map("enabled",false,"frequency","once","timeZone","America/Sao_Paulo","windowStart","00:00","windowEnd","06:00","maxDurationSeconds",120,"maxFiles",10000,"batchSize",100,"pauseMillis",30,"includePaths",legacy?Arrays.asList("/home/opc/oracle","/usr/java","/usr/lib/jvm","/opt"):Arrays.asList("/usr/java","/usr/lib/jvm","/opt","/u01"),"excludePaths",Arrays.asList("/proc","/sys","/dev","/tmp"),"inspectArchives",true),"coverage",map("status","pending","warnings",new ArrayList<>()),"eventIds",new ArrayList<>(),"scheduleRevision",UUID.randomUUID().toString());
         for(String key:COLLECTIONS)defaults.put(key,new ArrayList<>());
         if(legacy)list(defaults.get("hosts")).add(map("id",conf.getProperty("hostId"),"hostname","instance-rh5","environmentId","","status","Awaiting assessment"));
         acquireAuthLock();
         InventoryStore opened=null;
         try{
             opened=new InventoryStore(data,defaults,legacy?conf.getProperty("hostId"):"",conf.getProperty("agentToken"));store=opened;
+            migrateArchiveInspectionDefault();
             auth=new UserAuth(store);
             if(!provisioning&&auth.bootstrapRequired()&&(conf.getProperty("adminSalt","").length()<4||!conf.getProperty("adminPasswordSha256","").matches("[a-fA-F0-9]{64}")))throw new IllegalArgumentException("Provision the initial administrator before starting the server");
-            registry=new EnrollmentRegistry(store);uninstalls=new UninstallRegistry(store,registry);updateCatalog=new AgentUpdateCatalog(this.root);updates=new AgentUpdateRegistry(store,registry,updateCatalog);queries=new InventoryQueries(store);workRequests=new WorkRequests(store);
+            registry=new EnrollmentRegistry(store);installAccess=new EnvironmentInstallAccess(store,data.toPath());uninstalls=new UninstallRegistry(store,registry);updateCatalog=new AgentUpdateCatalog(this.root);updates=new AgentUpdateRegistry(store,registry,updateCatalog);queries=new InventoryQueries(store);workRequests=new WorkRequests(store);
         }catch(Exception e){if(opened!=null)opened.close();releaseAuthLock();throw e;}
+    }
+    private void migrateArchiveInspectionDefault() {
+        store.transaction(()->{
+            String marker="migration.archiveInspectionDefault.v1";
+            if(store.metadata(marker)!=null)return null;
+            Map<String,Object> previous=obj(store.metadata("settings"));
+            Map<String,Object> next=new LinkedHashMap<>(previous);
+            next.put("inspectArchives",true);
+            store.metadata("settings",next);
+            store.metadata(marker,map("completedAt",now(),"previousValue",previous.get("inspectArchives")));
+            return null;
+        });
     }
     private void acquireAuthLock()throws IOException {
         java.nio.file.Path directory=data.toPath();
@@ -221,6 +237,7 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
         InventoryQueries.Scope f=selectedScope(x);
         String view=query(x,"view");if(!view.isEmpty())f.view=view;if(!Set.of("overview","machine","environments","versions","hosts","runtimes","applications","servers","libraries","datasources","processes","jobs","settings").contains(f.view))throw new ApiError(400,"Invalid view");
         f.page=queryInteger(x,"page",1,1,1000000);f.size=queryInteger(x,"pageSize",20,1,100);f.q=query(x,"q");if(f.q.length()>200)throw new ApiError(400,"Search is too long");f.subset=query(x,"subset");f.version=query(x,"version");f.mode=query(x,"versionMode").equals("exact")?"exact":"family";
+        f.minimumSeconds=queryInteger(x,"minimumSeconds",300,300,2592000);MachineCleanup.period(f.minimumSeconds);
         f.from=InventoryQueries.time(query(x,"from"),false);f.to=InventoryQueries.time(query(x,"to"),true);String range=query(x,"range");if(f.from.isEmpty()&&!range.isEmpty()&&!range.equals("all")){long hours=switch(range){case "24h"->24;case "7d"->168;case "30d"->720;default->throw new ApiError(400,"Invalid range");};f.from=java.time.Instant.now().minusSeconds(hours*3600).toString();}
         if(!f.from.isEmpty()&&!f.to.isEmpty()&&!java.time.Instant.parse(f.from).isBefore(java.time.Instant.parse(f.to)))throw new ApiError(400,"Invalid date range");return f;
     }
@@ -248,11 +265,11 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
         Map<String,Object> b=body(x);boolean create=x.getRequestMethod().equals("POST");String id=create?"env-"+UUID.randomUUID():bounded(b.get("environmentId"),"environmentId",100,true);Map<String,Object> env=create?map("id",id,"createdAt",now(),"settings",map(),"description","","revision",UUID.randomUUID().toString()):environment(id);
         if(x.getRequestMethod().equals("DELETE")){
             if(!str(env.get("name")).equals(bounded(b.get("confirmationName"),"confirmationName",100,true)))throw new ApiError(400,"Type the environment name exactly to confirm deletion");
-            if(store.scalar("SELECT count(*) FROM hosts WHERE environment_id=?",id)>0)throw new ApiError(409,"Move all machines out of this environment before deleting it");store.delete("environments",id);return new Reply(200,map("deleted",true,"environmentId",id));
+            if(store.scalar("SELECT count(*) FROM hosts WHERE environment_id=?",id)>0)throw new ApiError(409,"Move all machines out of this environment before deleting it");installAccess.revoke(id,requestUser.get());store.delete("environments",id);return new Reply(200,map("deleted",true,"environmentId",id));
         }
         if(create&&store.scalar("SELECT count(*) FROM environments")>=200)throw new ApiError(409,"Environment limit reached");
         if(create||b.containsKey("name")){String name=bounded(b.get("name"),"name",100,true).trim();if(store.scalar("SELECT count(*) FROM environments WHERE lower(name)=lower(?) AND id<>?",name,id)>0)throw new ApiError(409,"An environment with this name already exists");env.put("name",name);}
-        if(b.containsKey("description"))env.put("description",bounded(b.get("description"),"description",1000,false));if(b.containsKey("settings")){Map<String,Object> override=obj(b.get("settings"));settings(override);if(!override.equals(env.get("settings")))env.put("revision",UUID.randomUUID().toString());env.put("settings",override);}env.put("updatedAt",now());store.put("environments",env);return new Reply(create?201:200,publicEnvironment(env));
+        if(b.containsKey("description"))env.put("description",bounded(b.get("description"),"description",1000,false));if(b.containsKey("settings")){Map<String,Object> override=obj(b.get("settings"));settings(override);if(!override.equals(env.get("settings")))env.put("revision",UUID.randomUUID().toString());env.put("settings",override);}env.put("updatedAt",now());store.put("environments",env);if(create)installAccess.create(id,requestUser.get());return new Reply(create?201:200,publicEnvironment(env));
     }
     private Reply api(HttpExchange x,Session session)throws Exception{
         String path=x.getRequestURI().getPath();
@@ -286,6 +303,8 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
         if(Set.of("/api/work-requests","/api/work-requests/active","/api/work-requests/detail").contains(path)){method(x,"GET");updates.maintain();expireJobs();WorkRequests.Filter filter=workRequestFilter(x);return new Reply(200,path.endsWith("/detail")?workRequests.detail(filter,query(x,"id"),query(x,"type")):path.endsWith("/active")?workRequests.active(filter):workRequests.list(filter));}
         if(path.equals("/api/agent-updates")){if(x.getRequestMethod().equals("GET")){updates.maintain();return new Reply(200,updates.preview(query(x,"hostId"),query(x,"environmentId")));}method(x,"POST");return new Reply(200,updates.create(body(x),requestUser.get()));}
         if(path.equals("/api/agent-updates/cancel")){method(x,"POST");var b=body(x);if(!Set.of("hostId","requestId").containsAll(b.keySet()))throw new ApiError(400,"Unknown update cancellation field");return new Reply(200,updates.cancel(str(b.get("hostId")),str(b.get("requestId")),requestUser.get()));}
+        if(path.equals("/api/hosts/cleanup/preview")){method(x,"POST");return new Reply(200,new MachineCleanup(store,registry).preview(body(x),requestUser.get()));}
+        if(path.equals("/api/hosts/cleanup")){method(x,"POST");return new Reply(200,new MachineCleanup(store,registry).execute(body(x),requestUser.get()));}
         if(path.equals("/api/hosts")){method(x,"DELETE");return new Reply(200,new MachineActions(store,registry).delete(body(x),requestUser.get()));}
         if(path.equals("/api/hosts/uninstall")){method(x,"POST");return new Reply(202,uninstalls.create(body(x),"user:"+requestUser.get().id()));}
         if(path.equals("/api/hosts/uninstall/cancel")){method(x,"POST");var b=body(x);return new Reply(200,uninstalls.cancel(str(b.get("hostId")),str(b.get("requestId"))));}
@@ -308,6 +327,7 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
             method(x,"PUT");Map<String,Object> b=body(x);String id=str(b.get("hostId"));if(b.containsKey("replaceOverrides")&&!(b.get("replaceOverrides") instanceof Boolean))throw new ApiError(400,"Boolean replaceOverrides expected");Map<String,Object> h=host(id),overrides=!Boolean.TRUE.equals(b.get("replaceOverrides"))&&h.get("settings") instanceof Map?obj(h.get("settings")):map();overrides.putAll(obj(b.get("settings")));Map<String,Object> effective=effectiveWithHost(h,overrides);h.put("settings",overrides);store.put("hosts",h);resetSchedule(id);return new Reply(200,effective);
         }
         if(path.equals("/api/environments")){if(!Set.of("POST","PUT","DELETE").contains(x.getRequestMethod()))throw new ApiError(405,"Method not allowed");return environmentChange(x);}
+        if(path.equals("/api/environments/install-access"))return installAccessApi(x);
         if(path.equals("/api/environments/package")){
             method(x,"POST");Map<String,Object> b=body(x);String id=bounded(b.get("environmentId"),"environmentId",100,true);Map<String,Object> env=environment(id);int minutes=integer(b.get("expiresInMinutes"),1440,5,10080),uses=integer(b.get("maxUses"),100,1,1000);if(b.containsKey("autoCollect")&&!(b.get("autoCollect") instanceof Boolean))throw new ApiError(400,"Boolean autoCollect expected");
             InstallerPackage installer=installerPackage();try{Map<String,Object> issued=registry.issue(str(env.get("name")),minutes,uses,map(),!Boolean.FALSE.equals(b.get("autoCollect")),id,environmentIds());return new Reply(200,new PackageReply(str(env.get("name")),serverUrl(),str(issued.get("enrollmentToken")),id));}finally{installer.close();}
@@ -375,6 +395,52 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
         }
         if(path.equals("/api/admin/users/reset")){method(x,"POST");UserAuth.Temporary reset=auth.reset(actor,str(input.get("id")));sessions.entrySet().removeIf(e->e.getValue().userId.equals(reset.user().id()));return new Reply(200,reset.response());}
         throw new ApiError(405,"Method not allowed");
+    }
+    private Reply installAccessApi(HttpExchange x)throws Exception {
+        String id;
+        if(x.getRequestMethod().equals("GET"))id=query(x,"environmentId");
+        else {
+            method(x,"POST");Map<String,Object> input=body(x);
+            if(!Set.of("environmentId","action").containsAll(input.keySet()))throw new ApiError(400,"Unknown installation access field");
+            id=bounded(input.get("environmentId"),"environmentId",100,true);String action=str(input.get("action"));
+            if(action.equals("enable")){Map<String,Object> state=installAccess.status(id);if(!Boolean.TRUE.equals(state.get("configured")))installAccess.create(id,requestUser.get());else if(!Boolean.TRUE.equals(state.get("enabled")))installAccess.renew(id,requestUser.get());}
+            else if(action.equals("renew"))installAccess.renew(id,requestUser.get());
+            else if(action.equals("revoke"))installAccess.revoke(id,requestUser.get());
+            else throw new ApiError(400,"Invalid installation access action");
+        }
+        Map<String,Object> response=new LinkedHashMap<>(installAccess.status(id));
+        if(Boolean.TRUE.equals(response.get("enabled"))){
+            InstallerPackage installer=installerPackage();try{
+                response.put("version",installer.version());response.put("filename",installer.filenameForEnvironment(str(environment(id).get("name"))));
+                response.put("commands",InstallCommand.build(serverUrl(),id,installAccess.credential(id),installer.publicCa()));
+            }finally{installer.close();}
+        }
+        return new Reply(200,response);
+    }
+    private synchronized void rateInstallDownload(HttpExchange x){
+        long now=System.currentTimeMillis();installDownloadAttempts.entrySet().removeIf(e->now-e.getValue()[0]>=60000);
+        String ip=x.getRemoteAddress().getAddress().getHostAddress();long[] state=installDownloadAttempts.get(ip);
+        if(state==null){if(installDownloadAttempts.size()>=4096)throw new ApiError(429,"Please retry later");state=new long[]{now,0};installDownloadAttempts.put(ip,state);}
+        if(++state[1]>300)throw new ApiError(429,"Please wait one minute before retrying");
+    }
+    private void installPackageDownload(HttpExchange x)throws Exception {
+        method(x,"GET");rateInstallDownload(x);
+        String raw=x.getRequestURI().getRawQuery();
+        if(raw==null||!raw.matches("environmentId=env-[A-Za-z0-9-]{1,90}"))throw new ApiError(400,"Only environmentId is accepted; use the Authorization header");
+        String id=query(x,"environmentId");
+        if(!installDownloadSlots.tryAcquire()){x.getResponseHeaders().set("Retry-After","5");throw new ApiError(429,"Downloads are busy; retry shortly");}
+        InstallerPackage[] opened=new InstallerPackage[1];
+        try{
+            // A bad/missing package rolls back enrollment and quota. No cookie/session fallback.
+            Map<String,Object> issued=store.transaction(()->{Map<String,Object> result=installAccess.issueDownload(id,bearer(x),registry,environmentIds());opened[0]=installerPackage();result.put("environmentName",environment(id).get("name"));return result;});
+            InstallerPackage installer=opened[0];
+            {
+                String name=str(issued.get("environmentName"));
+                x.getResponseHeaders().set("Content-Type","application/zip");
+                x.getResponseHeaders().set("Content-Disposition","attachment; filename=\""+installer.filenameForEnvironment(name)+"\"");
+                x.sendResponseHeaders(200,0);installer.write(x.getResponseBody(),serverUrl(),str(issued.get("enrollmentToken")),id);
+            }
+        }finally{try{if(opened[0]!=null)opened[0].close();}finally{installDownloadSlots.release();}}
     }
     private InstallerPackage installerPackage()throws IOException{
         try{return new InstallerPackage(new File(root,"dist/assessment-collector.zip"));}
@@ -456,6 +522,7 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
             if(path.equals("/api/auth/status")){method(x,"GET");json(x,200,map("bootstrapRequired",auth.bootstrapRequired()));return;}
             if(path.equals("/api/auth/bootstrap")){Reply r=bootstrap(x);json(x,r.status,r.body);return;}
             if(path.equals("/api/login")){Reply r=login(x);json(x,r.status,r.body);return;}
+            if(path.equals("/api/install/package")){installPackageDownload(x);return;}
             if(path.startsWith("/api/")){
                 Session session=null;if(!path.startsWith("/api/agent/")){session=session(x);if(session==null)throw new ApiError(401,"Sign in required");authorize(x,session);if(write)csrf(x,session);}
                 if(path.equals("/api/session")){method(x,"GET");json(x,200,envelope(session,authority(session)));return;}
@@ -465,18 +532,19 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
                 if(Set.of("/api/reports","/api/reports/options","/api/reports/export.csv","/api/reports/export.pdf").contains(path)){reports(x,session);return;}
                 if(path.equals("/api/account/password")||path.startsWith("/api/admin/")){Reply reply=account(x,session);json(x,reply.status,reply.body);return;}
                 if(path.equals("/api/collector.zip")){method(x,"GET");InstallerPackage installer=installerPackage();try{x.getResponseHeaders().set("Content-Type","application/zip");x.getResponseHeaders().set("Content-Disposition","attachment; filename=\""+installer.filename()+"\"");x.sendResponseHeaders(200,0);installer.writeOriginal(x.getResponseBody());}finally{installer.close();}return;}
-                Session authenticated=session;java.util.concurrent.Callable<Reply> operation=()->{if(authenticated!=null)authorize(x,authenticated);return api(x,authenticated);};Reply reply=write||(path.equals("/api/agent/poll")||path.equals("/api/agent/actions")||path.equals("/api/agent/update-v3/action")||path.equals("/api/agent-updates")||Set.of("/api/work-requests","/api/work-requests/active","/api/work-requests/detail").contains(path))?store.transaction(operation):store.readSnapshot(operation);
+                Session authenticated=session;java.util.concurrent.Callable<Reply> operation=()->{if(authenticated!=null)authorize(x,authenticated);return api(x,authenticated);};Reply reply=write||(path.equals("/api/agent/poll")||path.equals("/api/agent/actions")||path.equals("/api/agent/update-v3/action")||path.equals("/api/agent-updates")||path.equals("/api/environments/install-access")||Set.of("/api/work-requests","/api/work-requests/active","/api/work-requests/detail").contains(path))?store.transaction(operation):store.readSnapshot(operation);
                 if(reply.body instanceof BinaryReply binary){x.getResponseHeaders().set("Content-Type",binary.contentType);x.sendResponseHeaders(reply.status,binary.data.length);x.getResponseBody().write(binary.data);}
                 else if(reply.body instanceof PackageReply p){InstallerPackage installer=installerPackage();try{x.getResponseHeaders().set("Content-Type","application/zip");x.getResponseHeaders().set("Content-Disposition","attachment; filename=\""+installer.filenameForEnvironment(p.environmentName)+"\"");x.sendResponseHeaders(200,0);installer.write(x.getResponseBody(),p.url,p.token,p.environment);}finally{installer.close();}}
                 else json(x,reply.status,readerView(reply.body));return;
             }
             method(x,"GET");if(path.equals("/"))path="/index.html";File web=new File(root,"web").getCanonicalFile(),f=new File(web,path.substring(1)).getCanonicalFile();if(!f.getPath().startsWith(web.getPath()+File.separator))throw new ApiError(404,"Not found");String type=path.endsWith(".html")?"text/html; charset=utf-8":path.endsWith(".css")?"text/css; charset=utf-8":path.endsWith(".js")?"application/javascript; charset=utf-8":path.endsWith(".svg")?"image/svg+xml":"application/octet-stream";file(x,f,type);
-        }catch(ApiError e){json(x,e.status,map("error",e.getMessage()));}
-        catch(Reports.Failure e){json(x,e.status,map("error",e.getMessage()));}
-        catch(UserAuth.Failure e){json(x,e.status,map("error",e.getMessage()));}
-        catch(EnrollmentRegistry.Failure e){json(x,e.status,map("error",e.getMessage()));}
-        catch(IllegalArgumentException e){json(x,400,map("error","Invalid request data"));}
-        catch(Exception e){System.err.println(now()+" "+x.getRequestURI().getPath()+" "+e.getClass().getName()+": "+e.getMessage());if(x.getResponseCode()==-1)json(x,500,map("error","The request could not be completed"));}
+        }catch(ApiError e){json(x,e.status,map("error",Portuguese.error(e.getMessage())));}
+        catch(Reports.Failure e){json(x,e.status,map("error",Portuguese.error(e.getMessage())));}
+        catch(UserAuth.Failure e){json(x,e.status,map("error",Portuguese.error(e.getMessage())));}
+        catch(EnrollmentRegistry.Failure e){json(x,e.status,map("error",Portuguese.error(e.getMessage())));}
+        catch(EnvironmentInstallAccess.Failure e){json(x,e.status,map("error",Portuguese.error(e.getMessage())));}
+        catch(IllegalArgumentException e){json(x,400,map("error",Portuguese.error("Invalid request data")));}
+        catch(Exception e){System.err.println(now()+" "+x.getRequestURI().getPath()+" "+e.getClass().getName()+": "+e.getMessage());if(x.getResponseCode()==-1)json(x,500,map("error",Portuguese.error("The request could not be completed")));}
         finally{requestBody.remove();agentHost.remove();requestUser.remove();x.close();}
     }
     private static ExecutorService workers(){return new ThreadPoolExecutor(8,8,0L,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<>(32),new ThreadPoolExecutor.CallerRunsPolicy());}
