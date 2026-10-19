@@ -10,7 +10,7 @@ final class ProcessLaunch {
     String mainClass, jarPath, moduleName, serverType, serverHome, serverBase, serverName, applicationType;
     String serverConfigDirectory, serverConfigFile, webLogicHome, wlsHome;
     final List<String> classpath = new ArrayList<String>(), modulePaths = new ArrayList<String>();
-    boolean javaCommand, opaqueArguments, serverBaseExplicit, explicitClasspath;
+    boolean javaCommand, opaqueArguments, serverBaseExplicit, explicitClasspath, perfDataCompleted;
 
     static boolean javaExecutable(String value) {
         if (value == null) return false;
@@ -55,6 +55,30 @@ final class ProcessLaunch {
     }
     static boolean springLauncher(String main) {
         return main != null && main.matches("org\\.springframework\\.boot\\.loader\\.(launch\\.)?(JarLauncher|WarLauncher|PropertiesLauncher)");
+    }
+    /**
+     * Completes a launcher hidden by @argfiles or CLASSPATH with the running JVM's perf data.
+     * Only -D options, the effective classpath and the main class or jar are taken; other arguments are discarded.
+     */
+    static ProcessLaunch parse(String[] args, File cwd, Map<String,String> perf) {
+        ProcessLaunch launch = parse(args, cwd);
+        if (perf == null || args == null || args.length == 0 || !launch.javaCommand) return launch;
+        List<String> original = Arrays.asList(args), merged = new ArrayList<String>();
+        merged.add(args[0]);
+        String vmArgs = perf.get("java.rt.vmArgs");
+        // shortcut: vmArgs is space-joined, so a -D value containing spaces is cut; acceptable for allowlisted path/name keys.
+        if (vmArgs != null) for (String token : vmArgs.split(" ")) if (token.startsWith("-D") && (launch.opaqueArguments || !original.contains(token)) && merged.size() < 256) merged.add(token);
+        String command = perf.get("sun.rt.javaCommand"), first = command == null ? null : command.trim().split(" ")[0];
+        boolean jar = first != null && first.endsWith(".jar");
+        String classpath = perf.get("java.property.java.class.path");
+        if (classpath != null && launch.jarPath == null && !(launch.opaqueArguments && jar) && (launch.opaqueArguments || !launch.explicitClasspath)) { merged.add("-cp"); merged.add(classpath); }
+        if (launch.opaqueArguments) {
+            if (first != null && first.length() > 0) { if (jar) merged.add("-jar"); merged.add(first); }
+        } else merged.addAll(original.subList(1, args.length));
+        if (merged.equals(original)) return launch;
+        ProcessLaunch completed = parse(merged.toArray(new String[merged.size()]), cwd);
+        completed.opaqueArguments = launch.opaqueArguments; completed.perfDataCompleted = true;
+        return completed;
     }
     static ProcessLaunch parse(String[] args, File cwd) {
         ProcessLaunch launch = new ProcessLaunch(); launch.cwd = cwd;

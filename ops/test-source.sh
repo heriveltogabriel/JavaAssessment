@@ -10,7 +10,7 @@ JTMP="$(pwd)/tmp/java-tmp"
   -d tmp/source-classes shared/*.java server/*.java collector/*.java tests/*.java
 CP='tmp/source-classes:lib/*'
 for suite in JdbcDriverResolverTest JdbcEndpointTest ArchiveMetadataTest WebLogicVersionTest SpringDataSourceTest SpringConfigurationTest SpringIntegrationTest RuntimeInventoryTest \
-  ProcessLaunchTest JdkInventoryTest BoundedDirectoryTest CollectorSweepTest \
+  ProcessLaunchTest HsPerfDataTest JdkInventoryTest BoundedDirectoryTest CollectorSweepTest \
   CollectorTest AgentToolTest LegacyDiscoveryTest AgentBundleManifestTest AgentBootstrapHandoffTest AgentRecoveryServiceTest; do
   "$JAVA_HOME/bin/java" -Djava.io.tmpdir="$JTMP" -Xmx96m -cp "$CP" "assessment.$suite"
 done

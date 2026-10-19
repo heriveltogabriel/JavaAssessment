@@ -482,11 +482,19 @@ public final class AssessmentScan {
             if (processes.size() >= 512) { warn("Java process row limit reached"); break; }
             try { File candidate = new File(directory, "cwd"), resolved = candidate.getCanonicalFile(); if (!resolved.equals(candidate.getAbsoluteFile())) cwd = resolved; }
             catch (IOException e) { }
-            ProcessLaunch launch = ProcessLaunch.parse(args, cwd);
+            // maps names the mapped executable even after a package update deleted it, and the JVM's own perf-data file.
+            HsPerfData.Mapping mapping = HsPerfData.mapping(metadataText(new File(directory, "maps"), 1024 * 1024, false));
+            Long uid = processUid(directory);
+            Map<String,String> perf = mapping == null || mapping.perfData == null ? null : HsPerfData.read(this, new File(directory, "root" + mapping.perfData), uid);
+            ProcessLaunch launch = ProcessLaunch.parse(args, cwd, perf);
             if (collectorTool(launch)) continue;
+            boolean replaced = mapping != null && mapping.replaced;
+            String runningVersion = perf == null ? null : clean(perf.get("java.property.java.version"));
+            String runningVendor = perf == null ? null : clean(perf.get("java.property.java.vendor") != null ? perf.get("java.property.java.vendor") : perf.get("java.property.java.vm.vendor"));
             File processHome = null;
             String runtimeEvidence = "Live /proc/" + pid + "/exe; collector process excluded";
             if (exe != null) processHome = exe.getParentFile().getParentFile();
+            else if (mapping != null && mapping.executable != null) processHome = new File(mapping.executable).getParentFile().getParentFile();
             else {
                 restrictedProcesses++;
                 if (args.length > 0 && new File(args[0]).isAbsolute()) {
@@ -496,21 +504,29 @@ public final class AssessmentScan {
                 }
                 runtimeEvidence = "Java executable path from live process argv[0]; proc/exe access unavailable";
             }
+            if (replaced) runtimeEvidence = "Java executable replaced on disk after process start; restart pending; " + (runningVersion != null ? "version from running JVM perf data" : "version unknown");
+            else if (runningVersion != null) runtimeEvidence += "; version from running JVM perf data";
             String javaHome = null;
             if (processHome != null) {
                 // The observed Java home is inventoried even without a compiler.
                 try { javaHome = normalizeHome(processHome); }
                 catch (IOException e) { warn("Cannot resolve Java process home: " + processHome); }
-                addRuntime(processHome, true, runtimeEvidence, timestamp, null, null, null);
+                Map runtime = addRuntime(processHome, true, runtimeEvidence, timestamp, null, null, null);
+                if (runtime == null && replaced && javaHome != null) runtime = removedRuntime(javaHome, runtimeEvidence, runningVersion, runningVendor);
+                if (runtime != null) runningRuntime(runtime, replaced, runningVersion, runningVendor);
             }
             String name = launch.mainClass != null ? launch.mainClass : launch.jarPath != null ? new File(launch.jarPath).getName() : launch.moduleName != null ? launch.moduleName : "Java process";
             Map process = map("id", id("process", hostId + ":" + pid), "hostId", hostId, "pid", Long.valueOf(pid), "name", name,
                 "javaHome", javaHome, "mainClass", launch.mainClass, "launchJar", launch.jarPath, "moduleName", launch.moduleName,
-                "serverType", launch.serverType, "applicationType", launch.applicationType, "uid", processUid(directory),
-                "evidence", exe != null ? "Live Java executable and parsed launcher; application arguments are not retained" : "Live Java cmdline; executable identity and relative paths are limited by process permissions",
+                "serverType", launch.serverType, "applicationType", launch.applicationType, "uid", uid,
+                "evidence", replaced ? "Live Java process whose executable was replaced on disk after start; restart pending; parsed launcher; application arguments are not retained"
+                    : exe != null ? "Live Java executable and parsed launcher; application arguments are not retained" : "Live Java cmdline; executable identity and relative paths are limited by process permissions",
                 "observedAt", timestamp);
+            if (runningVersion != null) process.put("javaVersion", runningVersion);
+            if (runningVendor != null) process.put("javaVendor", runningVendor);
+            if (replaced) process.put("runtimeReplacedOnDisk", Boolean.TRUE);
             processes.add(process);
-            if (launch.opaqueArguments) note("A Java argument file was not inspected; launcher classification may be incomplete");
+            if (launch.opaqueArguments && !launch.perfDataCompleted) note("A Java argument file was not inspected; launcher classification may be incomplete");
             Map app = null;
             if ((launch.mainClass != null || launch.jarPath != null || launch.moduleName != null) && applications.size() < 500) {
                 app = map("id", id("app", hostId + ":process:" + pid), "hostId", hostId, "name", name, "type", launch.applicationType == null ? "Java" : launch.applicationType,
@@ -539,6 +555,26 @@ public final class AssessmentScan {
         if (restrictedArtifacts > 0) warn("The collector user could not access " + restrictedArtifacts + " process-linked artifact location(s); versions and JDBC inventory may be incomplete");
     }
 
+    /** The live JVM's version is authoritative for its home unless the binary was replaced; divergence stays visible. */
+    void runningRuntime(Map runtime, boolean replaced, String version, String vendor) {
+        if (replaced) runtime.put("runtimeReplacedOnDisk", Boolean.TRUE);
+        if (Boolean.TRUE.equals(runtime.get("runtimeReplacedOnDisk")) && String.valueOf(runtime.get("evidence")).indexOf("restart pending") < 0)
+            runtime.put("evidence", runtime.get("evidence") + "; another JVM still runs the Java executable replaced on disk; restart pending");
+        if (version == null) return;
+        if (!replaced) { runtime.put("version", version); if (runtime.get("vendor") == null) runtime.put("vendor", vendor); }
+        if (version.equals(runtime.get("version"))) return;
+        List running = runtime.get("runningVersions") instanceof List ? (List) runtime.get("runningVersions") : new ArrayList();
+        if (!running.contains(version) && running.size() < 16) running.add(version);
+        runtime.put("runningVersions", running);
+    }
+    /** A package update removed the home of a still-running JVM: inventory what is running, not what is on disk. */
+    Map removedRuntime(String path, String evidence, String version, String vendor) {
+        if (privateRuntime(path)) return null;
+        if (runtimes.size() >= 256) { warn("Runtime row limit reached"); return null; }
+        Map row = map("id", id("runtime", hostId + path), "hostId", hostId, "javaHome", path, "version", version, "vendor", vendor,
+            "architecture", null, "kind", null, "inUse", Boolean.TRUE, "evidence", evidence + "; Java home no longer present on disk", "observedAt", timestamp);
+        runtimes.put(path, row); return row;
+    }
     Long processUid(File directory) {
         String status = metadataText(new File(directory, "status"), 16384, false);
         if (status != null) for (String line : status.split("\n")) if (line.startsWith("Uid:")) {
