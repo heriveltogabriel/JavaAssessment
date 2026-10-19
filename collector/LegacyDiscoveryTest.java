@@ -97,12 +97,41 @@ public final class LegacyDiscoveryTest {
         check(scan.datasources.isEmpty() && scan.partial, "Excessive domain references rejected atomically");
         return exported;
     }
+    static String module(String name, String url) {
+        return "<jdbc-data-source xmlns='http://xmlns.oracle.com/weblogic/jdbc-data-source'><name>" + name + "</name><jdbc-driver-params><url>" + url + "</url><driver-name>oracle.jdbc.OracleDriver</driver-name><password-encrypted>PRIVATE_CANARY</password-encrypted></jdbc-driver-params><jdbc-data-source-params><jndi-name>jdbc/" + name + "</jndi-name></jdbc-data-source-params></jdbc-data-source>";
+    }
+    static String application(String modules) { return "<weblogic-application xmlns='http://xmlns.oracle.com/weblogic/weblogic-application'>" + modules + "</weblogic-application>"; }
+    static String jdbcModule(String path) { return "<module><name>m</name><type>JDBC</type><path>" + path + "</path></module>"; }
+    static void applicationModules(File root) throws Exception {
+        File base = new File(root, "app-domain"), proc = new File(root, "app-proc"), ear = new File(root, "packaged/billing.ear");
+        text(new File(base, "config/config.xml"), domain("<app-deployment><name>OrdersEar</name><target>AdminServer</target><source-path>apps/orders</source-path></app-deployment>" +
+            "<app-deployment><name>BillingEar</name><target>Cluster1</target><source-path>" + ear.getCanonicalPath() + "</source-path></app-deployment>" +
+            "<app-deployment><name>Plain</name><target>AdminServer</target><source-path>apps/plain.war</source-path></app-deployment>"));
+        text(new File(base, "apps/orders/META-INF/weblogic-application.xml"), application(jdbcModule("META-INF/orders-jdbc.xml") + "<module><name>q</name><type>JMS</type><path>META-INF/orders-jdbc.xml</path></module>" + jdbcModule("../../config/config.xml")));
+        text(new File(base, "apps/orders/META-INF/orders-jdbc.xml"), module("OrdersAppDS", "jdbc:oracle:thin:PRIVATE_CANARY/PRIVATE_CANARY@//app-db.example:1521/APPSVC"));
+        text(new File(base, "apps/plain.war"), "not an application archive");
+        Map<String,byte[]> entries = ProcessLaunchTest.entries();
+        entries.put("META-INF/weblogic-application.xml", application(jdbcModule("META-INF/billing-jdbc.xml")).getBytes("UTF-8"));
+        entries.put("META-INF/billing-jdbc.xml", module("BillingDS", "jdbc:oracle:thin:@//billing-db.example:1522/BILL").getBytes("UTF-8"));
+        ProcessLaunchTest.write(ear, ProcessLaunchTest.jar(ProcessLaunchTest.attrs(), entries));
+        ProcessLaunchTest.process(proc, "98666201", "java", "-Dweblogic.RootDirectory=" + base.getCanonicalPath(), "-Dweblogic.Name=AdminServer", "weblogic.Server");
+        AssessmentScan scan = scanner(); scan.discoverProcesses(proc);
+        check(scan.datasources.size() == 2, "Exploded and packaged EAR application-scoped JDBC modules discovered: " + scan.datasources.size());
+        Map orders = null, billing = null;
+        for (Object value : scan.datasources) { Map row = (Map)value; if ("OrdersAppDS".equals(row.get("name"))) orders = row; if ("BillingDS".equals(row.get("name"))) billing = row; }
+        check(orders != null && "app-db.example".equals(orders.get("databaseHost")) && "APPSVC".equals(orders.get("databaseName")), "Exploded EAR module endpoint");
+        check("application-module".equals(orders.get("configurationScope")) && "OrdersEar".equals(orders.get("applicationDeployment")) && Json.stringify(orders.get("configuredTargets")).contains("AdminServer"), "Application scope and targets recorded");
+        check(billing != null && "billing-db.example".equals(billing.get("databaseHost")) && String.valueOf(billing.get("sourcePath")).endsWith("billing.ear!/META-INF/billing-jdbc.xml"), "Packaged EAR module read in place");
+        check(Json.stringify(scan.warnings).contains("JDBC module path is unsupported"), "Module path traversal rejected with coverage warning");
+        String json = Json.stringify(ServerDataSourcesTest.inventory(scan));
+        check(!json.contains("PRIVATE_CANARY") && !json.contains("jdbc:oracle"), "No credentials or raw URL retained");
+    }
     public static void main(String[] args) throws Exception {
         File root = CollectorTest.temp("legacy-discovery");
         try {
             if (args.length == 0 || !"weblogic".equals(args[0])) runtimeChecks(new File(root, "runtime"));
             Map weblogic = null;
-            if (args.length == 0 || !"runtime".equals(args[0])) weblogic = weblogicChecks(new File(root, "weblogic"));
+            if (args.length == 0 || !"runtime".equals(args[0])) { weblogic = weblogicChecks(new File(root, "weblogic")); applicationModules(new File(root, "applications")); }
             if (args.length == 2 && "--export".equals(args[0])) {
                 File javaHome = new File(root, "export-java6"); runtime(javaHome, true, attributes(), false);
                 AssessmentScan scan = scanner(); scan.addRuntime(javaHome, true, "Observed JVM", scan.timestamp, null, null, null);

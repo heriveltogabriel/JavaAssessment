@@ -178,9 +178,26 @@ public final class SpringConfigurationTest {
         SpringConfiguration.discover(scan, context, new File(root, "proc"));
         check(scan.datasources.isEmpty() && application.get("version") == null && scan.filesVisited == scan.maxFiles, "File cap blocks both filesystem datasource and identity reads");
     }
+    static void embeddedPlaceholders(File root) throws Exception {
+        Map<String,byte[]> map = content();
+        text(map, "BOOT-INF/classes/application.yml", "spring:\n  datasource:\n    url: jdbc:oracle:thin:@${DB_HOST}:${DB_PORT:1521}/${db.service}\n");
+        text(map, "BOOT-INF/classes/application-secret.properties", "spring.datasource.url=jdbc:postgresql://${db.secret.host}/x\n");
+        File jar = app(root, "embedded.jar", map); File proc = new File(root, "proc");
+        ProcessLaunchTest.process(proc, "98770101", "java", "-Ddb.service=SPRINGSVC", "-jar", jar.getPath());
+        ProcessLaunchTest.text(new File(proc, "98770101/environ"), "DB_HOST=spring-db.example\u0000DB_PASSWORD=PRIVATE_SECRET_CANARY\u0000DB_SECRET_HOST=PRIVATE_SECRET_CANARY\u0000");
+        ProcessLaunchTest.process(proc, "98770102", "java", "-jar", jar.getPath(), "--spring.profiles.active=secret");
+        ProcessLaunchTest.text(new File(proc, "98770102/environ"), "DB_SECRET_HOST=PRIVATE_SECRET_CANARY\u0000");
+        AssessmentScan scan = new AssessmentScan(new Properties(), "x", "x", AssessmentScan.map("inspectArchives", true, "pauseMillis", 0)); scan.excluded.clear(); scan.discoverProcesses(proc);
+        check(scan.datasources.size() == 1, "Embedded placeholders resolve; secret-like keys never do");
+        Map ds = (Map)scan.datasources.get(0);
+        check("spring-db.example".equals(ds.get("databaseHost")) && Integer.valueOf(1521).equals(ds.get("databasePort")) && "SPRINGSVC".equals(ds.get("databaseName")) && "Oracle".equals(ds.get("databaseType")), "YAML URL with embedded environment, default and -D placeholders");
+        boolean marked = false; for (String key : scan.configuredDatasourceRows.keySet()) if (key.contains("configured-resolved") && key.contains("system-property") && key.contains("environment") && key.contains("default")) marked = true;
+        check(marked, "Resolution provenance is part of the sanitized configuration candidate");
+        check(!Json.stringify(scan.datasources).contains("PRIVATE_") && !Json.stringify(scan.configuredDatasourceRows.keySet()).contains("PRIVATE_") && !Json.stringify(scan.datasources).contains("jdbc:"), "No secrets or raw URL retained");
+    }
     static void put32(byte[] bytes,int at,long v){for(int i=0;i<4;i++)bytes[at+i]=(byte)(v>>>(8*i));}
     public static void main(String[] args)throws Exception{
         File root=CollectorTest.temp("spring-configuration");
-        try{String[] names={"external","processes","environment","uncertainty","exploded","large","mixed","direct","layout","priority","thin","file-budget"};for(String name:names)new File(root,name).mkdirs();externalAndProfiles(new File(root,names[0]));processIsolation(new File(root,names[1]));environmentAndCustom(new File(root,names[2]));uncertainty(new File(root,names[3]));exploded(new File(root,names[4]));largeArchive(new File(root,names[5]));mixedAndUnknown(new File(root,names[6]));directMainClasspath(new File(root,names[7]));layoutWithoutManifest(new File(root,names[8]));configBeforeLargeDependency(new File(root,names[9]));thinJarAndPrecedence(new File(root,names[10]));filesystemBudget(new File(root,names[11]));System.out.println("Spring configuration checks passed");}finally{CollectorTest.remove(root);}
+        try{String[] names={"external","processes","environment","uncertainty","exploded","large","mixed","direct","layout","priority","thin","file-budget","embedded"};for(String name:names)new File(root,name).mkdirs();externalAndProfiles(new File(root,names[0]));processIsolation(new File(root,names[1]));environmentAndCustom(new File(root,names[2]));uncertainty(new File(root,names[3]));exploded(new File(root,names[4]));largeArchive(new File(root,names[5]));mixedAndUnknown(new File(root,names[6]));directMainClasspath(new File(root,names[7]));layoutWithoutManifest(new File(root,names[8]));configBeforeLargeDependency(new File(root,names[9]));thinJarAndPrecedence(new File(root,names[10]));filesystemBudget(new File(root,names[11]));embeddedPlaceholders(new File(root,names[12]));System.out.println("Spring configuration checks passed");}finally{CollectorTest.remove(root);}
     }
 }
