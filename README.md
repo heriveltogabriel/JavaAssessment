@@ -1,6 +1,6 @@
 # Java Assessment
 
-Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versão **2.1.0** reúne dashboard, agente Linux e banco SQLite local, com organização por ambiente e máquina.
+Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versão **2.1.6**, preparada para teste pela console, reúne dashboard, agente Linux e banco SQLite local, com organização por ambiente e máquina.
 
 ![Overview do Java Assessment com indicadores de agentes, instalações Java, servidores e datasources JDBC](imagens/overview.png)
 
@@ -9,6 +9,7 @@ Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versã
 - Visão geral com quatro distribuições compactas: Java, sistemas operacionais, servidores por produto/versão e datasources por nome/versão do driver; máquinas em lista com busca e dez itens por página.
 - Instalações Java, incluindo runtimes sem compilador quando há evidência de uso por aplicação.
 - Aplicações, processos, servidores Java, bibliotecas e datasources JDBC por configuração suportada.
+- Versão do driver JDBC por datasource WebLogic, com classe exata, caminho do JAR e indicação de candidatos ou inspeção incompleta.
 - Contas individuais com email e senha, perfis Administrador e Leitura e troca de senha no primeiro acesso.
 - Relatórios de máquinas, Java, servidores, JDBC e ambientes, com filtros combinados, seleção de colunas e exportação PDF/CSV.
 - JDBC em todos os relatórios, com datasource, driver, versão e destino configurado do banco (host/IP, porta e banco/serviço), também nas exportações PDF/CSV.
@@ -74,6 +75,20 @@ python3 -B dashboard-installer/build.py --with-source
 Os resultados ficam em `dist/assessment-dashboard-installer-2.1.0.zip` e `dist/assessment-dashboard-source-2.1.0.zip`, com arquivos SHA-256. O build usa as bibliotecas fixadas, o agente genérico e o catálogo público assinado incluídos no repositório. Não exige arquivos da máquina de desenvolvimento nem a chave privada de assinatura.
 
 O pacote do agente versionado em `dist/assessment-collector.zip` é genérico e não contém identidade cadastrada. O catálogo extraído em `dist/` inclui os pacotes completos e as rotas de migração. O build verifica assinaturas, chave pública e integridade antes de empacotar. Alterações nos arquivos executáveis exigem uma nova entrega assinada; o build não assina nem substitui a confiança instalada.
+
+## Entrega para teste pela console — 2.1.6
+
+A [2.1.6](install/v2.1.6/README.md) associa o JAR ao datasource Spring e libera o lote quando uma máquina não inicia em cinco minutos na sua vez. Envie o **pacote web-update** em Administração → Atualização do dashboard; revise e confirme Atualizar e reiniciar. [Notas e teste](docs/RELEASE_2.1.6.md).
+
+**Atualize os agentes separadamente e faça nova coleta** para obter os novos campos Spring. O dashboard de laboratório permanece na 2.1.4 até o teste do operador; versões anteriores continuam preservadas.
+
+## Entrega de laboratório 2.1.4
+
+A [2.1.4](install/v2.1.4/README.md) separa **Arquivo JAR** e **Versão** em Bibliotecas Java. O dashboard pode ser atualizado pelo pacote web assinado; agentes 2.1.2 já fornecem os campos necessários e não precisam ser atualizados para este ajuste. Publicar o dashboard não atualiza agentes automaticamente. [Notas e compatibilidade](docs/RELEASE_2.1.4.md).
+
+## Entrega de laboratório 2.1.2
+
+A [2.1.2](install/v2.1.2/README.md) melhora a descoberta Oracle JDBC e acrescenta evidências aos relatórios. Dashboards 2.1.0 com o executor instalado usam o pacote web-update pela Administração. A versão 2.1.0 permanece disponível abaixo para primeira adoção e instalação estável. Consulte [o guia JDBC](docs/JDBC_DRIVER_RESOLUTION.md) e [as validações](docs/validation/jdbc-driver-resolution-2026-10-19.md). Atualize os agentes separadamente e solicite nova coleta.
 
 ## Atualizar dashboard existente
 
@@ -143,6 +158,9 @@ Os testes de navegador usam Playwright e Chrome. Configure `NODE`, `NODE_PATH`, 
 
 ## Documentação
 
+- [Notas da entrega de laboratório 2.1.2](docs/RELEASE_2.1.2.md)
+- [Descoberta de versões dos drivers JDBC](docs/JDBC_DRIVER_RESOLUTION.md)
+
 - [Processo de release e aviso obrigatório de atualização dos agentes](docs/RELEASE_PROCESS.md)
 - [Melhorias planejadas](docs/TODO.md)
 - [Plano do atualizador completo a partir da 1.5.12 e assessment após atualizar](docs/superpowers/plans/2026-10-14-full-agent-update.md) — disponível para instalações elegíveis; consulte os resultados e limites de validação nas notas da versão.
@@ -159,7 +177,7 @@ Os testes de navegador usam Playwright e Chrome. Configure `NODE`, `NODE_PATH`, 
 - [Validações e gates antes de publicar](docs/validation/full-agent-update.md)
 - [Migração e backup](dashboard-installer/BETA_MIGRATION.md)
 
-Os nomes de alguns scripts e documentos mantêm `beta` por compatibilidade com a estrutura anterior. A versão atual do produto é 2.1.0. Relatórios históricos descrevem somente o cenário e a versão em que foram produzidos.
+Os nomes de alguns scripts e documentos mantêm `beta` por compatibilidade com a estrutura anterior. A entrega preparada atual é 2.1.6; a 2.1.0 permanece preservada. Relatórios históricos descrevem somente o cenário e a versão em que foram produzidos.
 
 Configurações privadas, chaves, inventário, logs, pacotes de ambientes e ferramentas específicas do laboratório ficam fora do Git. Publicar código neste repositório não instala nem atualiza servidores ou agentes.
 

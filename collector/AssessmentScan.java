@@ -26,6 +26,7 @@ public final class AssessmentScan {
     final Set<String> criticalWarnings = new HashSet<String>();
     final LinkedHashMap<String, Map> runtimes = new LinkedHashMap<String, Map>();
     final LinkedHashMap<String, Map> servers = new LinkedHashMap<String, Map>();
+    final JdbcDriverResolver jdbcDrivers = new JdbcDriverResolver(this);
     final List processes = new ArrayList(), libraries = new ArrayList(), applications = new ArrayList(), datasources = new ArrayList();
     final Set<String> libraryKeys = new HashSet<String>();
     final Map<String, Map> libraryRows = new LinkedHashMap<String, Map>();
@@ -171,13 +172,13 @@ public final class AssessmentScan {
     }
     String metadataText(File file, int limit, boolean report) {
         if (!available()) return null;
-        if (bytesRead >= ArchiveMetadata.READ_LIMIT) { warn("Metadata read budget of 16 MiB reached"); return null; }
+        if (bytesRead >= ArchiveMetadata.READ_LIMIT) { warn("Metadata read budget of 32 MiB reached"); return null; }
         InputStream input = null;
         try {
             input = new FileInputStream(file); ByteArrayOutputStream out = new ByteArrayOutputStream(); byte[] buffer = new byte[4096]; int count;
             while (available()) {
                 int remaining = (int)Math.min(limit - out.size() + 1L, ArchiveMetadata.READ_LIMIT - bytesRead);
-                if (remaining <= 0) { warn("Metadata read budget of 16 MiB reached"); return null; }
+                if (remaining <= 0) { warn("Metadata read budget of 32 MiB reached"); return null; }
                 count = input.read(buffer, 0, Math.min(buffer.length, remaining)); if (count < 0) return new String(out.toByteArray(), "UTF-8");
                 bytesRead += count; if (out.size() + count > limit) { warn("Bounded metadata entry size limit reached"); return null; } out.write(buffer, 0, count);
             }
@@ -528,6 +529,8 @@ public final class AssessmentScan {
                 if (servers.size() < 256) servers.put(key, context.server); else warn("Server row limit reached");
                 if (app != null) { app.put("serverName", serverName); app.put("serverId", context.server.get("id")); }
             }
+            serverDataSources.discover(context);
+            jdbcDrivers.discover(context, directory);
             discoverLinked(context);
             SpringConfiguration.discover(this, context, directory);
             SpringIntegration.enrich(this, context, directory);
@@ -731,7 +734,7 @@ public final class AssessmentScan {
                 "state", "CONFIGURED", "evidenceLevel", "configuration", "scanScope", "process-linked",
                 "evidence", "Local Spring datasource configuration candidate; programmatic overrides, driver loading and database connectivity were not verified",
                 "observedAt", timestamp);
-            for (String field : new String[]{"driverName", "driverVersion", "databaseType", "databaseHost", "databasePort", "databaseName", "databaseEndpoints", "configuredMaxPoolSize", "configurationKey", "datasourceKey", "configurationResolution", "activeProfiles", "jndiName"})
+            for (String field : new String[]{"driverName", "driverVersion", "driverArtifact", "databaseType", "databaseHost", "databasePort", "databaseName", "databaseEndpoints", "configuredMaxPoolSize", "configurationKey", "datasourceKey", "configurationResolution", "activeProfiles", "jndiName"})
                 if (configuration.get(field) != null) row.put(field, configuration.get(field));
             if (row.get("driverVersion") != null) row.put("driverVersionEvidence", "Matching packaged JDBC library; runtime loading not verified");
             configuredDatasourceRows.put(key, row); datasources.add(row);

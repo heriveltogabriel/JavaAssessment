@@ -6,10 +6,11 @@ import static assessment.AssessmentServer.map;
 /** Durable typed actions. All mutation paths run in the existing serialized store transaction. */
 final class AgentUpdateRegistry {
     static final String TYPE="UPDATE_AGENT_V1";
+    static final long WAIT_FOR_START_MILLIS=5*60*1000L;
     static final String BUSY_SQL="'WAITING','DOWNLOADING','INSTALLING','VERIFYING','UNCONFIRMED'";
     static final Set<String> BUSY=Set.of("WAITING","DOWNLOADING","INSTALLING","VERIFYING","UNCONFIRMED");
     static final Set<String> TERMINAL=Set.of("SUCCEEDED","FAILED","ROLLED_BACK","CANCELLED","EXPIRED");
-    static final Set<String> DIAGNOSTICS=Set.of("OK","DOWNLOAD_FAILED","INVALID_SIGNATURE","INVALID_MANIFEST","HASH_MISMATCH","INCOMPATIBLE_ASSETS","VERSION_MISMATCH","DOWNGRADE_REFUSED","LOCAL_CHECK_FAILED","SERVICE_FAILED","PROBE_FAILED","ROLLED_BACK","RECOVERY_REQUIRED","NETWORK_UNCONFIRMED","UPDATE_FAILED","BATCH_STOPPED","AUTHORIZATION_REVOKED","TIMEOUT","CANCELLED","EXPIRED","MIGRATION_PROFILE_REQUIRED","UPDATE_PLAN_CHANGED","BRIDGE_NOT_CONFIRMED","MINIMUM_AGENT_VERSION","INVALID_OPERATION","ROUTE_CHANGED","INSUFFICIENT_DISK","LOCAL_INSTALL_FAILED","INVALID_BRIDGE","KNOWN_BRIDGE_REQUIRED","LEGACY_UPDATE_ACTIVE","INCOMPATIBLE_HELPER","BRIDGE_BASELINE_MISMATCH","MANAGER_PROBE_FAILED","IDENTITY_CHANGED","INVALID_BUNDLE","UNINSTALL_INVENTORY_REQUIRED","UPDATE_ALREADY_ACTIVE");
+    static final Set<String> DIAGNOSTICS=Set.of("OK","DOWNLOAD_FAILED","INVALID_SIGNATURE","INVALID_MANIFEST","HASH_MISMATCH","INCOMPATIBLE_ASSETS","VERSION_MISMATCH","DOWNGRADE_REFUSED","LOCAL_CHECK_FAILED","SERVICE_FAILED","PROBE_FAILED","ROLLED_BACK","RECOVERY_REQUIRED","NETWORK_UNCONFIRMED","UPDATE_FAILED","BATCH_STOPPED","AUTHORIZATION_REVOKED","TIMEOUT","CANCELLED","EXPIRED","MIGRATION_PROFILE_REQUIRED","UPDATE_PLAN_CHANGED","BRIDGE_NOT_CONFIRMED","MINIMUM_AGENT_VERSION","INVALID_OPERATION","ROUTE_CHANGED","INSUFFICIENT_DISK","LOCAL_INSTALL_FAILED","INVALID_BRIDGE","KNOWN_BRIDGE_REQUIRED","LEGACY_UPDATE_ACTIVE","INCOMPATIBLE_HELPER","BRIDGE_BASELINE_MISMATCH","MANAGER_PROBE_FAILED","IDENTITY_CHANGED","INVALID_BUNDLE","UNINSTALL_INVENTORY_REQUIRED","UPDATE_ALREADY_ACTIVE","AGENT_START_TIMEOUT");
     private final InventoryStore store;private final EnrollmentRegistry credentials;private final AgentUpdateCatalog catalog;private final AgentUpdateCoordinator coordinator;private final PostUpdateAssessments assessments;
     AgentUpdateRegistry(InventoryStore store,EnrollmentRegistry credentials,AgentUpdateCatalog catalog){this.store=store;this.credentials=credentials;this.catalog=catalog;this.coordinator=new AgentUpdateCoordinator(store,new AgentUpdateRoutes(catalog.rootFile()));this.assessments=new PostUpdateAssessments(store);}
     PostUpdateAssessments assessments(){return assessments;}
@@ -27,7 +28,7 @@ final class AgentUpdateRegistry {
         return map("version",DashboardVersion.VERSION,"outdatedCount",outdated);
     }
     Map<String,Object> latest(String host){var records=store.documents("SELECT payload FROM agent_update_requests WHERE host_id=? AND coalesce(json_extract(payload,'$.parentOperationId'),'')='' ORDER BY rowid DESC LIMIT 1",host);return records.isEmpty()?null:records.get(0);}
-    Map<String,Object> publicRecord(Map<String,Object> request){if(request==null)return null;Map<String,Object> safe=new LinkedHashMap<>();for(String key:List.of("id","hostId","batchId","targetVersion","fromVersion","status","createdAt","updatedAt","expiresAt","diagnostic","runAssessmentAfterUpdate","updateMode","migrationStage"))safe.put(key,request.get(key));safe.put("assessment",assessments.publicRelation(text(request.get("id"))));return safe;}
+    Map<String,Object> publicRecord(Map<String,Object> request){if(request==null)return null;Map<String,Object> safe=new LinkedHashMap<>();for(String key:List.of("id","hostId","batchId","targetVersion","fromVersion","status","createdAt","updatedAt","expiresAt","diagnostic","runAssessmentAfterUpdate","updateMode","migrationStage","startDeadlineAt"))safe.put(key,request.get(key));safe.put("assessment",assessments.publicRelation(text(request.get("id"))));return safe;}
     private void save(Map<String,Object> request){store.put("agent_update_requests",request);if(AgentUpdateCoordinator.managed(request))store.exec("UPDATE agent_update_operations SET status=?,payload=? WHERE id=?",request.get("status"),Json.stringify(request),request.get("id"));}
     private void status(Map<String,Object> request,String status,String diagnostic){
         List<Object> events=WorkRequests.updateEvents(request);boolean changed=!status.equals(request.get("status"))||!diagnostic.equals(request.get("diagnostic"));
@@ -37,8 +38,17 @@ final class AgentUpdateRegistry {
         request.put("events",events);request.put("status",status);request.put("diagnostic",diagnostic);request.put("updatedAt",at);request.put("updatedMillis",System.currentTimeMillis());
         if(TERMINAL.contains(status))request.put("finishedAt",at);save(request);
     }
-    void maintain(){long now=System.currentTimeMillis();for(var request:store.documents("SELECT payload FROM agent_update_requests WHERE status IN ("+BUSY_SQL+")")){
-        String status=text(request.get("status"));if(status.equals("WAITING")){if(!"active".equals(credentials.credentialStatus(text(request.get("hostId")))))status(request,"CANCELLED","AUTHORIZATION_REVOKED");else if(number(request.get("expiresMillis"))<=now)status(request,"EXPIRED","EXPIRED");}
+    void maintain(){maintain(System.currentTimeMillis());}
+    void maintain(long now){for(var request:store.documents("SELECT payload FROM agent_update_requests WHERE status IN ("+BUSY_SQL+") ORDER BY rowid")){
+        String status=text(request.get("status"));if(status.equals("WAITING")){if(!"active".equals(credentials.credentialStatus(text(request.get("hostId")))))status(request,"CANCELLED","AUTHORIZATION_REVOKED");else if(number(request.get("expiresMillis"))<=now)status(request,"EXPIRED","EXPIRED");
+            else if(!AgentUpdateCoordinator.child(request)&&next(request)&&number(request.get("claimedMillis"))==0){
+                // Start this machine's clock only when its predecessors have finished.
+                // Persist it so restarts and polling cannot renew the authorization.
+                long deadline=number(request.get("startDeadlineMillis"));
+                if(deadline==0){deadline=Math.min(now+WAIT_FOR_START_MILLIS,number(request.get("expiresMillis")));request.put("startDeadlineMillis",deadline);request.put("startDeadlineAt",java.time.Instant.ofEpochMilli(deadline).toString());save(request);}
+                if(deadline<=now){status(request,"EXPIRED","AGENT_START_TIMEOUT");audit(request,"AGENT_UPDATE_START_TIMEOUT");}
+            }
+        }
         else if(!status.equals("UNCONFIRMED")&&(!"active".equals(credentials.credentialStatus(text(request.get("hostId"))))||now-number(request.get("updatedMillis"))>1800000L||now-number(request.get("claimedMillis"))>=86400000L))status(request,"UNCONFIRMED","TIMEOUT");
     }
         coordinator.maintain();assessments.maintain(now);
@@ -60,7 +70,7 @@ final class AgentUpdateRegistry {
         String batchId=UUID.randomUUID().toString(),createdAt=AssessmentServer.now();long expires=System.currentTimeMillis()+number(duration)*60000;List<Object> skipped=new ArrayList<>();int ordinal=0;
         for(String id:selected){var host=store.get("hosts",id);String reason=host==null?"HOST_NOT_FOUND":reason(host,full==null?release.minUpdater():3);Map<String,Object> snapshot=WorkRequests.snapshot(store,host,id);if(!reason.isEmpty()){snapshot.put("hostId",id);snapshot.put("reason",reason);skipped.add(snapshot);continue;}
             var request=map("id",UUID.randomUUID().toString(),"hostId",id,"batchId",batchId,"ordinal",ordinal++,"targetVersion",version,"fromVersion",host.get("collectorVersion"),"status","WAITING","createdAt",createdAt,"updatedAt",createdAt,"updatedMillis",System.currentTimeMillis(),"expiresMillis",expires,"expiresAt",java.time.Instant.ofEpochMilli(expires).toString(),"diagnostic","","actorId",actor.id(),"actorName",actor.name(),"historyPartial",false,"events",new ArrayList<>(List.of(map("at",createdAt,"status","WAITING","diagnostic",""))));request.putAll(snapshot);request.put("runAssessmentAfterUpdate",runAssessment);if(full!=null)coordinator.prepare(request,host,full);save(request);assessments.onCreated(request,System.currentTimeMillis());audit(request,"AGENT_UPDATE_REQUESTED");}
-        store.exec("INSERT INTO agent_update_batches(id,request_key,target_version,selection,payload) VALUES(?,?,?,?,?)",batchId,key,version,selection,Json.stringify(map("createdAt",createdAt,"actorId",actor.id(),"actorName",actor.name(),"skipped",skipped,"runAssessmentAfterUpdate",runAssessment)));return batchResult(batchId,skipped);
+        store.exec("INSERT INTO agent_update_batches(id,request_key,target_version,selection,payload) VALUES(?,?,?,?,?)",batchId,key,version,selection,Json.stringify(map("createdAt",createdAt,"actorId",actor.id(),"actorName",actor.name(),"skipped",skipped,"runAssessmentAfterUpdate",runAssessment)));maintain();return batchResult(batchId,skipped);
     }
     private Map<String,Object> batchResult(String id,List<Object> skipped){List<Object> requests=new ArrayList<>();for(var request:store.documents("SELECT payload FROM agent_update_requests WHERE batch_id=? ORDER BY ordinal",id))requests.add(publicRecord(request));return map("batchId",id,"requests",requests,"skipped",skipped);}
     private Map<String,Object> own(String host,String id){var request=store.get("agent_update_requests",id);require(request!=null&&host.equals(request.get("hostId")),404,"Update request not found");return request;}
@@ -86,7 +96,7 @@ final class AgentUpdateRegistry {
         return map("accepted",true,"requestId",request.get("id"),"status",state);
     }
     Map<String,Object> cancel(String host,String id,UserAuth.User actor){maintain();var request=own(host,id);require("WAITING".equals(request.get("status")),409,"Only a waiting update can be cancelled");status(request,"CANCELLED","CANCELLED");audit(request,"AGENT_UPDATE_CANCELLED",actor.id(),actor.name());return publicRecord(request);}
-    Map<String,Object> bundleClaim(String host,String id){return coordinator.claim(own(host,id));}
+    Map<String,Object> bundleClaim(String host,String id){maintain();return coordinator.claim(own(host,id));}
     Map<String,Object> bundleReport(String host,Map<String,Object> input){var parent=own(host,text(input.get("operationId")));var ack=coordinator.report(parent,input);if("SUCCEEDED".equals(parent.get("status")))assessments.onSucceeded(parent,System.currentTimeMillis());else if(TERMINAL.contains(text(parent.get("status"))))assessments.onStopped(parent,text(parent.get("diagnostic")),System.currentTimeMillis());audit(parent,"AGENT_UPDATE_"+parent.get("status"));return ack;}
     byte[] bundleDownload(String host,String id,String part)throws java.io.IOException{return coordinator.download(own(host,id),part);}
     private void audit(Map<String,Object> request,String action){audit(request,action,text(request.get("actorId")),text(request.get("actorName")));}

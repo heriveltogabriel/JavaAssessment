@@ -19,7 +19,23 @@ O playbook usa wget, instala com sudo em lotes de duas máquinas e ignora agente
 - [Manual ilustrado da solução](Manual.pdf): arquitetura, inventário, atualização de agentes, relatórios e filtros JDBC.
 - [Guia de instalação](Guia-instalacao.pdf): requisitos, comandos, configuração do dashboard e instalação dos agentes.
 
-## Entrega atual — 2.1.0
+## Entrega para teste pela console — 2.1.6
+
+[Pacotes da 2.1.6](v2.1.6/README.md): JAR do datasource Spring e timeout de início por máquina no lote. Para atualizar pela tela, envie [assessment-dashboard-web-update-2.1.6.zip](v2.1.6/assessment-dashboard-web-update-2.1.6.zip) em Administração → Atualização do dashboard. O instalador de servidor novo não serve para upload.
+
+[Notas](../docs/RELEASE_2.1.6.md) · [Validação](../docs/validation/console-release-2026-10-19.md). **Atualize os agentes separadamente** e solicite nova coleta para os campos Spring. O deploy pela console será feito pelo operador.
+
+## Entrega anterior preservada — 2.1.4
+
+[Pacotes da 2.1.4](v2.1.4/README.md): coluna Arquivo JAR separada da versão nas bibliotecas/datasources. [Notas](../docs/RELEASE_2.1.4.md). Agentes 2.1.2 podem permanecer instalados para esta melhoria visual; a publicação não os atualiza automaticamente.
+
+## Entrega anterior preservada — 2.1.2
+
+[Instaladores e comandos da 2.1.2](v2.1.2/README.md), com resolução de versões de drivers JDBC por datasource WebLogic. [Notas](../docs/RELEASE_2.1.2.md) e [evidências](../docs/validation/jdbc-driver-resolution-2026-10-19.md).
+
+**Atualize os agentes separadamente pelo dashboard** e solicite nova coleta para receber os campos JDBC. Para agentes V3 elegíveis na 2.1.0, o destino é diretamente 2.1.2. A entrega anterior permanece preservada.
+
+## Entrega anterior preservada — 2.1.0
 
 [Pacotes e comandos da 2.1.0](v2.1.0/README.md):
 

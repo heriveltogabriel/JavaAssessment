@@ -8,7 +8,7 @@ import java.util.zip.*;
 
 /** Reads bounded archive metadata without extracting files or loading application classes. */
 public final class ArchiveMetadata {
-    static final long READ_LIMIT = 16L * 1024 * 1024;
+    static final long READ_LIMIT = 32L * 1024 * 1024;
     static final long FILE_LIMIT = 1024L * 1024 * 1024; // File size is independent from the bounded metadata/central-directory budget.
     static final int METADATA_LIMIT = 65536, ENTRY_LIMIT = 5000, CENTRAL_LIMIT = 2 * 1024 * 1024;
     static final Pattern BOOT_CORE = Pattern.compile("BOOT-INF/lib/spring-boot-([0-9][A-Za-z0-9._+\\-]*)\\.jar");
@@ -112,7 +112,7 @@ public final class ArchiveMetadata {
     boolean claimArchive(String path) {
         if (!scan.available()) return false;
         if (scan.archivesInspected >= 40) { scan.warn("Archive inspection count limit reached"); return false; }
-        if (scan.bytesRead >= READ_LIMIT) { scan.warn("Metadata read budget of 16 MiB reached"); return false; }
+        if (scan.bytesRead >= READ_LIMIT) { scan.warn("Metadata read budget of 32 MiB reached"); return false; }
         scan.archivesInspected++;
         return true;
     }
@@ -283,11 +283,11 @@ public final class ArchiveMetadata {
 
     void ensureBudget() throws IOException {
         if (!scan.available()) throw new Limit("Assessment deadline reached during archive discovery");
-        if (scan.bytesRead >= READ_LIMIT) throw new Limit("Metadata read budget of 16 MiB reached");
+        if (scan.bytesRead >= READ_LIMIT) throw new Limit("Metadata read budget of 32 MiB reached");
     }
     void charge(long count) throws IOException {
         ensureBudget();
-        if (count < 0 || count > READ_LIMIT - scan.bytesRead) throw new Limit("Metadata read budget of 16 MiB reached");
+        if (count < 0 || count > READ_LIMIT - scan.bytesRead) throw new Limit("Metadata read budget of 32 MiB reached");
         scan.bytesRead += count;
     }
     void report(Exception e, String path) { scan.warn(e instanceof Limit ? e.getMessage() + ": " + path : "Archive metadata could not be read: " + path); }
@@ -298,8 +298,12 @@ public final class ArchiveMetadata {
     long preflight(File file, int entryLimit, int centralLimit) throws IOException {
         RandomAccessFile input = new RandomAccessFile(file, "r");
         try {
-            long length = input.length(); int size = (int) Math.min(length, 65557L); byte[] tail = new byte[size];
+            long length = input.length(); int size = (int) Math.min(length, 42L); byte[] tail = new byte[size];
             charge(size); input.seek(length - size); input.readFully(tail);
+            if (size < 22 || u32(tail,size-22) != 0x06054b50L || u16(tail,size-2) != 0) {
+                size = (int)Math.min(length,65557L); tail = new byte[size];
+                charge(size); input.seek(length-size); input.readFully(tail);
+            }
             long[] directory = directory(tail, length, length - size, entryLimit, centralLimit);
             charge(directory[0]); byte[] central = new byte[(int) directory[0]];
             input.seek(directory[1]); input.readFully(central);

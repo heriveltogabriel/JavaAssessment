@@ -107,16 +107,20 @@ final class SpringDataSource {
         if (driver != null && driverType == null || driverType != null && database != null && !driverType.equals(database)) return;
         String type = driverType == null ? database : driverType;
         if (type == null) return;
-        int matches = 0; String version = null;
+        int matches = 0; String version = null, artifact = null;
         for (Object value : libraries) if (value instanceof Map) {
             Map library = (Map)value; Object rawPath = library.get("path");
             if (!(rawPath instanceof String) || !"JDBC".equals(library.get("category"))) continue;
             if (!type.equals(libraryDatabase((String)rawPath))) continue;
             matches++;
+            artifact = (String)rawPath;
             Object rawVersion = library.get("version");
             if (rawVersion instanceof String && ((String)rawVersion).matches("[0-9][A-Za-z0-9._+\\-]{0,127}")) version = (String)rawVersion;
         }
-        if (matches == 1 && version != null) fields.put("driverVersion", version);
+        if (matches == 1) {
+            fields.put("driverArtifact", artifact);
+            if (version != null) fields.put("driverVersion", version);
+        }
     }
     static boolean profileFile(String name) {
         return name.startsWith(PREFIX + "application-") && (name.endsWith(".properties") || name.endsWith(".yaml") || name.endsWith(".yml"));

@@ -10,7 +10,7 @@ final class ProcessLaunch {
     String mainClass, jarPath, moduleName, serverType, serverHome, serverBase, serverName, applicationType;
     String serverConfigDirectory, serverConfigFile, webLogicHome, wlsHome;
     final List<String> classpath = new ArrayList<String>(), modulePaths = new ArrayList<String>();
-    boolean javaCommand, opaqueArguments, serverBaseExplicit;
+    boolean javaCommand, opaqueArguments, serverBaseExplicit, explicitClasspath;
 
     static boolean javaExecutable(String value) {
         if (value == null) return false;
@@ -65,9 +65,9 @@ final class ProcessLaunch {
             String arg = args[i];
             if (arg.startsWith("@")) { launch.opaqueArguments = true; break; }
             if (arg.equals("-cp") || arg.equals("-classpath") || arg.equals("--class-path")) {
-                if (i + 1 < args.length) paths(launch.classpath, args[++i], cwd); continue;
+                launch.explicitClasspath = true; if (i + 1 < args.length) paths(launch.classpath, args[++i], cwd); continue;
             }
-            if (arg.startsWith("--class-path=")) { paths(launch.classpath, arg.substring(13), cwd); continue; }
+            if (arg.startsWith("--class-path=")) { launch.explicitClasspath = true; paths(launch.classpath, arg.substring(13), cwd); continue; }
             if (arg.equals("-jar")) { if (i + 1 < args.length) launch.jarPath = path(args[++i], cwd); after = i + 1; break; }
             if (arg.equals("-m") || arg.equals("--module") || arg.startsWith("--module=")) {
                 String module = arg.startsWith("--module=") ? arg.substring(9) : i + 1 < args.length ? args[++i] : null;

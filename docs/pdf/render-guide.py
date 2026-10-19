@@ -58,7 +58,7 @@ class Code(Flowable):
         c.setFillColor(colors.white);c.setFont('DVM',8)
         for i,line in enumerate(self.lines):c.drawString(13,self.height-39-i*12.6,line)
 
-stages=[('01','Preparar o ambiente','Requisitos, rede e arquivos da entrega',2),('02','Instalar o dashboard','Integridade, extração e configuração',3),('03','Configurar o acesso','Primeiro login, ambientes e pacotes',4),('04','Instalar os agentes','Serviço root e Java existente',5),('05','Validar a primeira coleta','Versão, contato e inventário',6),('06','Atualizar e consultar','Work requests, assessment e relatórios',7),('07','Cuidar da operação','HTTPS, backup e homologação',8)]
+stages=[('01','Preparar o ambiente','Requisitos, rede e arquivos da entrega',2),('02','Instalar o dashboard','Integridade, extração e configuração',3),('03','Configurar o acesso','Primeiro login, ambientes e pacotes',4),('04','Instalar os agentes','Serviço root e Java existente',5),('05','Validar a primeira coleta','Versão, contato e inventário',6),('06','Atualizar e consultar','Solicitações, assessment e relatórios',7),('07','Cuidar da operação','HTTPS, backup e homologação',8)]
 class Doc(BaseDocTemplate):
     def __init__(self):
         BaseDocTemplate.__init__(self,str(OUT),pagesize=A4,title='Java Assessment | Guia de instalação do cliente',author='Java Assessment',subject='Dashboard e agentes em ambiente próprio',leftMargin=M,rightMargin=M,topMargin=85,bottomMargin=55)
@@ -87,7 +87,7 @@ class Doc(BaseDocTemplate):
             c.setFillColor(GREEN);c.setFont('DVB',8.5);c.drawCentredString(M+15.5,y-6,num)
             c.setFont('DVB',10);c.drawString(M+44,y,title);c.setFont('DV',8.3);c.setFillColor(MUTED);c.drawString(M+44,y-15,detail);c.drawRightString(W-M,y-5,f'{page:02d}')
             c.linkRect('',f'stage-{num}',(M,y-20,W-M,y+15),relative=0,thickness=0)
-        c.setStrokeColor(LINE);c.line(M,75,W-M,75);c.setFont('DV',8);c.drawString(M,55,'15 de outubro de 2026');c.drawRightString(W-M,55,'HTTPS 443  •  Credenciais individuais')
+        c.setStrokeColor(LINE);c.line(M,75,W-M,75);c.setFont('DV',8);c.drawString(M,55,'19 de outubro de 2026');c.drawRightString(W-M,55,'HTTPS 443  •  Credenciais individuais')
     def afterFlowable(self,f):
         if hasattr(f,'bookmark'):
             self.canv.bookmarkPage(f.bookmark);self.canv.addOutlineEntry(f.title_text,f.bookmark,level=0)
@@ -175,23 +175,23 @@ sudo tail -n 60 /opt/java-assessment-collector/logs/install.log'''),
  Code('Com SysV', 'sudo /sbin/service java-assessment-collector status'),
  p('No dashboard do cliente',SUB),
  bullet('Confirme a máquina no ambiente correto, versão esperada e contato recente.'),
- bullet('Solicite um assessment e acompanhe <b>Work requests</b> até a conclusão. Se a coleta inicial foi automática, acompanhe o pedido já criado.'),
+ bullet('Solicite um assessment e acompanhe <b>Solicitações</b> até a conclusão. Se a coleta inicial foi automática, acompanhe o pedido já criado.'),
  bullet('Confira instalações Java, aplicações e datasources conhecidos. Abra eventuais observações de cobertura.'),
  note('Mensagem normal',mono('ASSESSMENT_NO_JOB')+' significa que o agente está conectado e sem tarefa pendente. Não é erro de instalação.'))
 
 section('06','Atualizações e relatórios','Acompanhe a atualização, a coleta e a análise em etapas distintas. Cada uma tem seu próprio resultado.')
 add(p('1. Revisar e atualizar os agentes',SUB),
- p('Após atualizar o dashboard, abra <b>Revisar agentes</b>. Confira a versão disponível e a elegibilidade. Selecione uma máquina ou as máquinas do ambiente. A versão numérica sozinha não comprova compatibilidade.'),
+ p('Após atualizar o dashboard, abra <b>Revisar agentes</b>. Confira a versão disponível e a elegibilidade. Selecione uma máquina ou as máquinas do ambiente. Cada máquina tem 5 minutos para iniciar na sua vez; sem resposta, o lote segue. Crie novo pedido quando ela voltar.'),
  p('Instalações V3 e perfis legados conhecidos podem receber atualização completa pelo painel quando elegíveis. O pacote assinado pode incluir scripts e bibliotecas previstos; o fluxo preserva cadastro, configuração e confiança HTTPS.'),
  note('Atenção: atualize também os agentes','Publicar o dashboard não atualiza as máquinas automaticamente. Sem suporte elegível, use o pacote configurado do ambiente e o instalador completo com --system-root. Comece por uma máquina.'),
  p('2. Acompanhar o pedido e o assessment',SUB),
- p('Mantenha a opção de assessment após atualização habilitada. Ao confirmar, o painel abre o <b>Work request</b>. Aguarde a confirmação da versão final e abra o assessment vinculado. Fechar a tela não cancela a operação.'),
+ p('Mantenha a opção de assessment após atualização habilitada. Ao confirmar, o painel abre a <b>Solicitação</b>. Aguarde a confirmação da versão final e abra o assessment vinculado. Fechar a tela não cancela a operação.'),
  p('Se aparecer <b>Aguardando confirmação</b>, o resultado ainda é desconhecido. Consulte o motivo no mesmo pedido. Não apague arquivos nem force uma reinstalação enquanto houver uma operação pendente.',SMALL),
  p('3. Consultar e exportar relatórios',SUB),
- p('Em <b>Relatórios</b>, escolha Máquinas, Java, Java Servers, JDBC ou Resumo por ambiente. Selecione ambiente, filtros e colunas; exporte PDF ou CSV. As exportações respeitam a consulta e incluem todas as páginas.'),
- p('Todos os modelos incluem JDBC. Combine datasource, banco, driver e versão, classe, referência, servidor, aplicação, tipo, estado e presença de JDBC. Em Java Servers, confira também IP, Java associado e JDBC do servidor.'),
+ p('Em <b>Relatórios</b>, escolha Máquinas, Java, Servidores Java, JDBC ou Resumo por ambiente. Selecione ambiente, filtros e colunas; exporte PDF ou CSV. As exportações respeitam a consulta e incluem todas as páginas.'),
+ p('Todos os modelos incluem JDBC. Combine datasource, banco, driver e versão, classe, referência, servidor, aplicação, tipo, estado e presença de JDBC. Em Servidores Java, confira também IP, Java associado e JDBC do servidor.'),
  note('Validar o resultado','Compare uma aplicação conhecida com seu servidor e datasource. JDBC do servidor usa os vínculos registrados; JDBC da máquina mostra o contexto do host. Recarregar a tela não solicita uma nova coleta.'),
- p('Atualização do dashboard existente: use o procedimento de atualização fornecido para a entrega, com backup e verificação. O instalador deste guia é destinado a um servidor novo.',SMALL))
+ p('Dashboard com executor independente: em Administração, envie o ZIP web-update da entrega, revise a preparação e confirme Atualizar e reiniciar com sua senha. Aguarde o retorno e confira versão e log. Sem executor, use o script compatível para a primeira adoção.',SMALL))
 
 section('07','Operação e homologação','Organize a confiança HTTPS, os backups e uma validação representativa antes de ampliar a instalação.')
 add(p('Certificado corporativo - opcional na instalação nova',SUB),

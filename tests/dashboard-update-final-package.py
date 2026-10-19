@@ -85,14 +85,20 @@ class JavaSystem(m.System):
         assert b'BACKUP_OK' in output
 
 def main():
+    import argparse
+    parser=argparse.ArgumentParser()
+    parser.add_argument("--from-version", default="2.0.57")
+    parser.add_argument("--to-version", default="2.1.0")
+    args=parser.parse_args()
+    origin,target=args.from_version,args.to_version
     with tempfile.TemporaryDirectory(prefix='dashboard-final-java-',dir='/opt' if os.environ.get('TEST_DASHBOARD_USER') else None) as temp:
         base = Path(temp).resolve()/'installation'
         base.mkdir()
-        unpack(artifact('2.0.57', 'packages/assessment-dashboard-runtime-2.0.57.zip'), base,
+        unpack(artifact(origin, 'packages/assessment-dashboard-runtime-'+origin+'.zip'), base,
                ('classes', 'web', 'dist', 'lib'))
-        unpack(artifact('2.0.57', 'deployment/dashboard-update-sources.zip'), base,
+        unpack(artifact(origin, 'deployment/dashboard-update-sources.zip'), base,
                ('server', 'shared', 'web'))
-        (base/'maintenance').mkdir()
+        (base/'maintenance').mkdir(exist_ok=True)
         state = Path(temp).resolve()/'state'
         state.mkdir()
         (base/'conf/tls').mkdir(parents=True)
@@ -123,18 +129,18 @@ def main():
         system = JavaSystem(base)
         try:
             system.start()
-            system.health('2.0.57')
+            system.health(origin)
             (base/'data/.environment-install.key').write_bytes(os.urandom(32))
             if account:
                 os.chown(str(base/'data/.environment-install.key'),account.pw_uid,account.pw_gid)
                 (base/'data/.environment-install.key').chmod(0o600)
             identity = (base/'data/.environment-install.key').read_bytes()
-            package = ROOT/'output/dashboard-releases/2.1.0/packages/assessment-dashboard-web-update-2.1.0.zip'
+            package = ROOT/'output/dashboard-releases'/target/'packages'/('assessment-dashboard-web-update-'+target+'.zip')
             engine = m.Engine(base, state, system, account.pw_gid if account else None)
             engine.prepare('a'*32, package, 'fixture@example.test')
             engine.confirm('a'*32)
             assert engine.record['phase'] == 'SUCCEEDED'
-            system.health('2.1.0')
+            system.health(target)
             assert identity == (base/'data/.environment-install.key').read_bytes()
             if account:
                 for p in (base/'data').glob('inventory.sqlite*'):
@@ -145,13 +151,13 @@ def main():
             con.commit()
             con.close()
             engine.rollback()
-            system.health('2.0.57')
+            system.health(origin)
             con = sqlite3.connect(str(base/'data/inventory.sqlite'))
             assert con.execute('SELECT value FROM fixture_after_update').fetchone()[0] == 'preserved'
             assert con.execute('PRAGMA integrity_check').fetchall() == [('ok',)]
             con.close()
             assert identity == (base/'data/.environment-install.key').read_bytes()
-            print('FINAL_JAVA_PACKAGE=PASS 2.0.57 -> 2.1.0 -> 2.0.57; real released Java classes, signed ZIP, TLS/SNI, SQLite and installation identity; '+('temporary systemd unit, unprivileged user, strict sandbox and inbox-only write access' if account else 'child-process service adapter'))
+            print('FINAL_JAVA_PACKAGE=PASS '+origin+' -> '+target+' -> '+origin+'; real released Java classes, signed ZIP, TLS/SNI, SQLite and installation identity; '+('temporary systemd unit, unprivileged user, strict sandbox and inbox-only write access' if account else 'child-process service adapter'))
         except Exception:
             system.log.flush()
             print((base/'process.log').read_text(errors='replace')[-4000:])

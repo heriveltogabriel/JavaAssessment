@@ -37,6 +37,8 @@ public final class SpringDataSourceTest {
             "Configured pool maximum is separate from absent runtime pool metrics");
         check(row.get("applicationId") != null && row.get("pid") != null && "springdemo datasource".equals(row.get("name")) && String.valueOf(row.get("configurationSource")).endsWith("!/BOOT-INF/classes/application.properties"), "Application association and source path must be retained");
         check("Matching packaged JDBC library; runtime loading not verified".equals(row.get("driverVersionEvidence")), "Packaged driver version must carry limited evidence");
+        check(String.valueOf(row.get("driverArtifact")).endsWith("!/BOOT-INF/lib/h2-2.4.240.jar"), "Datasource keeps the unique nested driver JAR path");
+        check(row.get("databaseVersion") == null, "Packaged JAR never implies database server version");
         String json = Json.stringify(AssessmentScan.map("datasources", scan.datasources, "libraries", scan.libraries, "applications", scan.applications, "warnings", scan.warnings, "cache", scan.archiveMetadata.cache));
         for (String secret : new String[]{"URL_SECRET_CANARY", "USER_SECRET_CANARY", "PASSWORD_SECRET_CANARY", "POOL_SECRET_CANARY", "jdbc:h2:mem:demo", "spring.datasource.password"})
             check(json.indexOf(secret) < 0, "No raw URL, credentials or arbitrary config values may enter results or cache");
@@ -115,6 +117,7 @@ public final class SpringDataSourceTest {
         h2(contents, "2.3.232");
         AssessmentScan ambiguous = scan(root, boot(root, "ambiguous-driver.jar", contents), true, 1);
         check(ambiguous.datasources.size() == 1 && ((Map)ambiguous.datasources.get(0)).get("driverVersion") == null, "Multiple matching packaged drivers must not imply one selected driver version");
+        check(((Map)ambiguous.datasources.get(0)).get("driverArtifact") == null, "Ambiguous packaged drivers must not select one JAR");
         Map<String,byte[]> nonBoot = entries(); config(nonBoot, "application.properties", "spring.datasource.url=jdbc:h2:mem:demo\n");
         File ordinary = new File(root, "ordinary.jar"); ProcessLaunchTest.write(ordinary, ProcessLaunchTest.jar(ProcessLaunchTest.attrs("Main-Class", "example.Main"), nonBoot));
         check(scan(root, ordinary, true, 1).datasources.isEmpty(), "A non-Boot archive must not be classified from similarly named configuration alone");

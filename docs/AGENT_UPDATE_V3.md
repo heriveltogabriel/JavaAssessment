@@ -86,3 +86,9 @@ Work requests mostra separadamente a atualização e a coleta, com links nos doi
 `reserve_update_pair()` reserva B/T sob o mesmo lock. O builder operacional inclui catálogo, bridges e bundle no runtime. A publicação preserva catálogos anteriores e recusa operações de atualização ocupadas, inclusive pais sem filho V1 ativo.
 
 Uma futura mudança de schema/bootstrap exige nova regra explícita de compatibilidade. Não basta aumentar o número da versão. Bibliotecas do bootstrap anterior permanecem independentes das bibliotecas novas. O build herda a âncora e suas bibliotecas do primeiro instalador V3 assinado entre as origens verificadas; não a substitui pela âncora de cada release nova.
+
+## Prazo de início por máquina
+
+Na entrega 2.1.6, o primeiro pedido ainda não iniciado de cada lote recebe um prazo persistido de cinco minutos. A máquina seguinte ganha seu próprio prazo quando chega sua vez, limitado também pela validade global do pedido. A manutenção periódica (30 segundos) funciona sem heartbeat e sem navegador aberto.
+
+O estado EXPIRED com diagnóstico AGENT_START_TIMEOUT libera a próxima máquina e cancela um bridge ainda não iniciado. Claims tardios são recusados nos protocolos legado e V3. Para tentar novamente após a máquina voltar, crie outro pedido pelo painel. O prazo não cancela uma instalação iniciada: UNCONFIRMED, recuperação e interrupção por falha real continuam com as regras existentes.

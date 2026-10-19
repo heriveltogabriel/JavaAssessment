@@ -1,6 +1,6 @@
 # Descoberta passiva de aplicações Spring
 
-As melhorias de destinos JDBC, classpath e novos limites estão em validação na fonte; não alteram os pacotes já publicados.
+A entrega 2.1.6 consolida destinos JDBC, classpath e associação do JAR ao datasource. Para novos campos, atualize o agente e solicite nova coleta; inventários anteriores não são recalculados.
 
 A inspeção de arquivos (`inspectArchives`) deve estar habilitada no assessment. O coletor relaciona metadados à aplicação em execução sem carregar classes, iniciar JVMs da aplicação ou abrir conexões JDBC.
 
@@ -13,7 +13,7 @@ A inspeção de arquivos (`inspectArchives`) deve estar habilitada no assessment
 - spring.config.name, spring.config.location e spring.config.additional-location nos parâmetros de inicialização ou variáveis de ambiente correspondentes.
 - Variáveis e argumentos permitidos de datasource; placeholders exatos como ${DATABASE_URL} e ${DATABASE_URL:jdbc:h2:mem:example}. Valores arbitrários, senhas e URLs JDBC completas não são gravados no inventário. Para formatos conhecidos, extrair somente host/IP, porta e banco/serviço em campos estruturados; múltiplos destinos são preservados como configuração, sem comprovar conexão. Banco em memória e alias TNS não geram host fictício.
 - Datasource padrão e prefixos extras explicitamente cadastrados. Um datasource por processo/prefixo, evitando misturar aplicações que usam o mesmo JAR para destinos distintos.
-- Driver associado apenas quando a biblioteca da própria aplicação é identificada sem ambiguidade. Sua presença não comprova carregamento em execução.
+- Driver associado apenas quando a biblioteca da própria aplicação é identificada sem ambiguidade. O campo driverArtifact conserva o caminho, inclusive !/BOOT-INF/lib no JAR executável, e driverVersion a versão disponível. Ambos usam a mesma biblioteca; vários candidatos não geram uma escolha automática. Sua presença não comprova carregamento em execução nem a versão do banco. Um relato opcional de versão diferente remove o caminho incompatível.
 
 Para prefixos personalizados, acrescente ao collector.properties e solicite novo assessment:
 
@@ -29,7 +29,7 @@ Os profiles exibidos são candidatos encontrados na configuração local. A reso
 
 Não busca configurações em Config Server, Vault, rede, imports remotos nem árvores de secrets. Imports, grupos/includes de profiles, documentos condicionais, YAML complexo e locais com wildcard/grupos são assinalados como parciais. Não resolve valores arbitrários por código, SpEL ou configurações criadas por beans. Diretórios config/* automáticos não são enumerados nesta versão. WAR implantado em servidor externo não tem toda a resolução Spring desse fluxo; a descoberta existente do servidor permanece disponível. Não expande Manifest Class-Path nem resolve ordem ambígua de wildcard; esses casos são sinalizados como parciais. Não classifica R2DBC como JDBC.
 
-Arquivos de configuração têm limite de 64 KiB, no máximo 32 arquivos por aplicação, até oito profiles/nomes e oito prefixos extras. O perfil padrão em validação permite 50.000 arquivos, 180 segundos e 16 MiB de metadados, mantendo heap de 96 MiB. Limites de tempo/arquivos explicitamente configurados são preservados. Atingir um limite encerra essa parte da descoberta, sem prometer que todos os arquivos serão examinados. Configuração empacotada tem prioridade sobre dependências e cache transitório limitado, nunca serializado. JARs até 1 GiB podem ter somente os metadados selecionados lidos; ZIP64 e diretórios centrais excessivos continuam recusados. Bibliotecas grandes podem conservar apenas evidência de nome quando o orçamento não permite ler o manifesto.
+Arquivos de configuração têm limite de 64 KiB, no máximo 32 arquivos por aplicação, até oito profiles/nomes e oito prefixos extras. O perfil padrão permite 50.000 arquivos, 180 segundos e 32 MiB de metadados, mantendo heap de 96 MiB. Limites de tempo/arquivos explicitamente configurados são preservados. Atingir um limite encerra essa parte da descoberta, sem prometer que todos os arquivos serão examinados. Configuração empacotada tem prioridade sobre dependências e cache transitório limitado, nunca serializado. JARs até 1 GiB podem ter somente os metadados selecionados lidos; ZIP64 e diretórios centrais excessivos continuam recusados. Bibliotecas grandes podem conservar apenas evidência de nome quando o orçamento não permite ler o manifesto.
 
 ## Versão real do banco
 

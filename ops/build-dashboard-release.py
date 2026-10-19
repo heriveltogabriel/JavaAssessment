@@ -293,7 +293,7 @@ def main():
         jdbc_fixture = evidence / 'jdbc-collector-fixtures.json'
         checked_run([JDK / 'bin/java', '-Xmx96m', '-cp', str(worker_tests) + ':' + worker_cp,
                      'assessment.ServerDataSourcesTest', '--export', jdbc_fixture], evidence / 'jdbc-collector.log')
-        for suite in ('JdbcEndpointTest', 'SpringConfigurationTest', 'SpringIntegrationTest', 'SpringDataSourceTest', 'RuntimeInventoryTest', 'ProcessLaunchTest', 'JdkInventoryTest', 'ArchiveMetadataTest', 'WebLogicVersionTest', 'BoundedDirectoryTest', 'CollectorSweepTest', 'CollectorTest', 'AgentToolTest'):
+        for suite in ('JdbcDriverResolverTest', 'JdbcEndpointTest', 'SpringConfigurationTest', 'SpringIntegrationTest', 'SpringDataSourceTest', 'RuntimeInventoryTest', 'ProcessLaunchTest', 'JdkInventoryTest', 'ArchiveMetadataTest', 'WebLogicVersionTest', 'BoundedDirectoryTest', 'CollectorSweepTest', 'CollectorTest', 'AgentToolTest'):
             checked_run([JDK / 'bin/java', '-Xmx96m', '-cp', str(worker_tests) + ':' + worker_cp,
                          'assessment.' + suite], evidence / (suite + '.log'))
         checked_run([JDK / 'bin/java', '-Xmx96m', '-cp', str(worker_tests) + ':' + worker_cp,
@@ -302,7 +302,7 @@ def main():
                      ROOT / 'tests/TestAccounts.java', ROOT / 'tests/DashboardVersionHttpTest.java',
                      ROOT / 'tests/UserAuthTest.java', ROOT / 'tests/UserAccessHttpTest.java',
                      ROOT / 'tests/MachineActionsHttpTest.java', ROOT / 'tests/MachineActionsUiFixture.java',
-                     ROOT / 'tests/UserAccessUiFixture.java', ROOT / 'tests/AgentUpdateHttpTest.java',
+                     ROOT / 'tests/UserAccessUiFixture.java', ROOT / 'tests/AgentUpdateHttpTest.java', ROOT / 'tests/AgentUpdateStartTimeoutTest.java',
                      ROOT / 'tests/WorkRequestsHttpTest.java', ROOT / 'tests/WorkRequestsUiFixture.java',
                      ROOT / 'tests/BetaServerTest.java', ROOT / 'tests/JdbcOverviewHttpTest.java',
                      ROOT / 'tests/EnvironmentInstallAccessTest.java', ROOT / 'tests/EnvironmentInstallHttpTest.java',
@@ -313,6 +313,7 @@ def main():
         checked_run([JDK / 'bin/java', '-cp', str(classes) + ':' + str(ROOT / 'lib/*'), 'assessment.UserAccessHttpTest'], evidence / 'user-access-http.log')
         checked_run([JDK / 'bin/java', '-cp', str(classes) + ':' + str(ROOT / 'lib/*'), 'assessment.MachineActionsHttpTest'], evidence / 'machine-actions-http.log')
         checked_run([JDK / 'bin/java', '-Xmx384m', '-cp', str(classes) + ':' + str(ROOT / 'lib/*'), 'assessment.AgentUpdateHttpTest'], evidence / 'agent-update-http.log')
+        checked_run([JDK / 'bin/java', '-Xmx384m', '-cp', str(classes) + ':' + str(ROOT / 'lib/*'), 'assessment.AgentUpdateStartTimeoutTest'], evidence / 'agent-update-start-timeout.log')
         checked_run([JDK / 'bin/java', '-Xmx384m', '-cp', str(classes) + ':' + str(ROOT / 'lib/*'), 'assessment.WorkRequestsHttpTest'], evidence / 'work-requests-http.log')
         checked_run([JDK / 'bin/java', '-Xmx384m', '-cp', str(classes) + ':' + str(ROOT / 'lib/*'),
                      'assessment.JdbcOverviewHttpTest', jdbc_fixture, evidence / 'jdbc-overview'], evidence / 'jdbc-overview-http.log')

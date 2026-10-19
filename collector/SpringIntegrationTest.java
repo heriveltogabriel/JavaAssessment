@@ -79,9 +79,10 @@ public final class SpringIntegrationTest {
         return AssessmentScan.map("id", "passive1", "sourcePath", application.getPath(), "configurationKey", key, "name", "orders datasource", "pid", owner, "state", "CONFIGURED", "driverVersion", "42.6");
     }
     static void merging() throws Exception {
-        save(report(Arrays.asList(data()))); AssessmentScan scan = scan(true); Map passive = passive("spring.datasource", pid); scan.datasources.add(passive); enrich(scan);
+        save(report(Arrays.asList(data()))); AssessmentScan scan = scan(true); Map passive = passive("spring.datasource", pid); passive.put("driverArtifact", "postgresql-42.6.jar"); scan.datasources.add(passive); enrich(scan);
         check(scan.datasources.size() == 1 && "passive1".equals(((Map)scan.datasources.get(0)).get("id")), "Unambiguous default enriches existing row");
         check("dataSource".equals(passive.get("name")) && "42.7.4".equals(passive.get("driverVersion")), "Application name and loaded driver supersede configuration");
+        check(passive.get("driverArtifact") == null, "Runtime version change clears incompatible packaged JAR association");
         AssessmentScan otherPid = scan(true); otherPid.datasources.add(passive("spring.datasource", pid + 1)); enrich(otherPid);
         check(otherPid.datasources.size() == 2 && "CONFIGURED".equals(((Map)otherPid.datasources.get(0)).get("state")), "Do not enrich another process sharing same JAR");
         AssessmentScan shared = scan(true); Map row = passive("spring.datasource", pid); row.put("associations", Arrays.asList(AssessmentScan.map("pid", pid), AssessmentScan.map("pid", pid + 1))); shared.datasources.add(row); enrich(shared);

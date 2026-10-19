@@ -8,7 +8,7 @@ import java.util.*;
 final class CsvExport {
     private static final String[] KINDS={"hosts","runtimes","processes","servers","libraries","applications","datasources","jobs"};
     private static final String[] COLUMNS={
-        "Tipo de registro","Ambiente","ID do ambiente","Máquina","ID da máquina","ID do registro","Nome","Versão","Tipo","Caminho","Estado","Observado em","Fornecedor","Diretório Java","Em uso","ID da aplicação","Aplicação","Servidor Java","Categoria","Uso","Evidência","Nível de evidência","Versão do framework","Driver JDBC","Versão do driver","Tipo de banco","Origem da configuração","Pool máximo configurado","Capacidade do pool","Conexões disponíveis","Conexões ativas","PID","Classe principal","Módulo","Sistema operacional","Distribuição","Arquitetura","Endereços IP","Versão do agente","Versão do Java do agente","Ciclo de vida do agente","Último contato","Última coleta","Estado da cobertura","CPUs lógicas","Memória total (bytes)","Criado em","Iniciado em","Concluído em","Resultado","Host/IP do banco (configurado)","Portas do banco (configuradas)","Banco / serviço / SID (configurado)","Destino do banco (configurado)","IDs dos servidores associados","Domínio WebLogic","Caminho do domínio"
+        "Tipo de registro","Ambiente","ID do ambiente","Máquina","ID da máquina","ID do registro","Nome","Versão","Tipo","Caminho","Estado","Observado em","Fornecedor","Diretório Java","Em uso","ID da aplicação","Aplicação","Servidor Java","Categoria","Uso","Evidência","Nível de evidência","Versão do framework","Driver JDBC","Versão do driver","Tipo de banco","Origem da configuração","Pool máximo configurado","Capacidade do pool","Conexões disponíveis","Conexões ativas","PID","Classe principal","Módulo","Sistema operacional","Distribuição","Arquitetura","Endereços IP","Versão do agente","Versão do Java do agente","Ciclo de vida do agente","Último contato","Última coleta","Estado da cobertura","CPUs lógicas","Memória total (bytes)","Criado em","Iniciado em","Concluído em","Resultado","Host/IP do banco (configurado)","Portas do banco (configuradas)","Banco / serviço / SID (configurado)","Destino do banco (configurado)","IDs dos servidores associados","Domínio WebLogic","Caminho do domínio","Arquivo do driver","Identificação do driver","Evidência da versão do driver","Drivers candidatos"
     };
 
     private CsvExport() {}
@@ -62,8 +62,14 @@ final class CsvExport {
             item.get("pid"),item.get("mainClass"),item.get("moduleName"),host.get("osName"),host.get("distribution"),first(item,"architecture")!=null?item.get("architecture"):host.get("architecture"),strings(host.get("ipAddresses")),
             host.get("collectorVersion"),host.get("collectorJavaVersion"),host.get("agentLifecycle"),host.get("lastSeen"),host.get("lastAssessmentAt"),
             coverage.get("status"),host.get("logicalCpus"),host.get("memoryTotalBytes"),item.get("createdAt"),item.get("startedAt"),item.get("finishedAt"),job?first(item,"error","summary"):null,
-            endpoints(item,"host"),endpoints(item,"port"),first(item,"databaseName"),destination(item),associatedIds(item,"serverId"),first(item,"domainName"),first(item,"domainPath")
+            endpoints(item,"host"),endpoints(item,"port"),first(item,"databaseName"),destination(item),associatedIds(item,"serverId"),first(item,"domainName"),first(item,"domainPath"),first(item,"driverArtifact"),first(item,"driverResolution"),first(item,"driverVersionEvidence"),driverCandidates(item)
         };
+    }
+
+    private static String driverCandidates(Map<?,?> item){
+        List<String> values=new ArrayList<>();
+        if(item.get("driverCandidates") instanceof List<?> entries) for(Object raw:entries) if(raw instanceof Map<?,?> c && values.size()<32) values.add(String.valueOf(c.getOrDefault("path",null))+" — "+String.valueOf(c.getOrDefault("version",null)));
+        return String.join(" | ",values);
     }
 
     private static List<Map<String,String>> endpointList(Map<?,?> item){

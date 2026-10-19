@@ -1,5 +1,19 @@
 # Melhorias planejadas
 
+## Entrega 2.1.6 — teste pela console
+
+- [x] Datasources Spring: associar driverArtifact à biblioteca única da aplicação; preservar ambiguidades e separar versão do driver/banco. Fixtures de JAR aninhado, associação de processo, integração opcional e relatórios/exportações validadas.
+- [x] Timeout do lote: cinco minutos para iniciar quando chegar a vez; persistência, manutenção sem heartbeat, bloqueio de claim tardio V1/V3 e avanço da próxima máquina. Atualizações iniciadas preservam recuperação.
+- [x] Motivo visível em Solicitações e atualização de agentes; novo pedido permitido quando a máquina voltar.
+- [x] Documentação, README e PDFs com nomes genéricos revisados.
+- [ ] Operador enviar o ZIP web-update 2.1.6 na console, confirmar e verificar reconexão/versão final. Não houve deploy desta entrega por SSH.
+- [ ] Após atualizar OL07, solicitar coleta e confirmar JAR nas linhas dos três datasources reais; a coleta anterior confirmou versão H2 2.3.232, mas não o campo driverArtifact.
+- [ ] Ensaio operacional do lote com uma máquina desligada; os cenários de timeout, reinício e retorno tardio já passaram em testes isolados.
+
+## Versão de drivers JDBC — entrega de laboratório 2.1.2
+
+Descoberta Oracle JDBC e evidências nos relatórios implementadas; probe Java 6/RHEL5 identificou Oracle 11.2.0.3.0 e Derby 10.12.1.1. Pacote final e publicação registrados nas [evidências](validation/jdbc-driver-resolution-2026-10-19.md). A simulação Oracle não ativa datasource nem conecta a banco.
+
 ## Atualização administrativa — 2.1.0 publicada no laboratório
 
 Implementação concluída, pacotes validados em ambiente isolado e primeiro deploy no dashboard de laboratório confirmado em 2026-10-16. HTTPS externo 2.1.0, executor ativo/habilitado e permissões da fila conferidos; banco, configuração e CA preservados. Nenhum agente atualizado pelo deploy: [desenho](superpowers/specs/2026-10-16-dashboard-self-update-design.md), [operação](DASHBOARD_SELF_UPDATE.md), [evidências](validation/dashboard-self-update-2026-10-16.md). A 2.0.57 permanece preservada para o cliente. Não publicar no cliente sem validação da entrega final.

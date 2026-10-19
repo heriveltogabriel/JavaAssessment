@@ -21,7 +21,7 @@ public final class JdbcEndpointReportsTest {
             app.store.put("hosts",map("id","h","hostname","endpoint-host","environmentId","prod","ipAddresses",List.of("10.0.0.8")));
             app.store.putInventory("runtimes","h",List.of(map("id","j","hostId","h","version","17","javaHome","/jdk")));
             app.store.putInventory("servers","h",List.of(map("id","s","hostId","h","name","AdminServer","type","WebLogic","pid",25,"javaHome","/jdk"),map("id","other","hostId","h","name","UnrelatedServer","type","Tomcat","pid",26)));
-            var rac=map("id","rac","hostId","h","name","OrdersDS","serverName","AdminServer","pid",25,"driverName","Oracle","driverVersion","19.3","databaseHost","rac-a.example","databasePort",1521,"databaseName","orders.example","databaseEndpoints",List.of(map("host","rac-a.example","port",1521,"password","SECRET_ENDPOINT"),map("host","rac-b.example","port",1522),map("host","2001:db8::7","port",1523)),"url","jdbc:oracle:thin:user/SECRET_URL@rac-a.example:1521/orders.example","password","SECRET_PASSWORD");
+            var rac=map("id","rac","hostId","h","name","OrdersDS","serverName","AdminServer","pid",25,"driverName","Oracle","driverVersion","19.3","driverArtifact","/domain/lib/renamed.jar","driverResolution","IDENTIFIED","driverVersionEvidence","Classe exata no JAR","driverCandidates",List.of(map("path","/domain/lib/renamed.jar","version","19.3","password","SECRET_CANDIDATE")),"databaseHost","rac-a.example","databasePort",1521,"databaseName","orders.example","databaseEndpoints",List.of(map("host","rac-a.example","port",1521,"password","SECRET_ENDPOINT"),map("host","rac-b.example","port",1522),map("host","2001:db8::7","port",1523)),"url","jdbc:oracle:thin:user/SECRET_URL@rac-a.example:1521/orders.example","password","SECRET_PASSWORD");
             var legacy=map("id","legacy","hostId","h","name","BillingDS","databaseHost","legacy.example","databasePort",5432,"databaseName","billing","driverName","PostgreSQL","driverVersion","42.7");
             var absent=map("id","unknown","hostId","h","name","UnknownDS");
             app.store.putInventory("datasources","h",List.of(rac,legacy,absent));
@@ -29,7 +29,7 @@ public final class JdbcEndpointReportsTest {
                 var report=query(app,"model",model,"databaseHost","rac-b.example");
                 check(count(report)==1,"all models filter by non-primary endpoint: "+model);
                 check(cell(report,"databaseHost").contains("rac-b.example"),"default host column: "+model);
-                String summary=cell(report,"jdbc");check(summary.contains("OrdersDS")&&summary.contains("rac-a.example:1521")&&summary.contains("rac-b.example:1522")&&summary.contains("[2001:db8::7]:1523")&&summary.contains("orders.example"),"paired tuple keeps all endpoints: "+model);
+                String summary=cell(report,"jdbc");check(summary.contains("renamed.jar")&&summary.contains("Identificado em arquivo"),"driver evidence in all report summaries: "+model);check(summary.contains("OrdersDS")&&summary.contains("rac-a.example:1521")&&summary.contains("rac-b.example:1522")&&summary.contains("[2001:db8::7]:1523")&&summary.contains("orders.example"),"paired tuple keeps all endpoints: "+model);
                 check(!summary.contains("BillingDS")&&!String.valueOf(report).contains("SECRET_"),"filtered tuple excludes unrelated data/secrets: "+model);
                 check(String.valueOf(report.get("context")).contains("não confirmam conexão ativa"),"honest destination evidence: "+model);
                 var csv=new StringWriter();Reports.csv(csv,report);check(csv.toString().contains("rac-b.example")&&csv.toString().contains("Host/IP do banco"),"CSV includes host: "+model);
@@ -44,6 +44,9 @@ public final class JdbcEndpointReportsTest {
             check(count(query(app,"model","jdbc","databaseHost","rac-%"))==0,"wildcards literal");
             check(count(query(app,"model","jdbc","databaseHost","' OR 1=1 --"))==0,"SQL injection remains literal");
             check(count(query(app,"model","servers","serverType","Tomcat","databaseHost","rac-b"))==0,"server linkage respected");
+            var driverReport=query(app,"model","jdbc","datasource","OrdersDS","columns","datasource,driverVersion,driverArtifact,driverResolution,driverVersionEvidence,driverCandidates");
+            check(cell(driverReport,"driverArtifact").equals("/domain/lib/renamed.jar")&&cell(driverReport,"driverCandidates").contains("19.3"),"driver columns selectable");
+            var driverCsv=new StringWriter();Reports.csv(driverCsv,driverReport);check(driverCsv.toString().contains("renamed.jar")&&!driverCsv.toString().contains("SECRET_"),"driver CSV allowlist");
             var old=query(app,"model","jdbc","databaseHost","legacy","columns","datasource,databaseHost,databasePort,databaseName,databaseDestination");
             check(cell(old,"databaseDestination").equals("legacy.example:5432 / billing"),"old scalar fields supported");
             check(cell(query(app,"model","jdbc","datasource","Unknown","columns","databaseHost,databaseDestination"),"databaseDestination").equals("Não identificada"),"old snapshots remain unknown");
@@ -84,6 +87,17 @@ public final class JdbcEndpointReportsTest {
             String aLine=finalCsv.toString().lines().filter(line->line.contains("domain-a-ds")).findFirst().orElseThrow();
             String bLine=finalCsv.toString().lines().filter(line->line.contains("domain-b-ds")).findFirst().orElseThrow();
             check(aLine.contains("\"domain-a\"")&&!aLine.contains("domain-b-db")&&bLine.contains("\"domain-b\"")&&!bLine.contains("domain-a-db"),"inventory CSV keeps explicit IDs alongside each destination");
+            var spring=map("id","spring-ds","hostId","h","name","SpringLab","driverName","org.h2.Driver","databaseType","H2");
+            SpringDataSource.matchPackagedDriver(spring,List.of(map("category","JDBC","path","/app.jar!/BOOT-INF/lib/h2-2.3.232.jar","version","2.3.232")));
+            app.store.putInventory("datasources","h",List.of(spring));
+            var springReport=query(app,"model","jdbc","columns","datasource,driverArtifact,driverVersion");
+            check(cell(springReport,"driverArtifact").equals(spring.get("driverArtifact")),"Spring nested driver path reaches report column");
+            var springCsv=new StringWriter();Reports.csv(springCsv,springReport);
+            check(springCsv.toString().contains("h2-2.3.232.jar")&&springCsv.toString().contains("2.3.232"),"Spring nested JAR and version exported to report CSV");
+            var springPdf=new ByteArrayOutputStream();ReportPdf.write(springPdf,springReport);
+            check(ReportPdfTest.text(springPdf.toString(StandardCharsets.ISO_8859_1)).contains("h2-2.3.232.jar"),"Spring nested JAR exported to PDF");
+            var springInventory=new StringWriter();app.store.readSnapshot(()->{CsvExport.write(springInventory,app.store,new InventoryQueries(app.store),scope);return null;});
+            check(springInventory.toString().contains("h2-2.3.232.jar"),"Spring nested JAR exported to inventory CSV");
             System.out.println("JdbcEndpointReportsTest PASS "+checks+" checks");
         }finally{try(var files=Files.walk(root)){for(Path p:files.sorted(Comparator.reverseOrder()).toList())Files.deleteIfExists(p);}}
     }

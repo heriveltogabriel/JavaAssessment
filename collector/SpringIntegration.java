@@ -141,6 +141,9 @@ final class SpringIntegration {
                 "associations", Arrays.asList(AssessmentScan.map("pid", Long.valueOf(context.pid), "applicationId", context.application.get("id"), "applicationName", context.application.get("name"))));
             scan.datasources.add(target);
         }
+        // A runtime report may name a different version from the packaged candidate.
+        // Do not attach that reported version to the old candidate's JAR.
+        if (fields.containsKey("driverVersion") && !fields.get("driverVersion").equals(target.get("driverVersion"))) target.remove("driverArtifact");
         target.putAll(fields);
         if (fields.containsKey("configurationKey")) target.put("datasourceKey", fields.get("configurationKey"));
         target.put("state", "APPLICATION_REPORTED"); target.put("evidenceLevel", "application-reported");

@@ -38,7 +38,7 @@ CREAM = '#FAFBF7'
 LINE = '#D7E1D1'
 SAGE = '#A6B69A'
 AMBER = '#856423'
-TOTAL = 15
+TOTAL = 16
 for folder in [OUT.parent, DELIVERY, QA]:
     folder.mkdir(parents=True, exist_ok=True)
 c = canvas.Canvas(str(OUT), pagesize=(W,H), pageCompression=1)
@@ -140,14 +140,14 @@ text('Uma solução de descoberta e inventário instalada na infraestrutura do c
 text('Este manual explica a arquitetura, o fluxo da coleta e o uso das informações para planejar atualizações, padronização e modernização.',M,H-367,440,size=11,leading=17,max_h=60)
 box(M,86,440,51,fill=PALE,stroke=LINE)
 text('Guia de referência',M+14,121,150,size=11,leading=15,font='TextBold',fill=GREEN)
-text('15 de outubro de 2026',M+14,103,240,size=9,leading=13,fill=MUTED)
+text('19 de outubro de 2026',M+14,103,240,size=9,leading=13,fill=MUTED)
 rx=M+469;rw=CW-469
 box(rx,86,rw,428,fill=GREEN,radius=13)
 text('Explore o manual',rx+20,491,rw-40,size=18,leading=23,font='DisplayBold',fill='#FFFFFF')
 text('Clique em um tema para navegar.',rx+20,458,rw-40,size=9.7,leading=15,fill='#DFE9DA')
-chapters=[('01','Arquitetura da solução','architecture',2),('02','Da instalação ao inventário','flow',4),('03','Descoberta e evidências','discovery',6),('04','Segurança e acesso','security',8),('05','Atualização de agentes','updates',10),('06','Operação do dia a dia','operations',12),('07','Relatórios e JDBC','reports',13),('08','Planejar a adoção','adoption',15)]
+chapters=[('01','Arquitetura da solução','architecture',2),('02','Da instalação ao inventário','flow',4),('03','Descoberta e evidências','discovery',6),('04','Segurança e acesso','security',8),('05','Atualização de agentes','updates',10),('06','Operação do dia a dia','operations',12),('07','Relatórios e JDBC','reports',13),('08','Planejar a adoção','adoption',15),('09','Atualizar pela console','dashboard-update',16)]
 for i,(num,title,key,pno) in enumerate(chapters):
-    y=414-i*37
+    y=414-i*34
     text(num,rx+20,y,24,size=9.5,leading=14,fill='#BDCFB4',font='TextBold')
     text(title,rx+49,y,rw-86,size=10.1,leading=14.5,fill='#FFFFFF',max_h=30)
     c.setFont('Text',9);c.setFillColor(color('#BDCFB4'));c.drawRightString(rx+rw-17,y-12,str(pno).zfill(2))
@@ -161,7 +161,7 @@ page('Arquitetura / Componentes')
 top=heading('01  /  COMO A SOLUÇÃO SE ORGANIZA','Três componentes. Uma visão central.','O inventário reúne evidências técnicas e as organiza por ambiente, máquina e recurso descoberto.')
 cardw=(CW-28)/3
 components=[
-    ('01','Dashboard central','Interface web para consultar o inventário, organizar ambientes, solicitar coletas e acompanhar Work requests.','A equipe também administra contas, credenciais e agentes pelo painel.'),
+    ('01','Dashboard central','Interface web para consultar o inventário, organizar ambientes, solicitar coletas e acompanhar Solicitações.','A equipe também administra contas, credenciais e agentes pelo painel.'),
     ('02','Agente coletor','Instalado em cada máquina Linux, observa processos e inspeciona arquivos e metadados dentro do escopo autorizado.','Consulta tarefas e envia resultados por HTTPS, usando uma identidade própria.'),
     ('03','Banco local SQLite','Armazena inventário, configurações, identidades e histórico operacional no servidor do dashboard.','Dispensa um serviço de banco separado. Backup e proteção do servidor fazem parte da operação local.'),
 ]
@@ -187,7 +187,7 @@ steps=[
     ('Instalar na máquina Linux','Extraia o ZIP em uma pasta adequada e use o instalador com --system-root. O destino operacional é fixo: /opt/java-assessment-collector.'),
     ('Confirmar o cadastro','A instalação registra a máquina e obtém sua credencial individual. O nome do usuário do sistema não precisa ser opc.'),
     ('Solicitar a coleta','O assessment pode ser solicitado ou agendado. Se a coleta inicial foi autorizada no pacote, acompanhe o pedido criado.'),
-    ('Consultar o resultado','Abra Work requests, confira o término da coleta e leia eventuais limitações antes de interpretar as contagens do inventário.'),
+    ('Consultar o resultado','Abra Solicitações, confira o término da coleta e leia eventuais limitações antes de interpretar as contagens do inventário.'),
 ]
 for i,(title,body) in enumerate(steps):
     col=i%2;row=i//2;x=M+col*(COL+GAP);y=429-row*105
@@ -238,7 +238,7 @@ text('Administrador',left+14,390,COL-28,size=12,leading=16,font='TextBold',fill=
 text('Consulta o inventário e gerencia usuários, ambientes, coletas, agentes, autorizações e atualizações.',left+14,366,COL-28,size=10.7,leading=15.7,max_h=48)
 box(left,211,COL,88,fill='#FFFFFF',stroke=LINE)
 text('Leitura',left+14,285,COL-28,size=12,leading=16,font='TextBold',fill=GREEN)
-text('Consulta o inventário e os relatórios, acompanha Work requests e exporta PDF/CSV. Não administra o ambiente.',left+14,261,COL-28,size=10.7,leading=15.7,max_h=48)
+text('Consulta o inventário e os relatórios, acompanha Solicitações e exporta PDF/CSV. Não administra o ambiente.',left+14,261,COL-28,size=10.7,leading=15.7,max_h=48)
 text('<b>Alcance dos perfis:</b> ambos consultam todos os ambientes. O filtro por ambiente organiza a visualização; ele não restringe a autorização de acesso.',left,194,COL,size=10.3,leading=15,max_h=65)
 y=433
 y=sub('Primeiro acesso e administração','Cada pessoa entra com email e senha. A senha temporária deve ser trocada no primeiro acesso. O administrador cria contas, define o perfil e pode desativar acessos.',right,y)
@@ -265,7 +265,7 @@ for i,(title,body,fill,accent) in enumerate([
     box(x,142,w,96,fill=fill)
     text(title,x+13,225,w-26,size=12,leading=17,font='TextBold',fill=accent)
     text(body,x+13,199,w-26,size=10,leading=14,max_h=47)
-note('Assessment após a atualização','Mantenha a opção habilitada para solicitar a coleta após a confirmação. Acompanhe a atualização e abra o assessment vinculado no mesmo Work request.',61,h=65)
+note('Assessment após a atualização','Mantenha a opção habilitada para solicitar a coleta após a confirmação. Acompanhe a atualização e abra o assessment vinculado no mesma Solicitação.',61,h=65)
 
 # 11 / Update explanation.
 page('Atualização / Solicitar e confirmar')
@@ -273,10 +273,10 @@ heading('05  /  COMO ATUALIZAR PELO DASHBOARD','Solicitar, verificar e acompanha
 left=M;right=M+COL+GAP
 y=431
 for n,t,b in [
- (1,'Selecionar o ambiente','Na aba Machines, use Atualizar agentes do ambiente para abrir a seleção de várias máquinas.'),
+ (1,'Selecionar o ambiente','Na aba Máquinas, use Atualizar agentes do ambiente para abrir a seleção de várias máquinas.'),
  (2,'Revisar a elegibilidade','Confira versão instalada, versão disponível e motivos de impedimento. Marque máquinas ou selecione as elegíveis.'),
- (3,'Confirmar o lote','Mantenha o assessment posterior habilitado. O pacote assinado inclui os componentes previstos para a instalação.'),
- (4,'Acompanhar a confirmação','Ao confirmar, abre o Work request do pedido. Veja a versão final e a coleta vinculada. Fechar a tela não cancela a operação.'),
+ (3,'Confirmar o lote','Cada máquina tem 5 minutos para iniciar na sua vez. Sem resposta, o lote segue. Quando ela voltar, crie um novo pedido.'),
+ (4,'Acompanhar a confirmação','Ao confirmar, abre a Solicitação do pedido. Veja a versão final e a coleta vinculada. Fechar a tela não cancela a operação.'),
 ]:
     y=numbered(n,t,b,left,y)
 text('O que cada resultado significa',right,431,COL,size=15,leading=20,font='DisplayBold',fill=GREEN)
@@ -298,15 +298,15 @@ heading('06  /  ROTINA DA EQUIPE','Do pedido de coleta à análise','Use o conte
 left=M;right=M+COL+GAP
 y=431
 for n,t,b in [
- (1,'Selecionar o contexto','Use Java Assessment para abrir Machines em All environments, ou selecione um ambiente e uma máquina.'),
+ (1,'Selecionar o contexto','Use Java Assessment para abrir Machines em Todos os ambientes, ou selecione um ambiente e uma máquina.'),
  (2,'Solicitar uma coleta atual','Após instalar, alterar ou atualizar uma aplicação, solicite um novo assessment para renovar as evidências.'),
- (3,'Acompanhar Work requests','Use o menu lateral. O botão Filtros abre ou recolhe ambiente, tipo, estado e período, mantendo os critérios aplicados.'),
+ (3,'Acompanhar Solicitações','Use o menu lateral. O botão Filtros abre ou recolhe ambiente, tipo, estado e período, mantendo os critérios aplicados.'),
  (4,'Exportar para análise','Em Relatórios, escolha modelo, filtros e colunas para PDF/CSV. Actions mantém a exportação única do inventário.'),
 ]:
     y=numbered(n,t,b,left,y)
 y=431
 y=sub('Resultado recebido','A coleta tem horário e conclusão próprios. O registro da máquina e o último contato do agente não substituem essa confirmação.',right,y)
-y=sub('Coleta parcial','O inventário chegou com limitações de cobertura. Abra Ver motivo para identificar caminhos inacessíveis, limites alcançados ou formatos não cobertos.',right,y)
+y=sub('Concluído com observações','O inventário foi recebido. Abra Observações para identificar caminhos inacessíveis, limites alcançados ou formatos não cobertos.',right,y)
 y=sub('Exportação única em CSV','O CSV de Actions reúne registros do escopo escolhido. Já PDF/CSV de Relatórios respeitam os filtros e colunas da consulta, incluindo todas as páginas.',right,y)
 y=sub('Se um recurso esperado não aparecer','Confira processo, configuração, escopo, permissões e avisos de cobertura. Depois de ajustar a causa, solicite outro assessment.',right,y)
 note('Atualizar a tela e executar um assessment são ações diferentes','Recarregar o painel mostra os dados já recebidos. Uma nova coleta precisa ser solicitada ou estar prevista em um agendamento autorizado.',61,h=61)
@@ -314,14 +314,14 @@ note('Atualizar a tela e executar um assessment são ações diferentes','Recarr
 # 13-14 / Report models and JDBC filters.
 page('Relatórios / Modelos e colunas','reports','Relatórios e JDBC')
 heading('07  /  RELATÓRIOS','Do inventário ao resumo para decisão','Escolha o modelo, combine filtros e selecione as colunas. Todos os modelos incluem informações JDBC.')
-rows=[('Máquinas','Ambiente, IP, sistema operacional, versões Java, servidores e JDBC da máquina.'),('Java','Máquina, ambiente, IP, versão, Java home, fornecedor e JDBC da máquina.'),('Java Servers','Máquina, ambiente, IP, produto, nome e versão do servidor, Java associado, SO e JDBC do servidor.'),('JDBC','Datasource/nome JNDI, banco, driver, versão, classe, máquina, ambiente, IP e associações.'),('Ambientes','Quantidades de máquinas, instalações Java, servidores e datasources, com resumo JDBC.')]
+rows=[('Máquinas','Ambiente, IP, sistema operacional, versões Java, servidores e JDBC da máquina.'),('Java','Máquina, ambiente, IP, versão, Java home, fornecedor e JDBC da máquina.'),('Servidores Java','Máquina, ambiente, IP, produto, nome e versão do servidor, Java associado, SO e JDBC do servidor.'),('JDBC','Datasource/nome JNDI, banco, driver, versão, classe, máquina, ambiente, IP e associações.'),('Ambientes','Quantidades de máquinas, instalações Java, servidores e datasources, com resumo JDBC.')]
 y=429
 for i,(title,body) in enumerate(rows):
     box(M,y-53,CW,53,fill='#FFFFFF' if i%2==0 else PALE,stroke=LINE,radius=5)
     text(title,M+13,y-13,126,size=11.5,leading=16,font='TextBold',fill=GREEN)
     text(body,M+154,y-12,CW-169,size=10.6,leading=15,max_h=32)
     y-=60
-note('Mais detalhes quando necessários','Em Colunas, adicione caminho, PID, Java home ou JDBC da máquina no modelo de servidores. Em JDBC, há tipo de recurso, estado, referência do driver e pool máximo configurado.',61,h=65)
+note('Mais detalhes quando necessários','Em Colunas, adicione caminho, PID, Java home ou JDBC da máquina no modelo de servidores. Em JDBC, adicione JAR e versão do driver. A versão do banco exige evidência própria; um JAR não a comprova.',61,h=65)
 
 page('Relatórios / Filtros, vínculos e exportação')
 heading('07  /  JDBC E EXPORTAÇÕES','Filtrar com contexto. Compartilhar com clareza.','As sugestões vêm do inventário e também permitem digitação. Recarregar atualiza os dados disponíveis.')
@@ -329,7 +329,7 @@ left=M;right=M+COL+GAP
 y=431
 y=sub('Filtros de máquinas e servidores','Selecione ambiente, máquina, sistema operacional, Java e servidor conforme o modelo. Exemplo: máquinas com WebLogic de uma versão específica.',left,y)
 y=sub('Filtros JDBC','Combine presença de JDBC, datasource/nome JNDI, banco, driver e versão, classe, referência, servidor, aplicação, tipo de recurso e estado.',left,y)
-y=sub('Critérios no mesmo datasource','Ao combinar banco, driver e aplicação, os critérios precisam corresponder ao mesmo datasource. Em Java Servers, o recurso precisa estar associado ao servidor da linha.',left,y)
+y=sub('Critérios no mesmo datasource','Ao combinar banco, driver e aplicação, os critérios precisam corresponder ao mesmo datasource. Em Servidores Java, o recurso precisa estar associado ao servidor da linha.',left,y)
 y=431
 y=sub('Vínculos que o inventário comprova','JDBC do servidor usa associações registradas; estar na mesma máquina não basta. JDBC da máquina mostra o contexto do host. A versão Java do servidor vem do Java home correspondente.',right,y)
 y=sub('PDF e CSV','As exportações usam as colunas e os filtros escolhidos, com todas as páginas. Limites: 10.000 registros e 8.192 caracteres por célula. Refine o escopo quando necessário.',right,y)
@@ -350,6 +350,22 @@ y=sub('Impacto e cobertura','O custo depende dos caminhos, arquivos, disco e lim
 y=sub('O papel da solução','O inventário apoia decisões de atualização e modernização. Não substitui testes de compatibilidade, validação funcional das aplicações ou monitoramento contínuo de desempenho e disponibilidade.',right,y)
 note('Comece por uma amostra representativa','Instale, confirme cadastro e coleta, compare recursos conhecidos e avalie cobertura e consumo. Use o Guia de instalação para os comandos e a validação operacional.',61,h=65)
 
+page('Administração / Atualização do dashboard','dashboard-update','Atualizar pela console')
+heading('09  /  ATUALIZAÇÃO DO DASHBOARD','Enviar, revisar e confirmar','Requer o executor independente instalado e um pacote assinado compatível com a origem. O processo continua mesmo se o navegador fechar.')
+left=M;right=M+COL+GAP
+y=431
+for n,t,b in [
+ (1,'Enviar o pacote web','Em Administração, abra Atualização do dashboard. Envie assessment-dashboard-web-update-X.Y.Z.zip. O instalador de servidor novo não serve para upload.'),
+ (2,'Revisar a preparação','Aguarde a assinatura, origem, espaço e operações pendentes serem verificados. Confira versões e notas; você pode cancelar antes da aplicação.'),
+ (3,'Atualizar e reiniciar','Informe sua senha administrativa e confirme. O executor cria backup consistente, aplica os arquivos e reinicia o dashboard.'),
+]:
+    y=numbered(n,t,b,left,y)
+y=431
+y=sub('Conferir o resultado','Aguarde o serviço voltar. Se a sessão terminar, faça login e reabra a atualização. Confira versão, conclusão e log, depois consulte máquinas e relatórios.',right,y)
+y=sub('Falha ou restauração','Uma falha na aplicação aciona tentativa automática de voltar ao código anterior. A última atualização concluída oferece restauração compatível, com senha e nova confirmação.',right,y)
+y=sub('Banco e agentes','A restauração preserva o banco atual. Atualizar o dashboard não atualiza agentes: revise elegibilidade e solicite a atualização separadamente, começando por uma máquina.',right,y)
+note('Quando usar acesso ao servidor','Sem executor independente, faça a primeira adoção pelo script compatível da entrega. Se o serviço não voltar e a recuperação falhar, consulte o log do executor via SSH. O navegador não recupera um serviço que não consegue iniciar.',61,h=65)
+
 assert PAGE==TOTAL, PAGE
 c.save()
 reader=PdfReader(str(OUT))
@@ -359,7 +375,7 @@ assert '\ufffd' not in plain
 assert not re.search(r'\b(?:TODO|TBD|Lorem ipsum)\b',plain)
 assert len(image_records)==4
 normalized=' '.join(plain.split())
-for phrase in ['Java Assessment','SQLite','Work requests','Coleta parcial','1,5 GiB','96 MiB','32 bits','Relatórios']:
+for phrase in ['Java Assessment','SQLite','Solicitações','Concluído com observações','1,5 GiB','96 MiB','32 bits','Relatórios']:
     assert phrase in normalized, phrase
 assert sum(len(p.images) for p in reader.pages)==4
 for folder in [DELIVERY]:

@@ -230,6 +230,24 @@
       "sha256": "bf1d8a986c58141f3630eb0145479faee7590e5033b597d41bcb45414df2f7a9",
       "bytes": 30673455,
       "migrationOrigin": true
+    },
+    {
+      "version": "2.1.0",
+      "sha256": "18a82cbe9c918c7a075036709bba7e93d3e023c9f22da753aec7b7680f34bfd7",
+      "bytes": 30673397,
+      "migrationOrigin": true
+    },
+    {
+      "version": "2.1.2",
+      "sha256": "2c3582bca8763dcb699895f74c99fb8cd1c886660f64cfca441b764a5d4a96e8",
+      "bytes": 30699494,
+      "migrationOrigin": true
+    },
+    {
+      "version": "2.1.4",
+      "sha256": "dbbcfbf5901ff309c833baabbb5611c2990ffb4153e900cb719b28260d19f193",
+      "bytes": 30699501,
+      "migrationOrigin": true
     }
   ],
   "reviewedSupportGroups": [
