@@ -3,24 +3,26 @@
 set -eu
 cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 : "${JAVA_HOME:?Set JAVA_HOME to a JDK 17+ directory}"
-mkdir -p tmp/source-classes tmp/source-evidence
+mkdir -p tmp/source-classes tmp/source-evidence tmp/java-tmp
+# Fixtures must not live under /tmp: the collector excludes /tmp by default.
+JTMP="$(pwd)/tmp/java-tmp"
 "$JAVA_HOME/bin/javac" --release 17 -encoding UTF-8 -cp 'lib/*' \
   -d tmp/source-classes shared/*.java server/*.java collector/*.java tests/*.java
 CP='tmp/source-classes:lib/*'
 for suite in JdbcDriverResolverTest JdbcEndpointTest ArchiveMetadataTest WebLogicVersionTest SpringDataSourceTest SpringConfigurationTest SpringIntegrationTest RuntimeInventoryTest \
   ProcessLaunchTest JdkInventoryTest BoundedDirectoryTest CollectorSweepTest \
   CollectorTest AgentToolTest LegacyDiscoveryTest AgentBundleManifestTest AgentBootstrapHandoffTest AgentRecoveryServiceTest; do
-  "$JAVA_HOME/bin/java" -Xmx96m -cp "$CP" "assessment.$suite"
+  "$JAVA_HOME/bin/java" -Djava.io.tmpdir="$JTMP" -Xmx96m -cp "$CP" "assessment.$suite"
 done
-"$JAVA_HOME/bin/java" -Xmx96m -cp "$CP" assessment.ServerDataSourcesTest \
+"$JAVA_HOME/bin/java" -Djava.io.tmpdir="$JTMP" -Xmx96m -cp "$CP" assessment.ServerDataSourcesTest \
   --export tmp/source-evidence/jdbc-fixtures.json
 for suite in JdbcEndpointReportsTest EnvironmentPresenceTest ArchiveDefaultsHttpTest PortugueseTest InventoryStoreTest UserAuthTest UserAccessHttpTest DashboardMaintenanceHttpTest EnvironmentInstallAccessTest EnvironmentInstallHttpTest InstallCommandTest \
   MachineActionsHttpTest MachineCleanupHttpTest AgentUpdateWorkerTest AgentUpdateStartTimeoutTest AgentUpdateHttpTest \
   WorkRequestsHttpTest RuntimeInventoryHttpTest CsvExportTest \
   VersionedCsvHttpTest DashboardVersionHttpTest CompactOverviewTest PostUpdateAssessmentsTest PostUpdateAssessmentHttpTest; do
-  "$JAVA_HOME/bin/java" -Xmx384m -cp "$CP" "assessment.$suite"
+  "$JAVA_HOME/bin/java" -Djava.io.tmpdir="$JTMP" -Xmx384m -cp "$CP" "assessment.$suite"
 done
-"$JAVA_HOME/bin/java" -Xmx384m -cp "$CP" assessment.JdbcOverviewHttpTest \
+"$JAVA_HOME/bin/java" -Djava.io.tmpdir="$JTMP" -Xmx384m -cp "$CP" assessment.JdbcOverviewHttpTest \
   tmp/source-evidence/jdbc-fixtures.json tmp/source-evidence/jdbc-http
 for suite in jdbc-driver-ui.test.cjs jdbc-endpoint-ui.test.cjs environment-presence.test.cjs locale.test.cjs dashboard.test.cjs interface-refresh.test.cjs version-js.test.cjs agent-release-notice.test.cjs; do
   "${NODE:-node}" "tests/$suite"
