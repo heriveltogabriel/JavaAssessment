@@ -30,6 +30,60 @@ public final class BoundedDirectoryTest {
         catch (IOException expected) { checks++; }
         finally { reader.close(); }
     }
+    static String record(char type, File file) { return type + file.getPath() + '\0'; }
+    static BoundedDirectory tree(File root, String output) throws Exception {
+        return BoundedDirectory.legacy(root, System.currentTimeMillis() + 2000, new Producer(output.getBytes("UTF-8"), 0), true);
+    }
+    static void treeProtocol(File root) throws Exception {
+        BoundedDirectory reader = tree(root, record('d', new File(root, "a")) + record('f', new File(root, "a/line\nb.war")) + record('l', new File(root, "a/link")));
+        try {
+            check(reader.next().getPath().equals(new File(root, "a").getPath()) && reader.type() == 'd', "tree record carries the directory type");
+            check(reader.next().getName().equals("line\nb.war") && reader.type() == 'f' && reader.next().getName().equals("link") && reader.type() == 'l' && reader.next() == null, "nested paths keep NUL framing");
+        } finally { reader.close(); }
+        for (String bad : new String[]{"d/elsewhere/x\0", record('d', root), "d" + root.getPath() + "/a/../../x\0", "1" + root.getPath() + "/a\0", root.getPath() + "/a\0"}) {
+            reader = tree(root, bad);
+            try { while (reader.next() != null) { } throw new AssertionError("invalid tree entry accepted: " + bad); }
+            catch (IOException expected) { checks++; }
+            finally { reader.close(); }
+        }
+        AssessmentScan scan = new AssessmentScan(new Properties(), "test", "test", AssessmentScan.map("maxFiles", 100, "pauseMillis", 0)); scan.excluded.clear();
+        File war = new File(root, "app/x.war"); ProcessLaunchTest.text(war, "war"); ProcessLaunchTest.text(new File(root, "z.war"), "war");
+        scan.walkTree(root.getPath(), 0, tree(root, record('d', new File(root, "app")) + record('f', war) + record('d', new File(root, "app/node_modules"))
+            + record('f', new File(root, "app/node_modules/y.war")) + record('l', new File(root, "loop")) + record('f', new File(root, "z.war"))));
+        check(scan.applicationsByPath.containsKey(war.getPath()) && scan.applicationsByPath.containsKey(new File(root, "z.war").getPath())
+            && !scan.applicationsByPath.containsKey(new File(root, "app/node_modules/y.war").getPath()) && scan.filesVisited == 3,
+            "injected tree applies ignored-directory and symlink rules: " + scan.filesVisited);
+    }
+    /** The Java 6 single-find sweep must match the per-directory sweep on the same tree. */
+    static void treeEquivalence() throws Exception {
+        File root = CollectorTest.temp("tree-equivalence").getCanonicalFile();
+        try {
+            ProcessLaunchTest.text(new File(root, "apps/orders.war"), "war");
+            ProcessLaunchTest.text(new File(root, "apps/.git/objects/x.war"), "ignored");
+            ProcessLaunchTest.text(new File(root, "apps/node_modules/m/y.war"), "ignored");
+            ProcessLaunchTest.text(new File(root, "excluded/z.war"), "excluded");
+            ProcessLaunchTest.text(new File(root, "with[glob]*/w.war"), "special characters");
+            ProcessLaunchTest.text(new File(root, "with[glob]*x/kept.war"), "a glob in the exclusion must not prune a sibling");
+            File jdk = JdkInventoryTest.home(root, "jdk1.6.0_45", true); ProcessLaunchTest.text(new File(jdk, "lib/internal.jar"), "jdk internals");
+            ProcessLaunchTest.text(new File(root, "tomcat/lib/catalina.jar"), "not a zip"); ProcessLaunchTest.text(new File(root, "tomcat/bin/catalina.sh"), "#!/bin/sh");
+            ProcessLaunchTest.text(new File(root, "tomcat/lib/tomcat-util.jar"), "internal"); ProcessLaunchTest.text(new File(root, "tomcat/webapps/shop.war"), "war");
+            File deep = root; for (int i = 0; i < 15; i++) deep = new File(deep, "d" + i); ProcessLaunchTest.text(new File(deep, "deep.war"), "too deep");
+            new ProcessBuilder("ln", "-s", new File(root, "apps").getPath(), new File(root, "apps-link").getPath()).start().waitFor();
+            String[] results = new String[2];
+            for (int mode = 0; mode < 2; mode++) {
+                BoundedDirectory.NIO = mode == 0;
+                AssessmentScan scan = new AssessmentScan(new Properties(), "test", "test", AssessmentScan.map("maxFiles", 1000, "pauseMillis", 0));
+                scan.excluded.clear(); scan.excluded.add(new File(root, "excluded").getPath()); scan.excluded.add(new File(root, "with[glob]*").getPath());
+                scan.walk(root, 0);
+                results[mode] = scan.filesVisited + " " + new TreeSet(scan.applicationsByPath.keySet()) + " " + scan.runtimes.keySet() + " " + new TreeSet(scan.servers.keySet())
+                    + " " + scan.deferredArchives.size() + " " + new TreeSet(scan.warnings) + " " + scan.partial;
+            }
+            check(results[0].equals(results[1]), "tree and per-directory sweeps differ:\n" + results[0] + "\n" + results[1]);
+            check(results[0].contains("orders.war") && results[0].contains("kept.war") && results[0].contains("shop.war") && !results[0].contains("y.war") && !results[0].contains("/w.war")
+                && !results[0].contains("deep.war") && results[0].contains("Directory depth limit reached") && results[0].contains("Symlink path skipped") && results[0].contains("home:"),
+                "sweep rules hold: " + results[0]);
+        } finally { BoundedDirectory.NIO = BoundedDirectory.nioAvailable(); CollectorTest.remove(root); }
+    }
     public static void main(String[] args) throws Exception {
         check("update-v1".equals(AssessmentCollector.capabilityMarker("update-v1\n")), "old installer stays generation 1");
         check("update-v2".equals(AssessmentCollector.capabilityMarker("update-v2\n")), "new installer advertises generation 2");
@@ -61,7 +115,12 @@ public final class BoundedDirectoryTest {
             try { check(reader.next().getName().equals("a b") && reader.next().getName().equals("line\nnext") && reader.next() == null, "real NUL-delimited child stream"); } finally { reader.close(); }
             AssessmentScan scan = new AssessmentScan(new Properties(), "test", "test", AssessmentScan.map("maxFiles", 100, "pauseMillis", 0)); scan.excluded.clear(); scan.walk(root, 0);
             check(scan.filesVisited == 4 && !scan.partial, "complete small directory retains coverage");
+            treeProtocol(root);
         } finally { CollectorTest.remove(root); }
+        treeEquivalence();
+        check(AssessmentScan.pauseFor(null, 2, 30) == 30 && AssessmentScan.pauseFor("garbage", 2, 30) == 30, "no load average keeps the fixed pause");
+        check(AssessmentScan.pauseFor("1.90 1.0 1.0 1/100 1", 2, 30) == 0, "idle host is not paused");
+        check(AssessmentScan.pauseFor("3.00 1.0 1.0 1/100 1", 2, 30) == 15 && AssessmentScan.pauseFor("9.00 1.0 1.0 1/100 1", 2, 30) == 30, "pause grows with load up to pauseMillis");
         System.out.println("BoundedDirectoryTest PASS " + checks + " checks");
     }
 }

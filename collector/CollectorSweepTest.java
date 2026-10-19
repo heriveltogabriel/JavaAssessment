@@ -31,7 +31,7 @@ public final class CollectorSweepTest {
                 "Collector package, libraries, logs, spool and runtime must consume no sweep budget");
             check(scan.runtimes.isEmpty() && scan.libraries.isEmpty() && scan.applications.isEmpty() && !scan.partial,
                 "Collector self-files must neither become application inventory nor incomplete coverage");
-            scan.filesVisited = scan.maxFiles; scan.walk(installation, 13);
+            scan.sweepFiles = scan.filesVisited = scan.maxFiles; scan.walk(installation, 13);
             check(!scan.partial && !scan.fileLimitReached, "Intentional package exclusion must precede depth and file limits");
             File configured = new File(root, "configured-exclusion"); text(new File(configured, "artifact.jar"), "ignored");
             scan.excluded.add(configured.getPath()); scan.walk(configured, 13);
@@ -73,12 +73,12 @@ public final class CollectorSweepTest {
         try {
             File jar = new File(root, "z-collector/collector.jar"); write(jar, plainJar());
             text(new File(root, "a-file"), "eligible file");
-            AssessmentScan scan = scanner(jar, settings()); scan.filesVisited = scan.maxFiles - 2;
+            AssessmentScan scan = scanner(jar, settings()); scan.sweepFiles = scan.filesVisited = scan.maxFiles - 2;
             scan.walk(root, 0);
             check(scan.filesVisited == scan.maxFiles && !scan.partial && !scan.fileLimitReached,
                 "Reaching the exact budget with only excluded package files left is complete");
             text(new File(root, "b-file"), "another eligible file");
-            AssessmentScan limited = scanner(jar, settings()); limited.filesVisited = limited.maxFiles - 2; limited.walk(root, 0);
+            AssessmentScan limited = scanner(jar, settings()); limited.sweepFiles = limited.filesVisited = limited.maxFiles - 2; limited.walk(root, 0);
             check(limited.filesVisited == limited.maxFiles && limited.partial && limited.fileLimitReached,
                 "An additional eligible file must stop traversal and preserve the partial warning");
             AssessmentScan defaults = scanner(jar, AssessmentScan.map());
@@ -108,8 +108,29 @@ public final class CollectorSweepTest {
             }
         } finally {CollectorTest.remove(root);}
     }
+    static void separateBudgets() throws Exception {
+        File root = CollectorTest.temp("separate-budgets").getCanonicalFile();
+        try {
+            File jar = new File(root, "z-collector/collector.jar"); write(jar, plainJar());
+            File file = new File(root, "eligible"); text(file, "eligible file");
+            AssessmentScan scan = scanner(jar, settings()); scan.filesVisited = scan.maxFiles;
+            check(!scan.visitLinked(new File(root, "linked")), "Process evidence stops at its own budget");
+            scan.walk(file, 0);
+            check(scan.sweepFiles == 1 && !scan.fileLimitReached, "Process-linked evidence does not consume the sweep budget");
+            AssessmentScan sweep = scanner(jar, settings()); sweep.sweepFiles = sweep.filesVisited = sweep.maxFiles;
+            check(sweep.visitLinked(file), "A spent sweep budget leaves process evidence available");
+            for (String name : new String[]{".m2", "oradata", "diag", "lost+found"}) text(new File(root, "tree/" + name + "/hidden.war"), "ignored");
+            text(new File(root, "tree/diagnostics/kept.war"), "a similar name stays in scope");
+            AssessmentScan ignored = scanner(jar, settings()); ignored.walk(new File(root, "tree"), 0);
+            check(ignored.applications.size() == 1 && ignored.sweepFiles == 3, "Default ignored directories are skipped by exact name before budgets");
+            check(scanner(jar, AssessmentScan.map("maxFiles", 900000)).maxFiles == 500000 && scanner(jar, AssessmentScan.map("maxFiles", 200000)).maxFiles == 200000,
+                "maxFiles accepts larger budgets up to 500000");
+            AssessmentScan slash = new AssessmentScan(new Properties(), "h", "h", AssessmentScan.map("excludePaths", Arrays.asList("/u01/app/", "/")), jar);
+            check(slash.excluded.contains("/u01/app") && slash.excluded.contains("/"), "Exclusions are normalized without a trailing slash");
+        } finally { CollectorTest.remove(root); }
+    }
     public static void main(String[] args) throws Exception {
-        packageExclusion(); nearbyAndProcessLinked(); exactBudgetAndDefaults(); systemPackageRoots();
-        System.out.println("COLLECTOR_SWEEP_TESTS=PASS own-package-zero-budget nearby-apps process-linked-Boot-JDBC shared-JDK exact-limits default-50000");
+        packageExclusion(); nearbyAndProcessLinked(); exactBudgetAndDefaults(); systemPackageRoots(); separateBudgets();
+        System.out.println("COLLECTOR_SWEEP_TESTS=PASS own-package-zero-budget nearby-apps process-linked-Boot-JDBC shared-JDK exact-limits default-50000 separate-budgets ignored-dirs");
     }
 }
