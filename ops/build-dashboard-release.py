@@ -293,7 +293,7 @@ def main():
         jdbc_fixture = evidence / 'jdbc-collector-fixtures.json'
         checked_run([JDK / 'bin/java', '-Xmx96m', '-cp', str(worker_tests) + ':' + worker_cp,
                      'assessment.ServerDataSourcesTest', '--export', jdbc_fixture], evidence / 'jdbc-collector.log')
-        for suite in ('JdbcDriverResolverTest', 'JdbcEndpointTest', 'SpringConfigurationTest', 'SpringIntegrationTest', 'SpringDataSourceTest', 'RuntimeInventoryTest', 'ProcessLaunchTest', 'JdkInventoryTest', 'ArchiveMetadataTest', 'WebLogicVersionTest', 'BoundedDirectoryTest', 'CollectorSweepTest', 'CollectorTest', 'AgentToolTest'):
+        for suite in ('ProductHomesTest', 'HsPerfDataTest', 'JdbcDriverResolverTest', 'JdbcEndpointTest', 'SpringConfigurationTest', 'SpringIntegrationTest', 'SpringDataSourceTest', 'RuntimeInventoryTest', 'ProcessLaunchTest', 'JdkInventoryTest', 'ArchiveMetadataTest', 'WebLogicVersionTest', 'BoundedDirectoryTest', 'CollectorSweepTest', 'CollectorTest', 'AgentToolTest'):
             checked_run([JDK / 'bin/java', '-Xmx96m', '-cp', str(worker_tests) + ':' + worker_cp,
                          'assessment.' + suite], evidence / (suite + '.log'))
         checked_run([JDK / 'bin/java', '-Xmx96m', '-cp', str(worker_tests) + ':' + worker_cp,

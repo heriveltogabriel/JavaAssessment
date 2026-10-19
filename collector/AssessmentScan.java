@@ -884,7 +884,7 @@ public final class AssessmentScan {
                 "state", "CONFIGURED", "evidenceLevel", "configuration", "scanScope", "process-linked",
                 "evidence", "Local Spring datasource configuration candidate; programmatic overrides, driver loading and database connectivity were not verified",
                 "observedAt", timestamp);
-            for (String field : new String[]{"driverName", "driverVersion", "driverArtifact", "databaseType", "databaseHost", "databasePort", "databaseName", "databaseEndpoints", "configuredMaxPoolSize", "configurationKey", "datasourceKey", "configurationResolution", "activeProfiles", "jndiName"})
+            for (String field : new String[]{"driverName", "driverVersion", "driverArtifact", "databaseType", "databaseHost", "databasePort", "databaseName", "databaseEndpoints", "configuredMaxPoolSize", "configurationKey", "datasourceKey", "configurationResolution", "activeProfiles", "jndiName", "databaseEndpointEvidence", "resolvedFrom"})
                 if (configuration.get(field) != null) row.put(field, configuration.get(field));
             if (row.get("driverVersion") != null) row.put("driverVersionEvidence", "Matching packaged JDBC library; runtime loading not verified");
             configuredDatasourceRows.put(key, row); datasources.add(row);

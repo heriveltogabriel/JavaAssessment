@@ -95,6 +95,11 @@ final class SpringDataSource {
         if ("net.snowflake.client.jdbc.SnowflakeDriver".equals(driver)) return "Snowflake";
         if ("org.sqlite.JDBC".equals(driver)) return "SQLite";
         if ("org.firebirdsql.jdbc.FBDriver".equals(driver)) return "Firebird";
+        // XA and pool DataSource classes (for example PGXADataSource) are named by vendor package.
+        if (driver == null) return null;
+        String[][] packages = {{"oracle.jdbc.", "Oracle"}, {"org.postgresql.", "PostgreSQL"}, {"com.mysql.", "MySQL"}, {"org.mariadb.", "MariaDB"},
+            {"com.microsoft.sqlserver.", "SQL Server"}, {"com.ibm.db2.", "DB2"}, {"org.h2.", "H2"}, {"org.apache.derby.", "Derby"}};
+        for (String[] item : packages) if (driver.startsWith(item[0])) return item[1];
         // jTDS serves both SQL Server and Sybase, so the driver class alone does not name the database.
         return null;
     }
