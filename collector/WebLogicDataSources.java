@@ -22,11 +22,12 @@ final class WebLogicDataSources {
         Set<String> referenced = new HashSet<String>();
         File domainConfig = scan.linkedPath(new File(config, "config.xml"));
         if (domainConfig == null) return;
-        List<Map> references = load(domainConfig, true);
+        List<Map> references = load(domainConfig, null, true, context), applications = new ArrayList<Map>();
         if (!parsedConfigurations.contains("WebLogic:true:" + domainConfig.getPath())) return;
         boolean referencesComplete = true;
         for (Map reference : references) {
             if (!scan.available()) return;
+            if (reference.get("sourcePath") != null) { applications.add(reference); continue; }
             String descriptor = (String)reference.get("descriptor");
             if (descriptor == null || descriptor.length() > 512 || !descriptor.startsWith("jdbc/") || !descriptor.endsWith(".xml") ||
                 !descriptor.matches("[A-Za-z0-9_./ \\-]+") || Arrays.asList(descriptor.split("/")).contains("..")) {
@@ -39,7 +40,7 @@ final class WebLogicDataSources {
                 scan.warn("WebLogic JDBC descriptor resolves outside config/jdbc"); referencesComplete = false; continue;
             }
             referenced.add(source.getPath());
-            for (Map fields : load(source, false)) {
+            for (Map fields : load(source, null, false, context)) {
                 if (!reference.get("name").equals(fields.get("name"))) { scan.warn("WebLogic JDBC module name differs from its domain reference"); continue; }
                 Map row = new LinkedHashMap(fields);
                 row.put("configurationContext", "WebLogic domain " + base.getPath());
@@ -49,6 +50,7 @@ final class WebLogicDataSources {
                 owner.add(source, row, context);
             }
         }
+        for (Map application : applications) if (scan.available()) application(base, application, context);
         // Inspect only this live process's domain, never sibling domains on disk.
         if (!referencesComplete) return;
         File jdbc = scan.linkedPath(new File(config, "jdbc"));
@@ -56,7 +58,7 @@ final class WebLogicDataSources {
             if (!scan.available() || scan.filesVisited >= scan.maxFiles) break;
             File source = scan.linkedPath(child);
             if (source == null || !source.equals(child) || !source.isFile() || !source.getName().endsWith(".xml") || referenced.contains(source.getPath())) continue;
-            for (Map fields : load(source, false)) {
+            for (Map fields : load(source, null, false, context)) {
                 Map row = new LinkedHashMap(fields);
                 row.put("configurationContext", "WebLogic domain " + base.getPath());
                 row.put("domainName", base.getName()); row.put("domainPath", base.getPath());
@@ -79,26 +81,93 @@ final class WebLogicDataSources {
         scan.warn("WebLogic JDBC domain config/config.xml was not found for the observed process"); return null;
     }
 
-    List<Map> load(File source, boolean domain) {
+    /**
+     * Application-scoped JDBC modules: META-INF/weblogic-application.xml of an exploded or packaged EAR lists
+     * JDBC module descriptors. Packaged entries are read in place with a bounded size; nothing is extracted.
+     */
+    void application(File base, Map application, AssessmentScan.ProcessContext context) {
+        String path = ProcessLaunch.path((String)application.get("sourcePath"), base);
+        File source = path == null ? null : scan.linkedPath(new File(path));
+        if (source == null || !source.exists()) return;
+        boolean exploded = source.isDirectory();
+        if (!exploded && !(source.isFile() && source.getName().toLowerCase(Locale.ENGLISH).endsWith(".ear"))) return;
+        String xml = null;
+        if (exploded) {
+            File descriptor = scan.linkedPath(new File(source, "META-INF/weblogic-application.xml"));
+            if (descriptor != null && descriptor.isFile() && AssessmentScan.under(descriptor.getPath(), source.getPath()) && scan.visitLinked(descriptor)) xml = scan.read(descriptor, ServerDataSources.SMALL_LIMIT);
+        } else if (scan.visitLinked(source)) xml = owner.entry(source, "META-INF/weblogic-application.xml", ServerDataSources.SMALL_LIMIT);
+        if (xml == null) return;
+        Modules modules = new Modules(scan);
+        try { ServerDataSources.parseXml(xml, modules); }
+        catch (Exception e) { scan.warn("WebLogic application descriptor was rejected (malformed, unsafe or beyond parser limits): " + source.getPath()); return; }
+        for (String module : modules.paths) {
+            if (module.length() > 512 || !module.endsWith(".xml") || !module.matches("[A-Za-z0-9_./ \\-]+") || module.startsWith("/") || Arrays.asList(module.split("/")).contains("..")) {
+                scan.warn("WebLogic application JDBC module path is unsupported"); continue;
+            }
+            File descriptor = exploded ? scan.linkedPath(new File(source, module)) : source;
+            if (descriptor == null || exploded && !AssessmentScan.under(descriptor.getPath(), source.getPath())) { scan.warn("WebLogic application JDBC module resolves outside its application"); continue; }
+            for (Map fields : load(descriptor, exploded ? null : module, false, context)) {
+                Map row = new LinkedHashMap(fields);
+                row.put("configurationContext", "WebLogic application " + application.get("name"));
+                row.put("configurationScope", "application-module"); row.put("applicationDeployment", application.get("name"));
+                row.put("configuredTargets", application.get("configuredTargets"));
+                row.put("domainName", base.getName()); row.put("domainPath", base.getPath());
+                owner.add(exploded ? descriptor.getPath() : descriptor.getPath() + "!/" + module, row, context);
+            }
+        }
+    }
+
+    List<Map> load(File source, String entry, boolean domain, AssessmentScan.ProcessContext context) {
         File file = scan.linkedPath(source);
-        if (file == null || !scan.available() || !scan.visitLinked(file)) return Collections.emptyList();
-        String key = "WebLogic:" + domain + ":" + file.getPath();
-        if (owner.cache.containsKey(key)) return owner.cache.get(key);
+        if (file == null || !scan.available() || entry == null && !scan.visitLinked(file)) return Collections.emptyList();
+        String key = "WebLogic:" + domain + ":" + file.getPath() + (entry == null ? "" : "!/" + entry);
+        if (owner.cache.containsKey(owner.cacheKey(key, context))) return owner.cache.get(owner.cacheKey(key, context));
         if (owner.cache.size() >= ServerDataSources.MAX_CONFIGS || owner.cachedRows >= 512 || scan.datasources.size() >= 512) {
             scan.warn("WebLogic JDBC configuration count limit reached"); return Collections.emptyList();
         }
-        List<Map> rows = new ArrayList<Map>(); owner.cache.put(key, rows);
+        List<Map> rows = new ArrayList<Map>(); owner.cache.put(owner.cacheKey(key, context), rows);
         if (!file.isFile() || !file.canRead()) { scan.warn("WebLogic JDBC configuration is unavailable: " + file.getPath()); return rows; }
-        String xml = scan.read(file, ServerDataSources.CONFIG_LIMIT);
+        String xml = entry == null ? scan.read(file, ServerDataSources.CONFIG_LIMIT) : owner.entry(file, entry, ServerDataSources.CONFIG_LIMIT);
         if (xml == null) return rows;
+        JdbcEndpoint.Resolver resolver = owner.resolver(context); resolver.used = false;
         try {
-            Handler handler = new Handler(domain, scan);
+            Handler handler = new Handler(domain, scan, resolver);
             ServerDataSources.parseXml(xml, handler);
             if (owner.cachedRows + handler.rows.size() > 512) throw new SAXException("Row limit");
             rows.addAll(handler.rows); owner.cachedRows += rows.size();
             parsedConfigurations.add(key);
         } catch (Exception e) { scan.warn("WebLogic JDBC XML was rejected (malformed, unsafe or beyond parser limits): " + file.getPath()); }
+        owner.processResult(key, rows, context);
         return rows;
+    }
+
+    /** JDBC module paths from weblogic-application.xml (any WebLogic namespace version). */
+    static final class Modules extends DefaultHandler {
+        final AssessmentScan scan; final List<String> stack = new ArrayList<String>(), paths = new ArrayList<String>();
+        final StringBuilder text = new StringBuilder(); String type, path; int elements;
+        Modules(AssessmentScan scan) { this.scan = scan; }
+        public void startElement(String uri, String local, String qualified, Attributes attrs) throws SAXException {
+            String name = local.length() > 0 ? local : qualified;
+            if (++elements > ServerDataSources.MAX_ELEMENTS || stack.size() >= ServerDataSources.MAX_DEPTH || !scan.available()) throw new SAXException("XML budget");
+            if (stack.isEmpty() && !name.equals("weblogic-application")) throw new SAXException("Unexpected WebLogic application root");
+            stack.add(name); text.setLength(0);
+            if (stack.size() == 2 && name.equals("module")) { type = null; path = null; }
+        }
+        public void characters(char[] chars, int start, int length) throws SAXException {
+            if (stack.size() != 3) return;
+            if (text.length() + length > 1024) throw new SAXException("XML scalar budget");
+            text.append(chars, start, length);
+        }
+        public void endElement(String uri, String local, String qualified) throws SAXException {
+            String name = stack.remove(stack.size() - 1);
+            if (stack.size() == 2 && stack.get(1).equals("module")) { if (name.equals("type")) type = text.toString().trim(); else if (name.equals("path")) path = text.toString().trim(); }
+            if (stack.size() == 1 && name.equals("module") && "JDBC".equalsIgnoreCase(type) && path != null) {
+                if (paths.size() >= 64) throw new SAXException("Module budget");
+                paths.add(path);
+            }
+        }
+        public void error(SAXParseException e) throws SAXException { throw e; }
+        public void fatalError(SAXParseException e) throws SAXException { throw e; }
     }
 
     static final class Frame {
@@ -106,11 +175,11 @@ final class WebLogicDataSources {
         Frame(String name, String uri) { this.name = name; this.uri = uri; }
     }
     static final class Handler extends DefaultHandler {
-        final boolean domain; final AssessmentScan scan;
+        final boolean domain; final AssessmentScan scan; final JdbcEndpoint.Resolver resolver;
         final List<Frame> stack = new ArrayList<Frame>();
         final List<Map> rows = new ArrayList<Map>();
-        Map current; String namespace; int elements;
-        Handler(boolean domain, AssessmentScan scan) { this.domain = domain; this.scan = scan; }
+        Map current; String namespace; int elements, resources, applications;
+        Handler(boolean domain, AssessmentScan scan, JdbcEndpoint.Resolver resolver) { this.domain = domain; this.scan = scan; this.resolver = resolver; }
         String path() {
             StringBuilder path = new StringBuilder();
             for (Frame frame : stack) { if (!frame.uri.equals(namespace)) return ""; if (path.length() > 0) path.append('/'); path.append(frame.name); }
@@ -126,10 +195,12 @@ final class WebLogicDataSources {
             }
             stack.add(new Frame(name, uri));
             if (domain && path().equals("domain/jdbc-system-resource")) current = new LinkedHashMap();
+            if (domain && path().equals("domain/app-deployment")) current = AssessmentScan.map("sourcePath", null);
             if (!domain && stack.size() == 1) current = AssessmentScan.map("resourceType", "javax.sql.DataSource");
         }
         boolean selected(String path) {
-            return domain ? path.equals("domain/jdbc-system-resource/name") || path.equals("domain/jdbc-system-resource/descriptor-file-name") || path.equals("domain/jdbc-system-resource/target") :
+            return domain ? path.equals("domain/jdbc-system-resource/name") || path.equals("domain/jdbc-system-resource/descriptor-file-name") || path.equals("domain/jdbc-system-resource/target") ||
+                path.equals("domain/app-deployment/name") || path.equals("domain/app-deployment/source-path") || path.equals("domain/app-deployment/target") :
                 path.equals("jdbc-data-source/name") || path.equals("jdbc-data-source/jdbc-driver-params/driver-name") || path.equals("jdbc-data-source/jdbc-driver-params/url") ||
                 path.equals("jdbc-data-source/jdbc-connection-pool-params/max-capacity") || path.equals("jdbc-data-source/jdbc-data-source-params/jndi-name") || path.equals("jdbc-data-source/jdbc-data-source-params/data-source-list");
         }
@@ -142,17 +213,19 @@ final class WebLogicDataSources {
         public void endElement(String uri, String local, String qualified) throws SAXException {
             String path = path(); Frame frame = stack.get(stack.size() - 1); String value = frame.text.toString().trim();
             if (current != null) {
-                if (path.equals(domain ? "domain/jdbc-system-resource/name" : "jdbc-data-source/name")) {
+                if (path.equals(domain ? "domain/jdbc-system-resource/name" : "jdbc-data-source/name") || path.equals("domain/app-deployment/name")) {
                     String name = ServerDataSources.resourceName(value); if (name != null) current.put("name", name);
                 } else if (domain && path.equals("domain/jdbc-system-resource/descriptor-file-name")) {
                     if (value.length() <= 512) current.put("descriptor", value);
-                } else if (domain && path.equals("domain/jdbc-system-resource/target")) {
+                } else if (path.equals("domain/app-deployment/source-path")) {
+                    if (value.length() > 0 && value.length() <= 4096) current.put("sourcePath", value);
+                } else if (domain && (path.equals("domain/jdbc-system-resource/target") || path.equals("domain/app-deployment/target"))) {
                     List<String> targets = new ArrayList<String>();
                     for (String target : value.split(",")) { String label = ServerDataSources.resourceName(target.trim()); if (label != null && targets.size() < 64 && !targets.contains(label)) targets.add(label); }
                     current.put("configuredTargets", targets);
                 } else if (!domain) {
                     if (path.equals("jdbc-data-source/jdbc-driver-params/driver-name")) { String driver = SpringDataSource.validDriver(value); if (driver != null) current.put("driverName", driver); }
-                    else if (path.equals("jdbc-data-source/jdbc-driver-params/url")) { String database = SpringDataSource.databaseType(value); if (database != null) current.put("databaseType", database); JdbcEndpoint.addTo(current, value); }
+                    else if (path.equals("jdbc-data-source/jdbc-driver-params/url")) JdbcEndpoint.addTo(current, value, resolver);
                     else if (path.equals("jdbc-data-source/jdbc-connection-pool-params/max-capacity")) { Integer max = ServerDataSources.pool(value); if (max != null) current.put("configuredMaxPoolSize", max); }
                     else if (path.equals("jdbc-data-source/jdbc-data-source-params/jndi-name")) {
                         String name = ServerDataSources.resourceName(value);
@@ -162,8 +235,13 @@ final class WebLogicDataSources {
                     } else if (path.equals("jdbc-data-source/jdbc-data-source-params/data-source-list")) current.put("resourceType", "WebLogic Multi Data Source");
                 }
                 if (path.equals(domain ? "domain/jdbc-system-resource" : "jdbc-data-source")) {
-                    if (rows.size() >= 128) throw new SAXException("XML resource budget");
+                    if (++resources > 128) throw new SAXException("XML resource budget");
                     if (current.get("name") != null) rows.add(current);
+                    current = null;
+                } else if (path.equals("domain/app-deployment")) {
+                    // Applications only point to possible application-scoped JDBC modules; beyond the bound they are skipped.
+                    if (++applications > 128) scan.warn("WebLogic application deployment limit reached; additional application JDBC modules were not examined");
+                    else if (current.get("name") != null && current.get("sourcePath") != null) rows.add(current);
                     current = null;
                 }
             }

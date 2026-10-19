@@ -34,6 +34,7 @@ final class SpringConfiguration {
     File artifact; ZipFile zip; String archivePrefix; boolean partial, artifactIdentityVerified; int files;
     final Set<String> duplicateEntries = new HashSet<String>();
     String rawEnvironment;
+    JdbcEndpoint.Resolver resolver;
     SpringConfiguration(AssessmentScan scan, AssessmentScan.ProcessContext context) {
         this.scan = scan; this.context = context; prefixes.add("spring.datasource");
         String custom = scan.config.getProperty("spring.datasourcePrefixes", "");
@@ -103,6 +104,20 @@ final class SpringConfiguration {
             context.application.put("evidence", "Live Java process with Spring Boot launcher or verified Spring Boot library on its classpath; framework activation not verified");
         }
         rawEnvironment = scan.metadataText(new File(processDirectory, "environ"), 65536, false);
+        // Spring order for placeholder keys: loaded configuration and startup values, -D properties, then the environment.
+        resolver = new JdbcEndpoint.Resolver(scan, processDirectory) {
+            String environment(String key) { return envValue(key); }
+            String lookup(String key, List<String> sources) {
+                String found = values.get(normalized(key));
+                if (found != null) { source(sources, "configuration"); return found; }
+                found = property(key);
+                if (found != null) { source(sources, "system-property"); return found; }
+                found = envValue(key);
+                if (found == null) found = envValue(key.toUpperCase(Locale.ENGLISH).replace("-", "").replace('.', '_'));
+                if (found != null) source(sources, "environment");
+                return found;
+            }
+        };
         for (String key : controlAndDatasourceKeys()) {
             String env = key.toUpperCase(Locale.ENGLISH).replace("-", "").replace('.', '_');
             String value = envValue(env); if (value != null && value.length() <= 8192) startup.put(normalized(key), value);
@@ -282,31 +297,28 @@ final class SpringConfiguration {
             cache.put(location, p); return p;
         } catch (Exception e) { partial = true; cache.put(location, new Properties()); return cache.get(location); }
     }
-    String resolve(String value, int depth) {
-        if (value == null || depth > 8 || value.contains("#{") || value.startsWith("ENC(")) return null;
-        if (!value.contains("${")) return SpringDataSource.resolved(value) ? value : null;
-        // Exact placeholders only: no expressions or substitutions into arbitrary strings.
-        if (!value.startsWith("${") || !value.endsWith("}") || value.indexOf("${", 2) >= 0) return null;
-        String inside = value.substring(2, value.length()-1); int at = inside.indexOf(':');
-        String key = at < 0 ? inside : inside.substring(0, at);
-        if (key.toLowerCase(Locale.ENGLISH).matches(".*(password|passwd|secret|token|credential).*")) return null;
-        String found = values.get(normalized(key)); if (found == null) found = envValue(key);
-        if (found == null && at >= 0) found = inside.substring(at + 1);
-        return resolve(found, depth + 1);
+    String resolve(String value, List<String> sources) {
+        // Placeholders may be exact or embedded in a URL; keys and depth are bounded by the resolver.
+        return resolver == null ? (SpringDataSource.resolved(value) ? value : null) : resolver.expand(value, sources);
     }
     static String get(Map<String,String> map, String key) { return map.get(normalized(key)); }
-    String setting(String prefix, String suffix) { String value = get(values, prefix + "." + suffix); String resolved = resolve(value, 0); if (value != null && resolved == null) partial = true; return resolved; }
+    String setting(String prefix, String suffix) { return setting(prefix, suffix, new ArrayList<String>()); }
+    String setting(String prefix, String suffix, List<String> sources) { String value = get(values, prefix + "." + suffix); String resolved = resolve(value, sources); if (value != null && resolved == null) partial = true; return resolved; }
     void add(String prefix) {
-        String url = SpringDataSource.first(setting(prefix, "url"), SpringDataSource.first(setting(prefix, "jdbc-url"), setting(prefix, "hikari.jdbc-url")));
+        String url = null; List<String> sources = new ArrayList<String>();
+        for (String suffix : new String[]{"url", "jdbc-url", "hikari.jdbc-url"}) {
+            List<String> candidate = new ArrayList<String>(); String value = setting(prefix, suffix, candidate);
+            if (url == null && value != null && value.length() > 0) { url = value; sources = candidate; }
+        }
         String driver = SpringDataSource.validDriver(SpringDataSource.first(setting(prefix, "driver-class-name"), setting(prefix, "hikari.driver-class-name")));
         String jndi = setting(prefix, "jndi-name");
         if (jndi != null && !jndi.matches("[A-Za-z0-9_:/.-]{1,200}")) jndi = null;
-        String db = url == null ? null : SpringDataSource.databaseType(url);
+        String db = url == null ? null : JdbcEndpoint.databaseType(url);
         boolean jdbcUrl = url != null && url.length() <= 8192 && url.matches("jdbc:[A-Za-z][A-Za-z0-9_-]*:.*");
         if (!jdbcUrl && driver == null && jndi == null) return;
         Map fields = new LinkedHashMap(); fields.put("configurationPresent", Boolean.TRUE);
         fields.put("configurationKey", prefix); fields.put("datasourceKey", prefix);
-        JdbcEndpoint.addTo(fields, url);
+        JdbcEndpoint.addTo(fields, url, resolver, sources);
         if (db != null) fields.put("databaseType", db); if (driver != null) fields.put("driverName", driver);
         if (jndi != null) fields.put("jndiName", jndi);
         String name = ProcessLaunch.label(setting(prefix, "name")); if (name != null) fields.put("configuredName", name);

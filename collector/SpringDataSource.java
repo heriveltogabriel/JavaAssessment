@@ -187,7 +187,9 @@ final class SpringDataSource {
             if (result.indexOf('\\') >= 0 || result.indexOf('"') >= 0) throw new IOException("Unsupported Spring YAML quoted escape");
             return result;
         }
-        if (value.indexOf('[') >= 0 || value.indexOf(']') >= 0 || value.indexOf('{') >= 0 || value.indexOf('}') >= 0 || value.startsWith("&") || value.startsWith("*") || value.startsWith("!") || value.startsWith("|") || value.startsWith(">") || value.indexOf(": ") >= 0)
+        // Embedded placeholders such as jdbc:oracle:thin:@${DB_HOST}:${DB_PORT:1521}/SVC are inert text, not YAML flow mappings.
+        String structure = value.replaceAll("\\$\\{[A-Za-z0-9_.,:/@-]*\\}", "");
+        if (structure.indexOf('[') >= 0 || structure.indexOf(']') >= 0 || structure.indexOf('{') >= 0 || structure.indexOf('}') >= 0 || value.startsWith("&") || value.startsWith("*") || value.startsWith("!") || value.startsWith("|") || value.startsWith(">") || value.indexOf(": ") >= 0)
             throw new IOException("Unsupported Spring YAML scalar structure");
         return value.equals("null") || value.equals("~") ? "" : value;
     }
