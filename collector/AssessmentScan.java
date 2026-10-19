@@ -19,7 +19,8 @@ public final class AssessmentScan {
     final long cpuStart = processCpu();
     final long deadline;
     final int maxFiles, batchSize, pauseMillis;
-    int filesVisited, archivesInspected;
+    // filesVisited counts both phases; process-linked evidence uses filesVisited - sweepFiles.
+    int filesVisited, archivesInspected, sweepFiles;
     long bytesRead, peakHeap;
     boolean partial, fileLimitReached;
     final List warnings = new ArrayList();
@@ -35,6 +36,9 @@ public final class AssessmentScan {
     final List<String> excluded = new ArrayList<String>();
     final List<String> networkMounts = new ArrayList<String>();
     final Set<String> visited = new HashSet<String>();
+    final List<String> productInternals = new ArrayList<String>(), processRoots = new ArrayList<String>();
+    static final List<String> IGNORED_DIRECTORIES = Arrays.asList(".git", ".cache", "node_modules", "logs", "tmp", "temp",
+        ".m2", ".gradle", ".npm", ".ivy2", "__pycache__", "oradata", "diag", "lost+found");
     MessageDigest visitedDigest;
     final List<File> deferredArchives = new ArrayList<File>();
     final ArchiveMetadata archiveMetadata = new ArchiveMetadata(this);
@@ -51,12 +55,13 @@ public final class AssessmentScan {
         collectorExternalRuntimeRoot = externalRuntimeRoot(codeLocation);
         timestamp = now();
         deadline = start + number(settings.get("maxDurationSeconds"), 180, 10, 900) * 1000L;
-        maxFiles = number(settings.get("maxFiles"), 50000, 100, 50000);
+        maxFiles = number(settings.get("maxFiles"), 50000, 100, 500000);
         batchSize = number(settings.get("batchSize"), 100, 1, 500);
         pauseMillis = number(settings.get("pauseMillis"), 30, 0, 2000);
         excluded.addAll(Arrays.asList("/proc", "/sys", "/dev", "/tmp"));
         Object exclusions = settings.get("excludePaths");
-        if (exclusions instanceof List) for (Object path : (List) exclusions) if (path instanceof String) excluded.add((String) path);
+        // A trailing slash would keep the excluded directory itself in scope and defeat the find -path prune.
+        if (exclusions instanceof List) for (Object path : (List) exclusions) if (path instanceof String) excluded.add(((String) path).replaceAll("(.)/+$", "$1"));
     }
 
     static File collectorCodeLocation() {
@@ -224,13 +229,15 @@ public final class AssessmentScan {
             if (!root.exists()) { note("Include path is absent: " + clean(item)); continue; }
             walk(root, 0);
         }
+        List<String> processScanRoots = walkProcessRoots((List) includes);
         for (File file : deferredArchives) { if (!available()) break; inspectArtifact(file, null, false); }
         reuseWebLogicSnapshot();
         long cpu = processCpu();
         Map stats = map("durationMillis", System.currentTimeMillis() - start, "filesVisited", filesVisited,
             "bytesRead", bytesRead, "collectorCpuMillis", cpuStart >= 0 && cpu >= 0 ? Long.valueOf((cpu - cpuStart) / 1000000) : null,
             "peakHeapBytes", peakHeap, "collectorPeakRssBytes", procKilobytes(new File("/proc/self/status"), "VmHWM:"),
-            "archivesInspected", archivesInspected, "scanRoots", includes);
+            "archivesInspected", archivesInspected, "scanRoots", includes, "processScanRoots", processScanRoots,
+            "maxFiles", maxFiles, "sweepFilesVisited", sweepFiles, "processLinkedFilesVisited", filesVisited - sweepFiles);
         Map coverage = map("status", partial ? "partial" : "complete", "warnings", warnings, "stats", stats);
         return map("schemaVersion", "1.0", "eventId", UUID.randomUUID().toString(), "jobId", jobId,
             "host", host, "runtimes", new ArrayList(runtimes.values()), "processes", processes,
@@ -239,6 +246,18 @@ public final class AssessmentScan {
             "collectorJavaVersion", System.getProperty("java.version"));
     }
 
+    /** Observed server bases outside includePaths still hold deployments and JDBC descriptors. */
+    List<String> walkProcessRoots(List includes) {
+        List<String> walked = new ArrayList<String>();
+        for (String base : processRoots) {
+            if (!available()) break;
+            boolean covered = false;
+            for (Object item : includes) if (item instanceof String && under(base, (String) item)) covered = true;
+            if (covered) continue;
+            walked.add(base); walk(new File(base), 0);
+        }
+        return walked;
+    }
     Long procKilobytes(File file, String key) {
         String text = read(file, 65536); if (text == null) return null;
         for (String line : text.split("\n")) if (line.startsWith(key)) {
@@ -312,6 +331,11 @@ public final class AssessmentScan {
 
     static String unquote(String value) { return value.replaceAll("^\"|\"$", "").trim(); }
     static boolean under(String path, String root) { return path.equals(root) || path.startsWith(root.endsWith("/") ? root : root + "/"); }
+    boolean skipped(String path) {
+        if (excluded(path) || internalSweepPath(path)) return true;
+        for (String root : productInternals) if (under(path, root)) return true;
+        return false;
+    }
     boolean excluded(String path) {
         for (String root : excluded) if (under(path, root)) return true;
         for (String root : networkMounts) if (under(path, root)) return true;
@@ -324,31 +348,62 @@ public final class AssessmentScan {
             path = file.getCanonicalPath();
             // Sweep exclusions do not apply to explicit process-linked evidence.
             // Apply them before budgets: intentionally skipped trees are not gaps.
-            if (excluded(path) || internalSweepPath(path)) return;
+            if (skipped(path)) return;
             key = visitedKey(path);
             if (visited.contains(key)) return;
             if (!file.getAbsolutePath().equals(path)) { note("Symlink path skipped: " + file.getPath()); return; }
         } catch (IOException e) { warn("Cannot resolve path: " + file.getPath()); return; }
-        if (!available()) return;
-        if (filesVisited >= maxFiles) { fileLimitReached = true; warn("File count limit reached; remaining paths were not examined"); return; }
-        if (depth > 12) { warn("Directory depth limit reached"); return; }
-        visited.add(key);
-        filesVisited++;
-        if (filesVisited % batchSize == 0 && pauseMillis > 0) try { Thread.sleep(pauseMillis); } catch (InterruptedException e) { Thread.currentThread().interrupt(); warn("Assessment interrupted"); return; }
-        if (file.isDirectory()) {
-            if (runtimes.containsKey(path)) return;
-            if (new File(file, "bin/java").isFile()) {
-                addRuntime(file, false, "Java home found; runtime metadata inventoried without traversing JDK internals", timestamp, null, null, null); return;
-            }
-            String name = file.getName();
-            if (Arrays.asList(".git", ".cache", "node_modules", "logs", "tmp", "temp").contains(name)) return;
-            BoundedDirectory children = null;
-            try {
-                children = BoundedDirectory.open(file, deadline);
-                for (File child; available() && !fileLimitReached && (child = children.next()) != null;) walk(child, depth + 1);
-            } catch (IOException e) { warn("Directory enumeration incomplete (read or resource limit): " + path); }
-            finally { if (children != null) children.close(); }
+        if (!visit(file, path, key, depth, file.isDirectory())) return;
+        if (!BoundedDirectory.NIO) {
+            // Java 6: one find per root instead of one process per directory.
+            List<String> prune = new ArrayList<String>();
+            for (List<String> roots : Arrays.asList(excluded, networkMounts, productInternals)) for (String root : roots) if (under(root, path) && !root.equals(path)) prune.add(root);
+            try { walkTree(path, depth, BoundedDirectory.tree(file, deadline, 13 - depth, prune, IGNORED_DIRECTORIES)); }
+            catch (IOException e) { warn("Directory enumeration incomplete (read or resource limit): " + path); }
             return;
+        }
+        BoundedDirectory children = null;
+        try {
+            children = BoundedDirectory.open(file, deadline);
+            for (File child; available() && !fileLimitReached && (child = children.next()) != null;) walk(child, depth + 1);
+        } catch (IOException e) { warn("Directory enumeration incomplete (read or resource limit): " + path); }
+        finally { if (children != null) children.close(); }
+    }
+    /** Consumes a pre-order find stream with walk's rules; find never follows symlinks, so its paths are canonical. */
+    void walkTree(String rootPath, int depth, BoundedDirectory tree) {
+        String skip = null;
+        try {
+            for (File child; available() && !fileLimitReached && (child = tree.next()) != null;) {
+                String path = child.getPath();
+                if (skip != null && path.startsWith(skip)) continue;
+                skip = null;
+                char type = tree.type();
+                String key = visitedKey(path);
+                if (skipped(path) || visited.contains(key)) { skip = path + "/"; continue; }
+                if (type == 'l') { note("Symlink path skipped: " + path); continue; }
+                int level = depth + 1;
+                for (int i = rootPath.length() + 1; i < path.length(); i++) if (path.charAt(i) == '/') level++;
+                if (!visit(child, path, key, level, type == 'd') && type == 'd') skip = path + "/";
+            }
+        } catch (IOException e) { warn("Directory enumeration incomplete (read or resource limit): " + rootPath); }
+        finally { tree.close(); }
+    }
+    /** Counts one sweep entry; true only for a directory whose children must be walked. */
+    boolean visit(File file, String path, String key, int depth, boolean directory) {
+        // Ignored directories, like exclusions, are skipped before budgets in both enumeration modes.
+        if (directory && IGNORED_DIRECTORIES.contains(file.getName())) return false;
+        if (!available()) return false;
+        if (sweepFiles >= maxFiles) { fileLimitReached = true; warn("File count limit reached; remaining paths were not examined"); return false; }
+        if (depth > 12) { warn("Directory depth limit reached"); return false; }
+        visited.add(key);
+        filesVisited++; sweepFiles++;
+        if (!pace(sweepFiles)) return false;
+        if (directory) {
+            if (runtimes.containsKey(path)) return false;
+            if (new File(file, "bin/java").isFile()) {
+                addRuntime(file, false, "Java home found; runtime metadata inventoried without traversing JDK internals", timestamp, null, null, null); return false;
+            }
+            return !ProductHomes.sweep(this, file, path);
         }
         String name = file.getName().toLowerCase(Locale.ENGLISH);
         if (name.equals("java") && file.getParentFile() != null && file.getParentFile().getName().equals("bin")) {
@@ -368,6 +423,26 @@ public final class AssessmentScan {
             else if (deferredArchives.size() < 256) deferredArchives.add(file);
             else warn("Generic application archive candidate limit reached; priority server and JDBC metadata was retained");
         }
+        return false;
+    }
+
+    /** Sleeps between batches only while the 1-minute load exceeds the CPU count; pauseMillis is the ceiling. */
+    boolean pace(int count) {
+        if (pauseMillis <= 0 || count % batchSize != 0) return true;
+        int millis = pauseFor(loadAverage(), Runtime.getRuntime().availableProcessors(), pauseMillis);
+        if (millis > 0) try { Thread.sleep(millis); } catch (InterruptedException e) { Thread.currentThread().interrupt(); warn("Assessment interrupted"); return false; }
+        return true;
+    }
+    /** Full pause at twice the CPU count; no /proc/loadavg keeps the fixed pause. */
+    static int pauseFor(String loadavg, int cpus, int pauseMillis) {
+        if (loadavg == null) return pauseMillis;
+        try {
+            double load = Double.parseDouble(loadavg.trim().split("\\s+")[0]), excess = (load - cpus) / Math.max(1, cpus);
+            return excess <= 0 ? 0 : (int) Math.min(pauseMillis, Math.ceil(pauseMillis * excess));
+        } catch (RuntimeException e) { return pauseMillis; }
+    }
+    static String loadAverage() {
+        try { return readFile(new File("/proc/loadavg"), 256); } catch (IOException e) { return null; }
     }
 
     String normalizeHome(File candidate) throws IOException {
@@ -591,10 +666,10 @@ public final class AssessmentScan {
         if (!available()) return false;
         String key = visitedKey(file.getPath());
         if (visited.contains(key)) return true;
-        if (filesVisited >= maxFiles) { warn("File count limit reached; remaining process artifacts were not examined"); return false; }
+        // Process evidence has its own budget: the later sweep cannot starve it, nor it the sweep.
+        if (filesVisited - sweepFiles >= maxFiles) { warn("File count limit reached; remaining process artifacts were not examined"); return false; }
         visited.add(key); filesVisited++;
-        if (filesVisited % batchSize == 0 && pauseMillis > 0) try { Thread.sleep(pauseMillis); } catch (InterruptedException e) { Thread.currentThread().interrupt(); warn("Assessment interrupted"); return false; }
-        return true;
+        return pace(filesVisited - sweepFiles);
     }
     void linkedFile(File source, ProcessContext context) {
         File file = linkedPath(source); if (file == null || !visitLinked(file)) return;
@@ -611,7 +686,7 @@ public final class AssessmentScan {
         try {
         files = BoundedDirectory.open(root, deadline);
         for (File child; (child = files.next()) != null;) {
-            if (!available() || filesVisited >= maxFiles) return;
+            if (!available() || filesVisited - sweepFiles >= maxFiles) return;
             File canonical = linkedPath(child); if (canonical == null || !canonical.getPath().equals(child.getAbsolutePath())) continue;
             String name = child.getName().toLowerCase(Locale.ENGLISH);
             if (child.isDirectory()) {
@@ -632,6 +707,7 @@ public final class AssessmentScan {
         ProcessLaunch launch = context.launch;
         serverDataSources.discover(context);
         if (launch.jarPath != null) linkedFile(new File(launch.jarPath), context);
+        if (launch.serverBase != null && !"JBoss".equals(launch.serverType)) processRoot(new File(launch.serverBase));
         if (launch.serverHome != null) {
             File home = new File(launch.serverHome);
             if ("Tomcat".equals(launch.serverType)) {
@@ -639,6 +715,18 @@ public final class AssessmentScan {
                 linkedTree(new File(home, "lib"), 0, context, true);
                 if (launch.serverBase != null) { linkedTree(new File(launch.serverBase, "lib"), 0, context, true); linkedTree(new File(launch.serverBase, "webapps"), 3, context, false); }
             } else if ("WebLogic".equals(launch.serverType)) {
+                // serverHome is WL_HOME/server; the Oracle Home inventory names the installed release and patches.
+                File oracleHome = home.getParentFile() == null ? null : home.getParentFile().getParentFile();
+                File registry = oracleHome == null ? null : linkedPath(new File(oracleHome, "inventory/registry.xml"));
+                if (registry != null && registry.isFile() && visitLinked(registry) && context.server != null) {
+                    Map product = ProductHomes.webLogicRegistry(this, registry);
+                    if (product.get("version") != null && !context.productVersion) {
+                        context.server.put("version", product.get("version")); context.productVersion = true;
+                        context.server.put("evidence", "Live WebLogic launcher; Oracle Home inventory registry read without loading classes"); context.server.put("scanScope", "process-linked");
+                        if (context.application != null) { context.application.put("type", "WebLogic"); context.application.put("applicationType", "WebLogic"); context.application.put("frameworkVersion", product.get("version")); }
+                    }
+                    for (String field : new String[]{"distribution", "patches"}) if (product.get(field) != null) context.server.put(field, product.get(field));
+                }
                 linkedFile(new File(home, "lib/weblogic.jar"), context);
             } else if ("JBoss".equals(launch.serverType)) {
                 List<String> roots = new ArrayList<String>(launch.modulePaths);
@@ -652,6 +740,17 @@ public final class AssessmentScan {
                 linkedTree(new File(home, "bin"), 0, context, true);
                 File base = launch.serverBase != null && (launch.serverBaseExplicit || !launch.serverBase.equals(launch.serverHome)) ? new File(launch.serverBase) : new File(home, "standalone");
                 linkedTree(new File(base, "deployments"), 3, context, false);
+                processRoot(base);
+                File versionText = linkedPath(new File(home, "version.txt"));
+                // The product module manifest stays first; version.txt only fills a missing release.
+                if (!context.productVersion && context.server != null && versionText != null && versionText.isFile() && versionText.length() <= 4096 && visitLinked(versionText)) {
+                    String[] product = ProductHomes.versionText(read(versionText, 4096));
+                    if (product != null) {
+                        context.server.put("type", product[0]); context.server.put("version", product[1]); context.productVersion = true;
+                        context.server.put("evidence", "Live JBoss-family launcher; product version.txt read without loading classes"); context.server.put("scanScope", "process-linked");
+                        context.process.put("serverType", product[0]);
+                    }
+                }
             }
         }
         for (int pass = 0; pass < 2; pass++) for (String entry : launch.classpath) {
@@ -662,22 +761,37 @@ public final class AssessmentScan {
             if (entry.toLowerCase(Locale.ENGLISH).endsWith(".jar")) linkedFile(path, context);
         }
     }
+    void processRoot(File candidate) {
+        File base = linkedPath(candidate);
+        // Only recognizable server bases: a WebLogic cwd fallback may be any directory.
+        if (base != null && !processRoots.contains(base.getPath()) && processRoots.size() < 64 && (new File(base, "config/config.xml").isFile()
+            || new File(base, "conf/server.xml").isFile() || new File(base, "deployments").isDirectory())) processRoots.add(base.getPath());
+    }
     void inspectProductManifest(File file, ProcessContext context) {
         if (!Boolean.TRUE.equals(settings.get("inspectArchives")) || context.server == null || !"JBoss".equals(context.launch.serverType)) return;
         String text = read(file, 65536); if (text == null) return;
         try {
-            Attributes attributes = new Manifest(new ByteArrayInputStream(text.getBytes("UTF-8"))).getMainAttributes();
-            String product = clean(attributes.getValue("JBoss-Product-Release-Name")), version = clean(attributes.getValue("JBoss-Product-Release-Version"));
-            if (product == null) product = clean(attributes.getValue("JBoss-Project-Release-Name"));
-            if (version == null) version = clean(attributes.getValue("JBoss-Project-Release-Version"));
-            if (product != null && version != null && (product.toLowerCase(Locale.ENGLISH).contains("wildfly") || product.toLowerCase(Locale.ENGLISH).contains("jboss"))) {
-                context.server.put("type", product.toLowerCase(Locale.ENGLISH).contains("wildfly") ? "WildFly" : "JBoss"); context.server.put("version", version);
+            String[] release = productRelease(text);
+            if (release != null) {
+                String version = release[1];
+                context.server.put("type", release[0]); context.server.put("version", version);
                 context.productVersion = true;
                 context.server.put("evidence", "Live JBoss-family launcher; product release manifest inspected without loading classes"); context.server.put("scanScope", "process-linked");
                 context.process.put("serverType", context.server.get("type"));
                 if (context.application != null) { context.application.put("applicationType", context.server.get("type")); context.application.put("type", context.server.get("type")); context.application.put("frameworkVersion", version); }
             }
         } catch (IOException e) { warn("Product release manifest could not be parsed"); }
+    }
+    /** {type, version} from a JBoss/WildFly product module manifest, or null. */
+    static String[] productRelease(String text) throws IOException {
+        Attributes attributes = new Manifest(new ByteArrayInputStream(text.getBytes("UTF-8"))).getMainAttributes();
+        String product = clean(attributes.getValue("JBoss-Product-Release-Name")), version = clean(attributes.getValue("JBoss-Product-Release-Version"));
+        if (product == null) product = clean(attributes.getValue("JBoss-Project-Release-Name"));
+        if (version == null) version = clean(attributes.getValue("JBoss-Project-Release-Version"));
+        if (product == null || version == null) return null;
+        String lower = product.toLowerCase(Locale.ENGLISH);
+        if (!lower.contains("wildfly") && !lower.contains("jboss")) return null;
+        return new String[]{lower.contains("wildfly") ? "WildFly" : "JBoss", version};
     }
 
     void inspectJar(File file, String name) { inspectArtifact(file, null, false); }
