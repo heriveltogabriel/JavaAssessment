@@ -97,13 +97,13 @@ public final class ProcessLaunchTest {
             File war=new File(root,"z-demo.war"),ear=new File(root,"z-suite.ear");
             write(war,jar(attrs("Implementation-Version","9.9"),entries()));
             write(ear,jar(attrs("Implementation-Version","8.8"),entries()));
-            AssessmentScan scan=scanner();scan.archivesInspected=40;scan.walk(root,0);
+            AssessmentScan scan=scanner();scan.archivesInspected=ArchiveMetadata.ARCHIVE_LIMIT;scan.walk(root,0);
             check(scan.deferredArchives.size()==256 && scan.partial,"Fixture exhausts generic archive candidate budget");
             check(scan.applications.size()==2,"WAR/EAR file findings survive exhausted candidate and inspection budgets");
             for(Object value:scan.applications){Map app=(Map)value;check(app.get("state")==null && app.get("version")==null,"File evidence must not claim deployed state or an uninspected version");}
-            check(scan.bytesRead==0 && scan.archivesInspected==40,"File evidence does not consume archive inspection or metadata bytes");
+            check(scan.bytesRead==0 && scan.archivesInspected==ArchiveMetadata.ARCHIVE_LIMIT,"File evidence does not consume archive inspection or metadata bytes");
             scan.inspectJar(war,"z-demo.war");scan.inspectJar(ear,"z-suite.ear");
-            check(scan.applications.size()==2 && scan.archivesInspected==40,"Optional enrichment deduplicates existing file findings and keeps archive cap");
+            check(scan.applications.size()==2 && scan.archivesInspected==ArchiveMetadata.ARCHIVE_LIMIT,"Optional enrichment deduplicates existing file findings and keeps archive cap");
         } finally { CollectorTest.remove(root); }
     }
     public static void main(String[] args) throws Exception {

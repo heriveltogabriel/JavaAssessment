@@ -3,6 +3,7 @@ package assessment;
 import java.io.*;
 import java.util.*;
 import java.util.jar.*;
+import java.util.zip.*;
 
 /** Synthetic archives only; no application binaries, network calls, or class loading. */
 public final class ArchiveMetadataTest {
@@ -18,6 +19,23 @@ public final class ArchiveMetadataTest {
         JarOutputStream out = manifest == null ? new JarOutputStream(bytes) : new JarOutputStream(bytes,manifest);
         try { for (Map.Entry<String,byte[]> entry : entries.entrySet()) { out.putNextEntry(new JarEntry(entry.getKey()));out.write(entry.getValue());out.closeEntry(); } }
         finally { out.close(); } return bytes.toByteArray();
+    }
+    /** Like jar(), but nested .jar entries are STORED as the Spring Boot loader requires. */
+    static byte[] boot(Manifest manifest, Map<String,byte[]> entries) throws Exception {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream(); JarOutputStream out = new JarOutputStream(bytes,manifest);
+        try {
+            for (Map.Entry<String,byte[]> entry : entries.entrySet()) {
+                JarEntry e = new JarEntry(entry.getKey());
+                if (entry.getKey().endsWith(".jar")) { CRC32 crc=new CRC32();crc.update(entry.getValue());e.setMethod(ZipEntry.STORED);e.setSize(entry.getValue().length);e.setCompressedSize(entry.getValue().length);e.setCrc(crc.getValue()); }
+                out.putNextEntry(e);out.write(entry.getValue());out.closeEntry();
+            }
+        } finally { out.close(); } return bytes.toByteArray();
+    }
+    static Manifest bootManifest() { return manifest("Main-Class","org.springframework.boot.loader.launch.JarLauncher","Start-Class","example.Demo","Spring-Boot-Version","3.2.5"); }
+    static byte[] noise(int size) { byte[] b=new byte[size];new Random(7).nextBytes(b);return b; }
+    static int indexOf(byte[] haystack, byte[] needle) {
+        outer: for (int i=0;i+needle.length<=haystack.length;i++) { for (int j=0;j<needle.length;j++) if (haystack[i+j]!=needle[j]) continue outer; return i; }
+        return -1;
     }
     static File write(File root, String name, byte[] content) throws Exception {
         File file = new File(root,name); file.getParentFile().mkdirs(); FileOutputStream out = new FileOutputStream(file);
@@ -46,13 +64,13 @@ public final class ArchiveMetadataTest {
         check("2.4.240".equals(h2.get("version")) && "JDBC".equals(h2.get("category")),"H2 manifest driver metadata must be identified");
         check("11.0.24".equals(embedded.get("version")),"Embedded Tomcat main Bundle-Version must win over servlet section version");
         check("Java library".equals(embedded.get("category")),"Embedded server library is not a JDBC driver");
-        check(((List)result.get("libraries")).size()==2,"Connection pools must not be classified as JDBC drivers");
+        check(((List)result.get("libraries")).size()==3 && "JDBC pool".equals(library(result,"HikariCP-7.0.2.jar").get("category")),"Connection pools are reported as pools, never as JDBC drivers");
         check("found".equals(h2.get("usage")) && result.get("serverType")==null,"Packaged libraries do not prove a running server or datasource");
         check(scan.libraries.isEmpty() && scan.applications.isEmpty() && scan.servers.isEmpty() && scan.datasources.isEmpty(),"Metadata helper must not mutate inventory rows");
         check(!Json.stringify(result).contains("do-not-collect-this-secret"),"Application configuration contents must not be collected");
         long bytes=scan.bytesRead;int inspected=scan.archivesInspected;
         check(helper.inspect(new File(root,"./app.jar"))==result && scan.bytesRead==bytes && scan.archivesInspected==inspected,"Canonical archive cache prevents repeated I/O and budget consumption");
-        check(inspected==3,"Only the application and supported dependency archives should consume archive count");
+        check(inspected==4,"Only the application and supported dependency archives should consume archive count");
         check(!scan.partial,"Small valid metadata fixtures should finish without partial coverage");
         File embeddedFile=write(root,"tomcat-embed-core-11.0.24.jar",contents.get("BOOT-INF/lib/tomcat-embed-core-11.0.24.jar"));
         check(new ArchiveMetadata(scan(true)).inspect(embeddedFile).get("serverType")==null,"Embedded Tomcat library alone must not become a standalone server installation");
@@ -91,11 +109,11 @@ public final class ArchiveMetadataTest {
         File largeManifest=write(root,"derby.jar",jar(null,entries("META-INF/MANIFEST.MF",oversized)));
         AssessmentScan metadata=scan(true);new ArchiveMetadata(metadata).inspect(largeManifest);
         check(metadata.partial && metadata.bytesRead<ArchiveMetadata.READ_LIMIT,"Oversized manifest must be rejected within budget");
-        AssessmentScan count=scan(true);count.archivesInspected=40;new ArchiveMetadata(count).inspect(new File(root,"catalina.jar"));
-        check(count.partial && count.archivesInspected==40 && count.bytesRead==0,"Archive-count budget must stop I/O");
+        AssessmentScan count=scan(true);count.archivesInspected=ArchiveMetadata.ARCHIVE_LIMIT;new ArchiveMetadata(count).inspect(new File(root,"catalina.jar"));
+        check(count.partial && count.archivesInspected==ArchiveMetadata.ARCHIVE_LIMIT && count.bytesRead==0,"Archive-count budget must stop I/O");
         Map<String,byte[]> many=new LinkedHashMap<String,byte[]>();for(int i=0;i<5001;i++)many.put("entry-"+i,new byte[0]);
         byte[] bad=jar(null,many);int end=bad.length-22;
-        // Lie in EOCD: validating the actual bounded central directory must still reject >5000 entries.
+        // Lie in EOCD: validating the actual bounded central directory must reject the mismatched entry count.
         bad[end+8]=1;bad[end+9]=0;bad[end+10]=1;bad[end+11]=0;
         AssessmentScan entries=scan(true);new ArchiveMetadata(entries).inspect(write(root,"many.jar",bad));
         check(entries.partial && entries.bytesRead<ArchiveMetadata.READ_LIMIT,"Misreported central entry counts must be rejected before ZipFile opens");
@@ -111,11 +129,94 @@ public final class ArchiveMetadataTest {
         check(String.valueOf(library(result,"h2-2.4.240.jar").get("evidence")).contains("inferred"),"Unverified nested version must retain filename-inference evidence");
         check(limited.datasources.isEmpty(),"A rejected archive cannot create datasource observations");
     }
+    static void nestedArchives(File root) throws Exception {
+        // STORED nested driver: only end record, central directory and metadata entries are read, never the class bodies.
+        Map<String,byte[]> driver=entries("oracle/jdbc/Big.class",noise(2*1024*1024));
+        driver.put("META-INF/maven/com.oracle.database.jdbc/ojdbc8/pom.properties",utf("groupId=com.oracle.database.jdbc\nartifactId=ojdbc8\nversion=19.3.0.0\n"));
+        byte[] ojdbc=jar(manifest(),driver);
+        Map<String,byte[]> contents=entries("BOOT-INF/classes/application.properties",utf("spring.datasource.url=jdbc:oracle:thin:@//db.example:1521/ORCL\n"));
+        contents.put("BOOT-INF/lib/ojdbc8-19.3.0.0.jar",ojdbc);
+        byte[] fat=boot(bootManifest(),contents);
+        AssessmentScan scan=scan(true);Map result=new ArchiveMetadata(scan).inspect(write(root,"stored.jar",fat));
+        Map row=library(result,"ojdbc8-19.3.0.0.jar");
+        check("19.3.0.0".equals(row.get("version")) && String.valueOf(row.get("evidence")).contains("pom.properties"),"Stored nested JAR metadata is read by random access");
+        check(!scan.partial && scan.bytesRead<64*1024,"Stored nested JAR must not be read whole: "+scan.bytesRead);
+        check("3.2.5".equals(result.get("frameworkVersion")) && result.get("configuredDataSource") instanceof Map,"Boot version and datasource survive");
+        // A corrupted local header of the nested JAR is rejected; the filename evidence remains, marked as inferred.
+        byte[] corrupt=fat.clone();int at=indexOf(corrupt,utf("BOOT-INF/lib/ojdbc8-19.3.0.0.jar"));corrupt[at-30+8]=8;
+        AssessmentScan rejected=scan(true);row=library(new ArchiveMetadata(rejected).inspect(write(root,"stored-bad.jar",corrupt)),"ojdbc8-19.3.0.0.jar");
+        check(rejected.partial && String.valueOf(row.get("evidence")).contains("inferred"),"Malformed stored nested header is rejected");
+        // A nested central directory pointing outside the nested JAR is rejected.
+        byte[] escape=fat.clone();int eocd=indexOf(escape,new byte[]{0x50,0x4b,0x05,0x06});escape[eocd+16]=(byte)0xff;escape[eocd+17]=(byte)0xff;escape[eocd+18]=(byte)0x7f;
+        AssessmentScan invalid=scan(true);new ArchiveMetadata(invalid).inspect(write(root,"stored-escape.jar",escape));
+        check(invalid.partial,"Nested central directory offsets are bounded to the nested JAR");
+        // DEFLATED nested JAR (plain WAR): streamed, and reading stops once the manifest identifies a known driver.
+        Map<String,byte[]> war=new LinkedHashMap<String,byte[]>();
+        war.put("WEB-INF/lib/postgresql-42.7.8.jar",jar(manifest("Implementation-Version","42.7.8"),entries("org/postgresql/Big.class",noise(2*1024*1024))));
+        war.put("WEB-INF/lib/c3p0-0.9.5.5.jar",jar(manifest(),entries("META-INF/maven/com.mchange/c3p0/pom.properties",utf("groupId=com.mchange\nartifactId=c3p0\nversion=0.9.5.5\n"))));
+        AssessmentScan deflated=scan(true);result=new ArchiveMetadata(deflated).inspect(write(root,"plain.war",jar(manifest(),war)));
+        check("42.7.8".equals(library(result,"postgresql-42.7.8.jar").get("version")) && !deflated.partial && deflated.bytesRead<64*1024,"Deflated nested JAR stops after identifying metadata: "+deflated.bytesRead);
+        row=library(result,"c3p0-0.9.5.5.jar");
+        check("JDBC pool".equals(row.get("category")) && "0.9.5.5".equals(row.get("version")),"Pool version from nested Maven metadata");
+        // A deflated nested JAR without early metadata is capped per archive and falls back to the filename.
+        Map<String,byte[]> noisy=entries("org/h2/A.class",noise(3*1024*1024));noisy.put("org/h2/B.class",noise(3*1024*1024));
+        AssessmentScan capped=scan(true);result=new ArchiveMetadata(capped).inspect(write(root,"capped.war",jar(manifest(),entries("WEB-INF/lib/h2-2.4.240.jar",jar(null,noisy)))));
+        check(capped.partial && capped.bytesRead<ArchiveMetadata.NESTED_INFLATE_LIMIT+256*1024 && String.valueOf(library(result,"h2-2.4.240.jar").get("evidence")).contains("inferred"),"Per-nested inflate cap applies");
+        // More than 5000 entries: accepted because only the bounded central directory is read.
+        Map<String,byte[]> large=new LinkedHashMap<String,byte[]>();for(int i=0;i<6000;i++)large.put("BOOT-INF/classes/C"+i+".class",new byte[8]);
+        large.put("BOOT-INF/lib/ojdbc8-19.3.0.0.jar",ojdbc);
+        AssessmentScan big=scan(true);result=new ArchiveMetadata(big).inspect(write(root,"large.jar",boot(bootManifest(),large)));
+        check("3.2.5".equals(result.get("frameworkVersion")) && "19.3.0.0".equals(library(result,"ojdbc8-19.3.0.0.jar").get("version")) && !big.partial,"Archives above 5000 entries are inspected");
+        // Nested libraries have their own count budget and do not consume the outer archive budget.
+        AssessmentScan budget=scan(true);budget.archivesInspected=ArchiveMetadata.ARCHIVE_LIMIT-1;
+        result=budget.archiveMetadata.inspect(new File(root,"stored.jar"));
+        check(budget.archivesInspected==ArchiveMetadata.ARCHIVE_LIMIT+1 && "19.3.0.0".equals(library(result,"ojdbc8-19.3.0.0.jar").get("version")),"Nested libraries use a separate budget");
+        check(budget.archiveMetadata.inspect(new File(root,"plain.war")).isEmpty() && budget.partial,"Outer archive budget still stops new archives");
+    }
+    static void catalog(File root) throws Exception {
+        String[][] drivers={{"jcc-11.5.9.0.jar","DB2"},{"jconn4.jar","Sybase"},{"jconn3-6.05.jar","Sybase"},{"ifxjdbc.jar","Informix"},{"terajdbc4.jar","Teradata"},{"terajdbc-20.00.00.10.jar","Teradata"},
+            {"ngdbc-2.20.11.jar","SAP HANA"},{"snowflake-jdbc-3.16.1.jar","Snowflake"},{"sqlite-jdbc-3.45.1.0.jar","SQLite"},{"jaybird-5.0.4.java11.jar","Firebird"},{"jaybird-full-2.2.15.jar","Firebird"}};
+        for (String[] d : drivers) {
+            check(ArchiveMetadata.isJdbc(d[0]) && ArchiveMetadata.isKnownCandidate(d[0]) && !ArchiveMetadata.isPool(d[0]),"JDBC driver filename: "+d[0]);
+            check(d[1].equals(SpringDataSource.libraryDatabase("/app.jar!/BOOT-INF/lib/"+d[0])),"Database for "+d[0]);
+        }
+        check("11.5.9.0".equals(library(new ArchiveMetadata(scan(false)).inspect(new File(root,"jcc-11.5.9.0.jar")),"jcc-11.5.9.0.jar").get("version")),"DB2 Maven filename version inferred");
+        for (String pool : new String[]{"HikariCP-5.1.0.jar","HikariCP-java7-2.4.13.jar","c3p0-0.9.5.5.jar","commons-dbcp-1.4.jar","commons-dbcp2-2.12.0.jar","tomcat-jdbc-9.0.80.jar","ucp.jar","ucp11-23.4.0.24.05.jar"}) {
+            String lower=pool.toLowerCase(Locale.ENGLISH);
+            check(ArchiveMetadata.isPool(lower) && !ArchiveMetadata.isJdbc(lower) && ArchiveMetadata.isKnownCandidate(lower),"Pool filename: "+pool);
+            Map row=library(new ArchiveMetadata(scan(false)).inspect(new File(root,pool)),pool);
+            check("JDBC pool".equals(row.get("category")),"Pool category: "+pool);
+        }
+        for (String generic : new String[]{"jdbc-4.50.10.jar","jcc.jar","jdbc.jar","commons-dbcp-utils.jar","ucpx.jar","hikari.jar"})
+            check(!ArchiveMetadata.isJdbc(generic) && !ArchiveMetadata.isPool(generic) && SpringDataSource.libraryDatabase(generic)==null,"No false positive for "+generic);
+        // Generic Informix Maven name: JDBC only with groupId evidence.
+        File informix=write(root,"jdbc-4.50.10.jar",jar(manifest("Implementation-Version","4.50.10"),entries("META-INF/maven/com.ibm.informix/jdbc/pom.properties",utf("groupId=com.ibm.informix\nartifactId=jdbc\nversion=4.50.10\n"))));
+        Map row=library(new ArchiveMetadata(scan(true)).inspect(informix),"jdbc-4.50.10.jar");
+        check("JDBC".equals(row.get("category")) && "4.50.10".equals(row.get("version")),"Informix Maven artifact is identified by groupId");
+        File unrelated=write(root,"other/jdbc-4.50.10.jar",jar(manifest("Implementation-Version","4.50.10"),entries("META-INF/maven/com.example/jdbc/pom.properties",utf("groupId=com.example\nartifactId=jdbc\nversion=4.50.10\n"))));
+        List none=(List)new ArchiveMetadata(scan(true)).inspect(unrelated).get("libraries");
+        check(none==null || none.isEmpty(),"Generic jdbc-*.jar without driver evidence is not a driver");
+        File db2=write(root,"renamed-db2.jar",jar(manifest(),entries("META-INF/maven/com.ibm.db2/jcc/pom.properties",utf("groupId=com.ibm.db2\nartifactId=jcc\nversion=11.5.9.0\n"))));
+        row=library(new ArchiveMetadata(scan(true)).inspect(db2),"renamed-db2.jar");
+        check("JDBC".equals(row.get("category")) && "11.5.9.0".equals(row.get("version")),"DB2 Maven groupId identifies the driver");
+        String[][] urls={{"jdbc:sybase:Tds:db:5000/x","Sybase"},{"jdbc:jtds:sqlserver://db/x","SQL Server"},{"jdbc:jtds:sybase://db/x","Sybase"},{"jdbc:informix-sqli://db:9088/x","Informix"},
+            {"jdbc:teradata://db/DATABASE=x","Teradata"},{"jdbc:sap://db:30015","SAP HANA"},{"jdbc:snowflake://acct.snowflakecomputing.com","Snowflake"},{"jdbc:sqlite:/data/x.db","SQLite"},{"jdbc:firebirdsql://db/x","Firebird"}};
+        for (String[] u : urls) check(u[1].equals(SpringDataSource.databaseType(u[0])),"URL database: "+u[0]);
+        String[][] classes={{"com.sybase.jdbc4.jdbc.SybDriver","Sybase"},{"com.informix.jdbc.IfxDriver","Informix"},{"com.teradata.jdbc.TeraDriver","Teradata"},{"com.sap.db.jdbc.Driver","SAP HANA"},
+            {"net.snowflake.client.jdbc.SnowflakeDriver","Snowflake"},{"org.sqlite.JDBC","SQLite"},{"org.firebirdsql.jdbc.FBDriver","Firebird"}};
+        for (String[] c : classes) check(c[1].equals(SpringDataSource.driverDatabase(c[0])),"Driver database: "+c[0]);
+        check(SpringDataSource.driverDatabase("net.sourceforge.jtds.jdbc.Driver")==null,"jTDS driver class alone does not name the database");
+        Map fields=AssessmentScan.map("driverName","org.sqlite.JDBC");List libraries=new ArrayList();
+        libraries.add(AssessmentScan.map("category","JDBC","path","/a.jar!/BOOT-INF/lib/sqlite-jdbc-3.45.1.0.jar","version","3.45.1.0"));
+        libraries.add(AssessmentScan.map("category","JDBC pool","path","/a.jar!/BOOT-INF/lib/HikariCP-5.1.0.jar","version","5.1.0"));
+        SpringDataSource.matchPackagedDriver(fields,libraries);
+        check("3.45.1.0".equals(fields.get("driverVersion")),"New driver matches its packaged library; pools are ignored");
+    }
     static void remove(File path) { File[] files=path.listFiles();if(files!=null)for(File file:files)remove(file);path.delete(); }
     public static void main(String[] args) throws Exception {
         File root=File.createTempFile("archive-metadata", "-fixtures");if(!root.delete() || !root.mkdir())throw new IOException("Cannot create fixture directory");
-        try { bootAndLibraries(root);productsAndFallback(root);boundedArchives(root); }
+        try { bootAndLibraries(root);productsAndFallback(root);boundedArchives(root);nestedArchives(root);catalog(root); }
         finally { remove(root); }
-        System.out.println("ARCHIVE_METADATA_TESTS=PASS Boot nestedJDBC embeddedTomcat productVersions cache bounds privacy");
+        System.out.println("ARCHIVE_METADATA_TESTS=PASS Boot nestedJDBC storedNested deflatedNested largeArchives driverCatalog pools embeddedTomcat productVersions cache bounds privacy");
     }
 }

@@ -57,6 +57,16 @@ public final class JdbcDriverResolverTest {
                 jar(new File(oracle,"lib/ojdbc8.jar"),driver,"23.5.0.24.07",null,null);
                 check("23.5.0.24.07".equals(row(scan(oracle,null,152,null)).get("driverVersion")),"Oracle driver class "+driver);
             }
+            String[][] maven={{"com.ibm.db2.jcc.DB2Driver","jcc-11.5.9.0.jar","com.ibm.db2/jcc","11.5.9.0","jdbc:db2://db2-sim.local:50000/TEST"},
+                {"com.informix.jdbc.IfxDriver","jdbc-4.50.10.jar","com.ibm.informix/jdbc","4.50.10","jdbc:informix-sqli://ifx-sim.local:9088/test:INFORMIXSERVER=ol"}};
+            for(String[] m:maven) {
+                File home=new File(root,m[1]+"-domain");JdbcEndpointTest.domain(home,"sim.local");
+                ProcessLaunchTest.text(new File(home,"config/jdbc/orders.xml"),JdbcEndpointTest.xml("Orders",m[4]).replace("oracle.jdbc.OracleDriver",m[0]));
+                File lib=new File(home,"lib/"+m[1]);lib.getParentFile().mkdirs();ZipOutputStream out=new ZipOutputStream(new FileOutputStream(lib));
+                try { entry(out,"META-INF/MANIFEST.MF","Manifest-Version: 1.0\n\n");entry(out,m[0].replace('.','/')+".class","fixture");
+                    String[] ga=m[2].split("/");entry(out,"META-INF/maven/"+m[2]+"/pom.properties","groupId="+ga[0]+"\nartifactId="+ga[1]+"\nversion="+m[3]+"\n"); } finally { out.close(); }
+                check(m[3].equals(row(scan(home,null,153,null)).get("driverVersion")),"Maven groupId identifies driver version: "+m[1]);
+            }
             File signed=new File(root,"signed");JdbcEndpointTest.domain(signed,"signed.local");File signedJar=new File(signed,"lib/ojdbc8.jar");signedJar.getParentFile().mkdirs();
             ZipOutputStream z=new ZipOutputStream(new FileOutputStream(signedJar));
             try {

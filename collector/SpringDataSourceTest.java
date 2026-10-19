@@ -106,13 +106,13 @@ public final class SpringDataSourceTest {
         check(tooLarge.datasources.isEmpty() && tooLarge.partial && tooLarge.bytesRead <= ArchiveMetadata.READ_LIMIT, "Config size limit must remain bounded and visible in coverage");
         Map<String,byte[]> contents = entries(); h2(contents, "2.4.240"); config(contents, "application.properties", "spring.datasource.url=jdbc:h2:mem:demo\nspring.datasource.hikari.maximum-pool-size=999999\n");
         File jar = boot(root, "bounded.jar", contents);
-        AssessmentScan maxArchives = ArchiveMetadataTest.scan(true); maxArchives.archivesInspected = 40; maxArchives.archiveMetadata.inspect(jar);
-        check(maxArchives.archivesInspected == 40 && maxArchives.bytesRead == 0 && maxArchives.partial, "Exhausted archive-count budget prevents config reads");
+        AssessmentScan maxArchives = ArchiveMetadataTest.scan(true); maxArchives.archivesInspected = ArchiveMetadata.ARCHIVE_LIMIT; maxArchives.archiveMetadata.inspect(jar);
+        check(maxArchives.archivesInspected == ArchiveMetadata.ARCHIVE_LIMIT && maxArchives.bytesRead == 0 && maxArchives.partial, "Exhausted archive-count budget prevents config reads");
         AssessmentScan maxBytes = ArchiveMetadataTest.scan(true); maxBytes.bytesRead = ArchiveMetadata.READ_LIMIT; maxBytes.archiveMetadata.inspect(jar);
         check(maxBytes.bytesRead == ArchiveMetadata.READ_LIMIT && maxBytes.partial, "Exhausted metadata budget prevents config reads");
-        AssessmentScan priority = ArchiveMetadataTest.scan(true); priority.archivesInspected = 39;
+        AssessmentScan priority = ArchiveMetadataTest.scan(true); priority.archivesInspected = ArchiveMetadata.ARCHIVE_LIMIT - 1;
         Map metadata = priority.archiveMetadata.inspect(jar);
-        check(metadata.get("configuredDataSource") instanceof Map && priority.archivesInspected == 40, "Base config is read before nested libraries exhaust the archive-count budget");
+        check(metadata.get("configuredDataSource") instanceof Map && priority.archivesInspected == ArchiveMetadata.ARCHIVE_LIMIT + 1, "Base config and nested libraries are read when only one outer archive slot remains");
         check(((Map)metadata.get("configuredDataSource")).get("configuredMaxPoolSize") == null, "Out-of-range pool setting must be omitted");
         h2(contents, "2.3.232");
         AssessmentScan ambiguous = scan(root, boot(root, "ambiguous-driver.jar", contents), true, 1);

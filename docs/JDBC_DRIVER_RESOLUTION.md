@@ -18,7 +18,7 @@ Relatórios JDBC oferecem Arquivo do driver, Identificação do driver, Evidênc
 
 ## Limites e privacidade
 
-Até 256 JARs JDBC e 512 referências por coleta, profundidade de manifestos 8, cache por caminho, índices de até 32.768 entradas/4 MiB e cabeçalho de manifesto até 64 KiB. O orçamento global de metadados passa a 32 MiB, lidos ao longo da coleta; não é alocação de um buffer desse tamanho. Heap permanece em 96 MiB, máximo de arquivos em 50.000 e duração padrão em 180 segundos. Limites/exclusões explícitos continuam respeitados.
+Até 256 JARs JDBC e 512 referências por coleta, profundidade de manifestos 8, cache por caminho, índices de até 65.535 entradas/8 MiB e cabeçalho de manifesto até 64 KiB. O orçamento global de metadados passa a 32 MiB, lidos ao longo da coleta; não é alocação de um buffer desse tamanho. Heap permanece em 96 MiB, máximo de arquivos em 50.000 e duração padrão em 180 segundos. Limites/exclusões explícitos continuam respeitados.
 
 Manifestos assinados podem ser grandes: somente o cabeçalho com atributos principais é lido. Índices ZIP sem comentário usam leitura curta do registro final; formatos incomuns usam fallback limitado. Referências remotas não são seguidas. Conteúdo bruto de ambiente, URL JDBC completa, senha e propriedades arbitrárias não são enviados.
 

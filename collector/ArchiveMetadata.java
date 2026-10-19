@@ -10,9 +10,17 @@ import java.util.zip.*;
 public final class ArchiveMetadata {
     static final long READ_LIMIT = 32L * 1024 * 1024;
     static final long FILE_LIMIT = 1024L * 1024 * 1024; // File size is independent from the bounded metadata/central-directory budget.
-    static final int METADATA_LIMIT = 65536, ENTRY_LIMIT = 5000, CENTRAL_LIMIT = 2 * 1024 * 1024;
+    // 65535 is the classic ZIP maximum; only the bounded central directory is read, never every entry body.
+    static final int METADATA_LIMIT = 65536, ENTRY_LIMIT = 65535, CENTRAL_LIMIT = 8 * 1024 * 1024;
+    // Outer archives (including rt.jar and classpath archives) and nested libraries have separate count budgets.
+    static final int ARCHIVE_LIMIT = 200, NESTED_LIMIT = 2000;
+    // A compressed nested JAR must be inflated to find its metadata; cap that work per nested archive.
+    static final int NESTED_INFLATE_LIMIT = 4 * 1024 * 1024;
     static final Pattern BOOT_CORE = Pattern.compile("BOOT-INF/lib/spring-boot-([0-9][A-Za-z0-9._+\\-]*)\\.jar");
-    static final Pattern FILE_VERSION = Pattern.compile("^(?:ojdbc[0-9]*|classes12|derby(?:client|net|shared|tools|run)?|mysql-connector-(?:java|j)|postgresql|mssql-jdbc|sqljdbc[0-9]*|jtds|db2jcc[0-9]*|mariadb-java-client|h2|hsqldb|tomcat-embed-core|jetty-server|undertow-core)[-_]([0-9][A-Za-z0-9._+\\-]*)\\.jar$", Pattern.CASE_INSENSITIVE);
+    static final Pattern FILE_VERSION = Pattern.compile("^(?:ojdbc[0-9]*|classes12|derby(?:client|net|shared|tools|run)?|mysql-connector-(?:java|j)|postgresql|mssql-jdbc|sqljdbc[0-9]*|jtds|db2jcc[0-9]*|jcc|mariadb-java-client|h2|hsqldb|jconn[0-9]*|terajdbc[0-9]*|ngdbc|snowflake-jdbc|sqlite-jdbc|jaybird(?:-full|-jdk[0-9]+)?|ucp[0-9]*|hikaricp(?:-java[0-9]+)?|c3p0|commons-dbcp2?|tomcat-jdbc|tomcat-embed-core|jetty-server|undertow-core)[-_]([0-9][A-Za-z0-9._+\\-]*)\\.jar$", Pattern.CASE_INSENSITIVE);
+    // Drivers whose filename alone is specific enough; generic names such as jdbc-4.50.jar need Maven or SPI evidence.
+    static final Pattern JDBC_NAME = Pattern.compile("(?:jcc-[0-9].*|jconn[0-9]*(?:-[0-9].*)?|ifxjdbc.*|terajdbc[0-9]*(?:-[0-9].*)?|ngdbc(?:-[0-9].*)?|snowflake-jdbc-[0-9].*|sqlite-jdbc-[0-9].*|jaybird(?:-full|-jdk[0-9]+)?(?:-[0-9].*)?)\\.jar");
+    static final Pattern POOL_NAME = Pattern.compile("(?:ucp[0-9]*|hikaricp(?:-java[0-9]+)?|c3p0|commons-dbcp2?|tomcat-jdbc)(?:-[0-9].*)?\\.jar");
     final AssessmentScan scan;
     final Map<String, Map> cache = new LinkedHashMap<String, Map>();
     int libraryRows;
@@ -71,7 +79,7 @@ public final class ArchiveMetadata {
 
     public static boolean isKnownCandidate(String filename) {
         String name = base(filename).toLowerCase(Locale.ENGLISH);
-        return name.matches("spring-boot-[0-9][A-Za-z0-9._+\\-]*\\.jar") || isJdbc(name) || isDerby(name) || isTomcat(name) || name.equals("weblogic.jar")
+        return name.matches("spring-boot-[0-9][A-Za-z0-9._+\\-]*\\.jar") || isJdbc(name) || isPool(name) || genericJdbc(name) || isDerby(name) || isTomcat(name) || name.equals("weblogic.jar")
             || name.equals("jboss-modules.jar") || name.startsWith("jboss-as-server") || name.startsWith("jboss-as-version")
             || name.startsWith("jboss-as-product") || name.startsWith("wildfly-server") || name.startsWith("wildfly-version")
             || name.startsWith("wildfly-product") || name.startsWith("jetty-server-") || name.startsWith("undertow-core-");
@@ -94,11 +102,11 @@ public final class ArchiveMetadata {
                     byte[] manifest = WebLogicManifest.read(this, file);
                     if (manifest != null) accept(document, "META-INF/MANIFEST.MF", manifest);
                 } else {
-                    long central = preflight(file);
-                    charge(central); // ZipFile reads its central directory; count that bounded work too.
+                    byte[] central = central(file, ENTRY_LIMIT, CENTRAL_LIMIT); long start = centralStart;
+                    charge(central.length); // ZipFile reads its central directory; count that bounded work too.
                     if (!scan.available()) throw new Limit("Assessment deadline reached during archive discovery");
                     archive = new ZipFile(file);
-                    readOuter(document, archive);
+                    readOuter(document, archive, file, central, start);
                 }
             } catch (Exception e) { report(e, path); }
             finally { if (archive != null) try { archive.close(); } catch (IOException ignored) { } }
@@ -109,15 +117,24 @@ public final class ArchiveMetadata {
         return result;
     }
 
+    int nestedClaims;
     boolean claimArchive(String path) {
+        // scan.archivesInspected stays the total reported count; nested claims are excluded from the outer budget.
         if (!scan.available()) return false;
-        if (scan.archivesInspected >= 40) { scan.warn("Archive inspection count limit reached"); return false; }
+        if (scan.archivesInspected - nestedClaims >= ARCHIVE_LIMIT) { scan.warn("Archive inspection count limit reached (" + ARCHIVE_LIMIT + " archives per collection)"); return false; }
         if (scan.bytesRead >= READ_LIMIT) { scan.warn("Metadata read budget of 32 MiB reached"); return false; }
         scan.archivesInspected++;
         return true;
     }
+    boolean claimNested(String path) {
+        if (!scan.available()) return false;
+        if (nestedClaims >= NESTED_LIMIT) { scan.warn("Nested library inspection count limit reached (" + NESTED_LIMIT + " per collection)"); return false; }
+        if (scan.bytesRead >= READ_LIMIT) { scan.warn("Metadata read budget of 32 MiB reached"); return false; }
+        scan.archivesInspected++; nestedClaims++;
+        return true;
+    }
 
-    void readOuter(Document doc, ZipFile archive) throws IOException {
+    void readOuter(Document doc, ZipFile archive, File file, byte[] central, long centralStart) throws IOException {
         List<ZipEntry> nested = new ArrayList<ZipEntry>(), metadataEntries = new ArrayList<ZipEntry>();
         Map<String, ZipEntry> springEntries = new LinkedHashMap<String, ZipEntry>();
         Set<String> duplicateSpringEntries = new HashSet<String>(); boolean profileConfiguration = false;
@@ -204,18 +221,19 @@ public final class ArchiveMetadata {
             }
         }
         for (ZipEntry entry : metadataEntries) if (!entry.getName().equalsIgnoreCase("META-INF/MANIFEST.MF")) readOuterMetadata(doc, archive, entry);
+        Map<String, Integer> records = nested.isEmpty() ? new HashMap<String, Integer>() : records(central);
         for (ZipEntry entry : nested) {
             String path = doc.path + "!/" + entry.getName();
             Document child = new Document(base(entry.getName()), path);
-            if (claimArchive(path)) {
+            if (claimNested(path)) {
                 try {
-                    long remaining = READ_LIMIT - scan.bytesRead;
-                    if (entry.getSize() > remaining) throw new Limit("Nested archive exceeds remaining metadata read budget");
-                    InputStream input = archive.getInputStream(entry); byte[] content;
-                    try { content = read(input, (int) Math.min(READ_LIMIT, remaining)); }
-                    finally { input.close(); }
-                    preflight(content, content.length, 0);
-                    readNested(child, content);
+                    Integer record = records.get(entry.getName());
+                    if (record == null) throw new Limit("Nested archive entry is duplicated or missing from the central directory");
+                    if (u16(central, record.intValue() + 10) == ZipEntry.STORED) readStored(child, file, central, centralStart, record.intValue());
+                    else {
+                        InputStream input = archive.getInputStream(entry);
+                        try { readNested(child, input); } finally { input.close(); }
+                    }
                 } catch (Exception e) { report(e, path); }
             }
             List libraries = libraries(child);
@@ -236,8 +254,10 @@ public final class ArchiveMetadata {
         } catch (Exception e) { report(e, doc.path + "!/" + entry.getName()); }
     }
 
-    void readNested(Document doc, byte[] content) throws IOException {
-        ZipInputStream input = new ZipInputStream(new ByteArrayInputStream(content));
+    /** Streams a compressed nested JAR: nothing is buffered whole, and reading stops once its identity is known. */
+    void readNested(Document doc, InputStream packed) throws IOException {
+        ZipInputStream input = new ZipInputStream(packed);
+        long limit = scan.bytesRead + NESTED_INFLATE_LIMIT;
         try {
             ZipEntry entry; int count = 0;
             while ((entry = input.getNextEntry()) != null) {
@@ -247,14 +267,93 @@ public final class ArchiveMetadata {
                 if (!entry.isDirectory() && safeName(name) && metadata(name)) {
                     if (entry.getSize() > METADATA_LIMIT) throw new Limit("Nested archive metadata entry exceeds 64 KiB");
                     accept(doc, name, read(input, METADATA_LIMIT));
-                    // Known dependency + its version is enough: do not inflate application classes to seek redundant metadata.
-                    if (doc.version != null && isKnownCandidate(doc.filename) || doc.jdbcPomVersion != null) return;
+                    if (identified(doc)) return;
                 } else {
                     // Fully consume with the same budget. getNextEntry/closeEntry must never drain unchecked data.
-                    drain(input);
+                    drain(input, limit);
                 }
             }
         } finally { input.close(); }
+    }
+    // Known dependency + its version is enough: do not read application classes to seek redundant metadata.
+    static boolean identified(Document doc) {
+        return doc.jdbcPomVersion != null || doc.version != null && isKnownCandidate(doc.filename) && !genericJdbc(doc.filename.toLowerCase(Locale.ENGLISH));
+    }
+
+    /** Central directory positions of nested libraries; duplicated names are left out so they are never guessed. */
+    static Map<String, Integer> records(byte[] central) throws IOException {
+        Map<String, Integer> result = new HashMap<String, Integer>(); Set<String> duplicates = new HashSet<String>();
+        for (int p = 0; p < central.length; p += 46 + u16(central, p + 28) + u16(central, p + 30) + u16(central, p + 32)) {
+            String name = new String(central, p + 46, u16(central, p + 28), "UTF-8");
+            if (!(name.startsWith("BOOT-INF/lib/") || name.startsWith("WEB-INF/lib/")) || !name.endsWith(".jar")) continue;
+            if (duplicates.contains(name) || result.put(name, Integer.valueOf(p)) != null) { duplicates.add(name); result.remove(name); }
+        }
+        return result;
+    }
+
+    /**
+     * Spring Boot keeps nested JARs uncompressed. Locate the nested bytes inside the outer file and read only
+     * their end record, central directory and allowlisted metadata entries; class bodies are never read.
+     */
+    void readStored(Document doc, File file, byte[] outer, long outerCentral, int record) throws IOException {
+        RandomAccessFile input = new RandomAccessFile(file, "r");
+        try {
+            long[] span = local(input, outer, record, 0, outerCentral);
+            if (span[2] != 0 || span[1] != u32(outer, record + 24)) throw new Limit("Nested archive is not stored uncompressed");
+            long start = span[0];
+            byte[] central = central(input, start, span[1], ENTRY_LIMIT, CENTRAL_LIMIT); long nestedCentral = centralStart;
+            int candidates = 0;
+            for (int p = 0; p < central.length; p += 46 + u16(central, p + 28) + u16(central, p + 30) + u16(central, p + 32)) {
+                ensureBudget();
+                String name = new String(central, p + 46, u16(central, p + 28), "UTF-8");
+                if (name.endsWith("/") || !safeName(name) || !metadata(name)) continue;
+                if (++candidates > 32) throw new Limit("Nested archive metadata entry limit reached");
+                accept(doc, name, entry(input, central, p, start, nestedCentral, METADATA_LIMIT));
+                if (identified(doc)) return;
+            }
+        } finally { input.close(); }
+    }
+
+    /** Validates the local header of central record p; returns {absolute payload offset, compressed size, method}. */
+    long[] local(RandomAccessFile input, byte[] central, int p, long base, long centralStart) throws IOException {
+        int flags = u16(central, p + 8), method = u16(central, p + 10), nameLength = u16(central, p + 28);
+        long compressed = u32(central, p + 20), offset = u32(central, p + 42);
+        if ((flags & ~0x080e) != 0 || method != 0 && method != 8) throw new Limit("Archive entry rejected: compression or encryption");
+        if (u16(central, p + 34) != 0 || offset + 30 > centralStart) throw new Limit("Archive entry rejected: offset");
+        byte[] header = readAt(input, base + offset, 30);
+        if (u32(header, 0) != 0x04034b50L || u16(header, 6) != flags || u16(header, 8) != method) throw new Limit("Archive entry rejected: local header");
+        if ((flags & 8) == 0 && (u32(header, 14) != u32(central, p + 16) || u32(header, 18) != compressed || u32(header, 22) != u32(central, p + 24)))
+            throw new Limit("Archive entry rejected: local sizes or checksum");
+        long payload = offset + 30 + nameLength + u16(header, 28);
+        if (u16(header, 26) != nameLength || payload + compressed > centralStart) throw new Limit("Archive entry rejected: local name or bounds");
+        byte[] name = readAt(input, base + offset + 30, nameLength);
+        for (int i = 0; i < nameLength; i++) if (name[i] != central[p + 46 + i]) throw new Limit("Archive entry rejected: name mismatch");
+        return new long[] {base + payload, compressed, method};
+    }
+
+    /** Reads one small entry by random access, inflating within limit and verifying size and CRC. */
+    byte[] entry(RandomAccessFile input, byte[] central, int p, long base, long centralStart, int limit) throws IOException {
+        long crc = u32(central, p + 16), compressed = u32(central, p + 20), expanded = u32(central, p + 24);
+        if (expanded > limit || compressed > 2L * limit + 64 || u16(central, p + 10) == 0 && compressed != expanded) throw new Limit("Archive entry rejected: size");
+        long[] span = local(input, central, p, base, centralStart);
+        byte[] packed = readAt(input, span[0], (int) compressed), result;
+        if (span[2] == 0) result = packed;
+        else {
+            Inflater inflater = new Inflater(true);
+            InflaterInputStream stream = new InflaterInputStream(new ByteArrayInputStream(packed), inflater);
+            try {
+                result = read(stream, limit);
+                if (!inflater.finished() || inflater.getBytesRead() != compressed) throw new Limit("Archive entry rejected: deflate stream");
+            } finally { try { stream.close(); } finally { inflater.end(); } }
+        }
+        CRC32 actual = new CRC32(); actual.update(result);
+        if (result.length != expanded || actual.getValue() != crc) throw new Limit("Archive entry rejected: checksum");
+        return result;
+    }
+    byte[] readAt(RandomAccessFile input, long offset, int size) throws IOException {
+        charge(size);
+        byte[] result = new byte[size]; input.seek(offset); input.readFully(result);
+        return result;
     }
 
     byte[] read(InputStream input, int limit) throws IOException {
@@ -271,11 +370,12 @@ public final class ArchiveMetadata {
         }
     }
 
-    void drain(InputStream input) throws IOException {
+    void drain(InputStream input, long limit) throws IOException {
         byte[] buffer = new byte[4096];
         while (true) {
             ensureBudget();
-            int count = input.read(buffer, 0, (int) Math.min(buffer.length, READ_LIMIT - scan.bytesRead));
+            if (scan.bytesRead >= limit) throw new Limit("Compressed nested archive exceeds 4 MiB inspection limit");
+            int count = input.read(buffer, 0, (int) Math.min(buffer.length, Math.min(READ_LIMIT, limit) - scan.bytesRead));
             if (count < 0) return;
             scan.bytesRead += count;
         }
@@ -296,28 +396,27 @@ public final class ArchiveMetadata {
         return preflight(file, ENTRY_LIMIT, CENTRAL_LIMIT);
     }
     long preflight(File file, int entryLimit, int centralLimit) throws IOException {
+        return central(file, entryLimit, centralLimit).length;
+    }
+    long centralStart; // offset of the central directory returned by the last central() call
+    byte[] central(File file, int entryLimit, int centralLimit) throws IOException {
         RandomAccessFile input = new RandomAccessFile(file, "r");
-        try {
-            long length = input.length(); int size = (int) Math.min(length, 42L); byte[] tail = new byte[size];
-            charge(size); input.seek(length - size); input.readFully(tail);
-            if (size < 22 || u32(tail,size-22) != 0x06054b50L || u16(tail,size-2) != 0) {
-                size = (int)Math.min(length,65557L); tail = new byte[size];
-                charge(size); input.seek(length-size); input.readFully(tail);
-            }
-            long[] directory = directory(tail, length, length - size, entryLimit, centralLimit);
-            charge(directory[0]); byte[] central = new byte[(int) directory[0]];
-            input.seek(directory[1]); input.readFully(central);
-            validateCentral(central, 0, central.length, (int) directory[2], entryLimit);
-            return directory[0];
-        } finally { input.close(); }
+        try { return central(input, 0, input.length(), entryLimit, centralLimit); }
+        finally { input.close(); }
     }
-    static long preflight(byte[] bytes, long totalLength, long offset) throws IOException {
-        long[] directory = directory(bytes, totalLength, offset);
-        if (offset == 0) validateCentral(bytes, (int) directory[1], (int) directory[0], (int) directory[2]);
-        return directory[0];
-    }
-    static long[] directory(byte[] bytes, long totalLength, long offset) throws IOException {
-        return directory(bytes, totalLength, offset, ENTRY_LIMIT, CENTRAL_LIMIT);
+    /** Validated central directory of the ZIP occupying [base, base + length) of input; offsets stay relative to base. */
+    byte[] central(RandomAccessFile input, long base, long length, int entryLimit, int centralLimit) throws IOException {
+        int size = (int) Math.min(length, 42L);
+        byte[] tail = readAt(input, base + length - size, size);
+        if (size < 22 || u32(tail,size-22) != 0x06054b50L || u16(tail,size-2) != 0) {
+            size = (int) Math.min(length, 65557L);
+            tail = readAt(input, base + length - size, size);
+        }
+        long[] directory = directory(tail, length, length - size, entryLimit, centralLimit);
+        byte[] central = readAt(input, base + directory[1], (int) directory[0]);
+        validateCentral(central, 0, central.length, (int) directory[2], entryLimit);
+        centralStart = directory[1];
+        return central;
     }
     static long[] directory(byte[] bytes, long totalLength, long offset, int entryLimit, int centralLimit) throws IOException {
         for (int i = bytes.length - 22; i >= 0; i--) {
@@ -333,9 +432,6 @@ public final class ArchiveMetadata {
             return new long[] {central, position, entries};
         }
         throw new Limit("Archive end record is missing or unsupported");
-    }
-    static void validateCentral(byte[] content, int start, int size, int expected) throws IOException {
-        validateCentral(content, start, size, expected, ENTRY_LIMIT);
     }
     static void validateCentral(byte[] content, int start, int size, int expected, int entryLimit) throws IOException {
         int end = start + size, count = 0;
@@ -372,13 +468,20 @@ public final class ArchiveMetadata {
             || name.startsWith("mysql-connector") || name.startsWith("postgresql") || name.startsWith("mssql-jdbc")
             || name.startsWith("sqljdbc") || name.startsWith("jtds") || name.startsWith("db2jcc")
             || name.startsWith("mariadb-java-client") || name.equals("h2.jar") || name.startsWith("h2-")
-            || name.equals("hsqldb.jar") || name.startsWith("hsqldb-"));
+            || name.equals("hsqldb.jar") || name.startsWith("hsqldb-") || JDBC_NAME.matcher(name).matches());
     }
+    static boolean isPool(String name) { return POOL_NAME.matcher(name).matches(); }
+    // Inspected as a candidate only; classified as JDBC solely by Maven groupId or java.sql.Driver evidence.
+    static boolean genericJdbc(String name) { return name.matches("jdbc-[0-9][A-Za-z0-9._+\\-]*\\.jar"); }
     static boolean jdbcArtifact(String group, String artifact) {
         if (artifact == null) return false;
         if (isJdbc(artifact.toLowerCase(Locale.ENGLISH) + ".jar")) return true;
-        return "com.oracle.database.jdbc".equals(group) && artifact.startsWith("ojdbc");
+        return "com.oracle.database.jdbc".equals(group) && artifact.startsWith("ojdbc") || "com.ibm.db2".equals(group) && artifact.equals("jcc")
+            || "com.ibm.informix".equals(group) && artifact.equals("jdbc") || "net.snowflake".equals(group) && artifact.equals("snowflake-jdbc")
+            || "org.xerial".equals(group) && artifact.equals("sqlite-jdbc") || "org.firebirdsql.jdbc".equals(group) && artifact.startsWith("jaybird")
+            || "com.teradata.jdbc".equals(group) && artifact.startsWith("terajdbc");
     }
+    static boolean poolArtifact(String artifact) { return artifact != null && isPool(artifact.toLowerCase(Locale.ENGLISH) + ".jar"); }
     static boolean bootMain(String main) { return main != null && (main.equals("org.springframework.boot.loader.JarLauncher")
         || main.equals("org.springframework.boot.loader.WarLauncher") || main.equals("org.springframework.boot.loader.PropertiesLauncher")
         || main.equals("org.springframework.boot.loader.launch.JarLauncher") || main.equals("org.springframework.boot.loader.launch.WarLauncher")
@@ -412,7 +515,8 @@ public final class ArchiveMetadata {
                 doc.tomcatInfo = value(p.getProperty("server.info")); doc.tomcatNumber = value(p.getProperty("server.number"));
             } else {
                 String artifact = value(p.getProperty("artifactId")), group = value(p.getProperty("groupId"));
-                if (jdbcArtifact(group, artifact)) { doc.jdbcPomTitle = artifact; doc.jdbcPomVersion = value(p.getProperty("version")); }
+                boolean pool = !jdbcArtifact(group, artifact) && poolArtifact(artifact);
+                if (pool || jdbcArtifact(group, artifact)) { doc.jdbcPomTitle = artifact; doc.jdbcPomVersion = value(p.getProperty("version")); doc.pomPool = pool; }
             }
         }
     }
@@ -458,8 +562,9 @@ public final class ArchiveMetadata {
 
     List libraries(Document doc) {
         List result = new ArrayList(); String lower = doc.filename.toLowerCase(Locale.ENGLISH);
-        boolean jdbc = isJdbc(lower) || doc.driverProvider || doc.jdbcPomTitle != null;
-        if (!(jdbc || isDerby(lower) || (lower.startsWith("tomcat-embed-core") || lower.startsWith("jetty-server-") || lower.startsWith("undertow-core-")) && lower.endsWith(".jar"))) return result;
+        boolean pool = !doc.driverProvider && (doc.jdbcPomTitle != null ? doc.pomPool : isPool(lower));
+        boolean jdbc = !pool && (isJdbc(lower) || doc.driverProvider || doc.jdbcPomTitle != null);
+        if (!(jdbc || pool || isDerby(lower) || (lower.startsWith("tomcat-embed-core") || lower.startsWith("jetty-server-") || lower.startsWith("undertow-core-")) && lower.endsWith(".jar"))) return result;
         if (libraryRows >= 1000) { scan.warn("Library metadata row limit reached"); return result; }
         String title = first(doc.title, first(doc.jdbcPomTitle, doc.filename));
         String version = first(doc.version, doc.jdbcPomVersion), source = doc.version != null ? "manifest version" : doc.jdbcPomVersion != null ? "Maven pom.properties version" : null;
@@ -470,7 +575,8 @@ public final class ArchiveMetadata {
         }
         String evidence = evidence(doc) + (source == null ? "; version not reported" : "; " + source);
         if (doc.driverProvider) evidence += "; java.sql.Driver service provider declaration found";
-        result.add(AssessmentScan.map("name", title, "version", version, "path", doc.path, "category", jdbc ? "JDBC" : "Java library",
+        if (pool) evidence += "; JDBC connection pool library, not a database driver";
+        result.add(AssessmentScan.map("name", title, "version", version, "path", doc.path, "category", jdbc ? "JDBC" : pool ? "JDBC pool" : "Java library",
             "usage", "found", "evidence", evidence + "; archive presence does not establish datasource use"));
         libraryRows++;
         return result;
@@ -484,7 +590,7 @@ public final class ArchiveMetadata {
         final String filename, path; final List children = new ArrayList();
         String title, version, main, start, boot, productName, productVersion, tomcatInfo, tomcatNumber, jdbcPomTitle, jdbcPomVersion;
         Map springDataSource;
-        boolean manifest, driverProvider, bootLibrary, bootLayout;
+        boolean manifest, driverProvider, bootLibrary, bootLayout, pomPool;
         Document(String filename, String path) { this.filename = filename; this.path = path; }
     }
     static final class Limit extends IOException { Limit(String message) { super(message); } }

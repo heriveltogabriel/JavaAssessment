@@ -95,7 +95,7 @@ public final class SpringConfigurationTest {
     static void mixedAndUnknown(File root) throws Exception {
         Map<String,byte[]> map = content();
         text(map,"BOOT-INF/classes/application.properties","spring.application.name=Mixed\n");
-        text(map,"BOOT-INF/classes/application.yml","spring:\n  datasource:\n    url: jdbc:sqlite:/data/file.db\n");
+        text(map,"BOOT-INF/classes/application.yml","spring:\n  datasource:\n    url: jdbc:exampledb:/data/file.db\n");
         File jar = app(root,"mixed.jar",map);
         AssessmentScan scan=scan(root,new Properties(),new String[]{"java","-jar",jar.getPath()});
         check(scan.datasources.size()==1 && ((Map)scan.datasources.get(0)).get("databaseType")==null,"Mixed property formats retain unknown JDBC product as configuration evidence");

@@ -71,8 +71,10 @@ final class SpringDataSource {
         return resolved(value) && value.length() <= 256 && value.matches("[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)+") ? value : null;
     }
     static String databaseType(String url) {
-        String[] protocols = {"h2", "postgresql", "mysql", "mariadb", "oracle", "sqlserver", "derby", "db2", "hsqldb"};
-        String[] names = {"H2", "PostgreSQL", "MySQL", "MariaDB", "Oracle", "SQL Server", "Derby", "DB2", "HSQLDB"};
+        String[] protocols = {"h2", "postgresql", "mysql", "mariadb", "oracle", "sqlserver", "derby", "db2", "hsqldb", "jtds:sqlserver", "jtds:sybase", "sybase",
+            "informix-sqli", "teradata", "sap", "snowflake", "sqlite", "firebirdsql"};
+        String[] names = {"H2", "PostgreSQL", "MySQL", "MariaDB", "Oracle", "SQL Server", "Derby", "DB2", "HSQLDB", "SQL Server", "Sybase", "Sybase",
+            "Informix", "Teradata", "SAP HANA", "Snowflake", "SQLite", "Firebird"};
         for (int i = 0; i < protocols.length; i++) if (url.startsWith("jdbc:" + protocols[i] + ":")) return names[i];
         return null;
     }
@@ -86,6 +88,14 @@ final class SpringDataSource {
         if ("org.apache.derby.jdbc.EmbeddedDriver".equals(driver) || "org.apache.derby.jdbc.ClientDriver".equals(driver) || "org.apache.derby.iapi.jdbc.AutoloadedDriver".equals(driver)) return "Derby";
         if ("com.ibm.db2.jcc.DB2Driver".equals(driver)) return "DB2";
         if ("org.hsqldb.jdbc.JDBCDriver".equals(driver) || "org.hsqldb.jdbcDriver".equals(driver)) return "HSQLDB";
+        if ("com.sybase.jdbc4.jdbc.SybDriver".equals(driver) || "com.sybase.jdbc3.jdbc.SybDriver".equals(driver) || "com.sybase.jdbc2.jdbc.SybDriver".equals(driver)) return "Sybase";
+        if ("com.informix.jdbc.IfxDriver".equals(driver)) return "Informix";
+        if ("com.teradata.jdbc.TeraDriver".equals(driver)) return "Teradata";
+        if ("com.sap.db.jdbc.Driver".equals(driver)) return "SAP HANA";
+        if ("net.snowflake.client.jdbc.SnowflakeDriver".equals(driver)) return "Snowflake";
+        if ("org.sqlite.JDBC".equals(driver)) return "SQLite";
+        if ("org.firebirdsql.jdbc.FBDriver".equals(driver)) return "Firebird";
+        // jTDS serves both SQL Server and Sybase, so the driver class alone does not name the database.
         return null;
     }
     static String libraryDatabase(String path) {
@@ -97,8 +107,16 @@ final class SpringDataSource {
         if (name.startsWith("ojdbc") || name.equals("classes12.jar")) return "Oracle";
         if (name.startsWith("mssql-jdbc") || name.startsWith("sqljdbc")) return "SQL Server";
         if (name.equals("derby.jar") || name.equals("derbyclient.jar") || name.startsWith("derby-") || name.startsWith("derbyclient-")) return "Derby";
-        if (name.startsWith("db2jcc")) return "DB2";
+        if (name.startsWith("db2jcc") || name.matches("jcc-[0-9].*")) return "DB2";
         if (name.equals("hsqldb.jar") || name.startsWith("hsqldb-")) return "HSQLDB";
+        if (name.startsWith("jconn")) return "Sybase";
+        if (name.startsWith("ifxjdbc")) return "Informix";
+        if (name.startsWith("terajdbc")) return "Teradata";
+        if (name.startsWith("ngdbc")) return "SAP HANA";
+        if (name.startsWith("snowflake-jdbc")) return "Snowflake";
+        if (name.startsWith("sqlite-jdbc")) return "SQLite";
+        if (name.startsWith("jaybird")) return "Firebird";
+        // shortcut: Maven Informix jdbc-<version>.jar is generic by name, so it is not matched by path; add a pom-based match if needed.
         return null;
     }
     static void matchPackagedDriver(Map fields, List libraries) {
