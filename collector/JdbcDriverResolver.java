@@ -140,13 +140,13 @@ final class JdbcDriverResolver {
                 // Do not infer an embedded driver version from the WebLogic product version.
                 a.versions.clear();
             } else {
-                reader.charge(reader.preflight(file,32768,4*1024*1024));
+                reader.charge(reader.preflight(file));
                 ZipFile zip=new ZipFile(file);
                 try {
                     Set<String> names=new HashSet<String>(); List<ZipEntry> metadata=new ArrayList<ZipEntry>();
                     Enumeration<? extends ZipEntry> entries=zip.entries(); int count=0;
                     while(entries.hasMoreElements()) {
-                        if(!scan.available() || ++count>32768) throw new IOException();
+                        if(!scan.available() || ++count>ArchiveMetadata.ENTRY_LIMIT) throw new IOException();
                         ZipEntry entry=entries.nextElement(); String name=entry.getName();
                         if(wanted.contains(name)) { if(!names.add(name)) throw new IOException(); a.classes.add(name); }
                         if(name.equals("META-INF/MANIFEST.MF") || name.startsWith("META-INF/maven/") && name.endsWith("/pom.properties") || name.equals("org/apache/derby/info/DBMS.properties")) {

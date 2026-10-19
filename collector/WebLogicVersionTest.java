@@ -13,7 +13,7 @@ public final class WebLogicVersionTest {
         Manifest manifest = new Manifest(); Attributes attrs = manifest.getMainAttributes();
         attrs.putValue("Manifest-Version", "1.0"); attrs.putValue("Implementation-Title", "WebLogic Server " + version);
         if (version != null) attrs.putValue("Implementation-Version", version);
-        JarOutputStream out = new JarOutputStream(new FileOutputStream(file), manifest);
+        JarOutputStream out = new JarOutputStream(new BufferedOutputStream(new FileOutputStream(file)), manifest);
         try {
             if (duplicate) { out.putNextEntry(new JarEntry("meta-inf/manifest.mf")); manifest.write(out); out.closeEntry(); }
             for (int i = 1; i < count; i++) {
@@ -49,11 +49,12 @@ public final class WebLogicVersionTest {
         AssessmentScan budget = ProcessLaunchTest.scanner(); budget.bytesRead = ArchiveMetadata.READ_LIMIT - 80000;
         Map result = budget.archiveMetadata.inspect(jar);
         check(result.get("serverVersion") == null && budget.partial && budget.bytesRead <= ArchiveMetadata.READ_LIMIT, "Shared byte budget enforced");
-        AssessmentScan count = ProcessLaunchTest.scanner(); count.archivesInspected = 40;
+        AssessmentScan count = ProcessLaunchTest.scanner(); count.archivesInspected = ArchiveMetadata.ARCHIVE_LIMIT;
         check(count.archiveMetadata.inspect(jar).get("serverVersion") == null && count.bytesRead == 0, "Archive count enforced");
         AssessmentScan generic = ProcessLaunchTest.scanner(); File other = new File(home, "lib/application.jar");
         ProcessLaunchTest.write(other, bytes(jar));
-        check(generic.archiveMetadata.inspect(other).get("version") == null && generic.partial, "Large generic archives retain the 5,000-entry limit");
+        // Its ~2.3 MiB central directory is charged twice: the bounded preflight read and ZipFile's own read.
+        check("10.3.6.0".equals(generic.archiveMetadata.inspect(other).get("version")) && !generic.partial && generic.bytesRead < 6 * 1024 * 1024, "Large generic archives are inspected from the bounded central directory");
     }
     static byte[] bytes(File file) throws Exception {
         ByteArrayOutputStream out = new ByteArrayOutputStream(); InputStream in = new FileInputStream(file);
@@ -97,8 +98,8 @@ public final class WebLogicVersionTest {
         File local = product(new File(root, "local"), "10.3.6.0", 2, false); data = bytes(local); data[0] = 0;
         ProcessLaunchTest.write(local, data); AssessmentScan header = ProcessLaunchTest.scanner();
         check(header.archiveMetadata.inspect(local).get("serverVersion") == null && header.partial, "Invalid local header rejected");
-        File many = product(new File(root, "count"), "10.3.6.0", 32769, false); AssessmentScan entries = ProcessLaunchTest.scanner();
-        check(entries.archiveMetadata.inspect(many).get("serverVersion") == null && entries.partial, "WebLogic-specific entry cap enforced");
+        File many = product(new File(root, "count"), "10.3.6.0", ArchiveMetadata.ENTRY_LIMIT + 1, false); AssessmentScan entries = ProcessLaunchTest.scanner();
+        check(entries.archiveMetadata.inspect(many).get("serverVersion") == null && entries.partial, "Classic ZIP entry cap enforced; ZIP64 archives are rejected");
         File stored = new File(root, "stored/lib/weblogic.jar"); stored.getParentFile().mkdirs();
         byte[] content = "Manifest-Version: 1.0\nImplementation-Version: 12.2.1.4.0\n\n".getBytes("UTF-8");
         CRC32 checksum = new CRC32(); checksum.update(content); ZipEntry entry = new ZipEntry("META-INF/MANIFEST.MF");
