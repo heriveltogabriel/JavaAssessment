@@ -83,8 +83,8 @@ public final class HsPerfDataTest {
     }
 
     static long uid() throws Exception {
-        for (String line : AssessmentScan.readFile(new File("/proc/self/status"), 65536).split("\n")) if (line.startsWith("Uid:")) return Long.parseLong(line.substring(4).trim().split("\\s+")[0]);
-        throw new AssertionError("No uid");
+        // Also on macOS release builds, which have no /proc.
+        return new com.sun.security.auth.module.UnixSystem().getUid();
     }
     static void process(File proc, String pid, long uid, String home, boolean deleted, byte[] perf, String... args) throws Exception {
         ProcessLaunchTest.process(proc, pid, args);
@@ -192,7 +192,7 @@ public final class HsPerfDataTest {
         format(); launch(); replaced();
         String fifo = fifo();
         File owned = File.createTempFile("hsperf", ".bin"); ProcessLaunchTest.text(owned, "x");
-        try { check(HsPerfData.ownedByStat(owned, uid()) && !HsPerfData.ownedByStat(owned, uid() + 1) || !new File("/usr/bin/stat").isFile(), "Java 6 stat ownership fallback"); }
+        try { check(HsPerfData.ownedByStat(owned, uid()) && !HsPerfData.ownedByStat(owned, uid() + 1) || !new File("/usr/bin/stat").isFile() || !"Linux".equals(System.getProperty("os.name")), "Java 6 stat ownership fallback"); }
         finally { owned.delete(); }
         System.out.println("HSPERFDATA_TESTS=PASS v1 v2 byte-order fuzz cap maps argfile classpath replaced removed owner symlink no-command-retention " + fifo + " " + live());
     }

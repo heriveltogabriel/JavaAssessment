@@ -117,7 +117,7 @@ public final class BoundedDirectoryTest {
             check(scan.filesVisited == 4 && !scan.partial, "complete small directory retains coverage");
             treeProtocol(root);
         } finally { CollectorTest.remove(root); }
-        treeEquivalence();
+        if ("Linux".equals(System.getProperty("os.name"))) treeEquivalence(); // the Java 6 find mode is Linux-only
         check(AssessmentScan.pauseFor(null, 2, 30) == 30 && AssessmentScan.pauseFor("garbage", 2, 30) == 30, "no load average keeps the fixed pause");
         check(AssessmentScan.pauseFor("1.90 1.0 1.0 1/100 1", 2, 30) == 0, "idle host is not paused");
         check(AssessmentScan.pauseFor("3.00 1.0 1.0 1/100 1", 2, 30) == 15 && AssessmentScan.pauseFor("9.00 1.0 1.0 1/100 1", 2, 30) == 30, "pause grows with load up to pauseMillis");
