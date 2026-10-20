@@ -1,6 +1,6 @@
-# Correções da 2.1.10 — pendentes de release
+# Correções da 2.1.10 — incorporadas na 2.1.12
 
-Branch local `correcoes-2.1.10`, sobre `main` 2.1.10. Sem versão reservada, pacotes, assinatura ou push. Entra na próxima release (2.1.12, ponte interna 2.1.11, reservadas pelo build).
+Correções da branch `correcoes-2.1.10`, sobre `main` 2.1.10, preservadas na release 2.1.12 com ponte interna 2.1.11. O nome deste arquivo foi mantido para preservar referências. Veja as [notas da entrega](RELEASE_2.1.12.md) e a [validação dos pacotes finais e da rota direta 2.1.8 → 2.1.12](validation/console-release-2.1.12.md).
 
 ## Agente
 
@@ -21,4 +21,4 @@ Branch local `correcoes-2.1.10`, sobre `main` 2.1.10. Sem versão reservada, pac
 
 ## Limites
 
-Validado com fixtures em Linux (JDK 21 executando a suíte) e lint Java 6 heurístico; a compilação ECJ 1.6 precisa ser confirmada no build do Mac. Não validado em cliente real.
+Na implementação, validado com fixtures em Linux (JDK 21 executando a suíte) e lint Java 6 heurístico. No fechamento da 2.1.12, a suíte completa passou no Mac/JDK 17 e o build confirmou compilação ECJ 1.6 e classes major 50. Não validado em cliente real.

@@ -1,10 +1,10 @@
 # Java Assessment
 
-Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versão **2.1.10**, preparada para teste pela console, reúne dashboard, agente Linux e banco SQLite local, com organização por ambiente e máquina.
+Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versão **2.1.12**, preparada para teste pela console, reúne dashboard, agente Linux e banco SQLite local, com organização por ambiente e máquina.
 
 ![Overview do Java Assessment com indicadores de agentes, instalações Java, servidores e datasources JDBC](imagens/overview.png)
 
-Esta entrega reúne [configurações Spring/JDBC](docs/SPRING_DISCOVERY.md), [driver WebLogic por processo](docs/JDBC_DRIVER_RESOLUTION.md) e [Tomcat/JBoss](docs/TOMCAT_JBOSS_DISCOVERY.md). Veja as [notas da 2.1.10](docs/RELEASE_2.1.10.md).
+Esta entrega reúne [configurações Spring/JDBC](docs/SPRING_DISCOVERY.md), [driver WebLogic por processo](docs/JDBC_DRIVER_RESOLUTION.md) e [Tomcat/JBoss](docs/TOMCAT_JBOSS_DISCOVERY.md). Veja as [notas da 2.1.12](docs/RELEASE_2.1.12.md).
 
 ## Recursos
 
@@ -69,20 +69,26 @@ Na raiz deste repositório, com Python 3 e OpenSSL disponíveis:
 
 ```sh
 # Recupera somente os artefatos públicos assinados do instalador publicado.
-unzip -o install/v2.1.10/assessment-dashboard-installer-2.1.10.zip 'dist/*' -d .
+unzip -o install/v2.1.12/assessment-dashboard-installer-2.1.12.zip 'dist/*' -d .
 python3 -B ops/prepare-beta-dependencies.py --check
 python3 -B dashboard-installer/build.py --with-source
 ```
 
-Os resultados ficam em `dist/assessment-dashboard-installer-2.1.10.zip` e `dist/assessment-dashboard-source-2.1.10.zip`, com arquivos SHA-256. O build usa as bibliotecas fixadas, o agente genérico e o catálogo público assinado incluídos no repositório. Não exige arquivos da máquina de desenvolvimento nem a chave privada de assinatura.
+Os resultados ficam em `dist/assessment-dashboard-installer-2.1.12.zip` e `dist/assessment-dashboard-source-2.1.12.zip`, com arquivos SHA-256. O build usa as bibliotecas fixadas, o agente genérico e o catálogo público assinado incluídos no repositório. Não exige arquivos da máquina de desenvolvimento nem a chave privada de assinatura.
 
 O pacote do agente versionado em `dist/assessment-collector.zip` é genérico e não contém identidade cadastrada. O catálogo extraído em `dist/` inclui os pacotes completos e as rotas de migração. O build verifica assinaturas, chave pública e integridade antes de empacotar. Alterações nos arquivos executáveis exigem uma nova entrega assinada; o build não assina nem substitui a confiança instalada.
 
-## Entrega para teste pela console — 2.1.10
+## Entrega para teste pela console — 2.1.12
+
+A [2.1.12](install/v2.1.12/README.md) incorpora as correções de jsvc, configurações externas, manifestos assinados e observações da coleta. `/opt` volta às inclusões padrão; listas salvas não são migradas. [Notas](docs/RELEASE_2.1.12.md) · [Validação da rota direta 2.1.8 → 2.1.12](docs/validation/console-release-2.1.12.md).
+
+Envie **assessment-dashboard-web-update-2.1.12.zip** em Administração → Atualização do dashboard. **Atualize os agentes separadamente e solicite nova coleta.** Não é necessário instalar 2.1.10; a ponte 2.1.11 é interna.
+
+Padrões de coleta na 2.1.12: incluídos `/usr/java`, `/usr/lib/jvm`, `/opt`, `/u01`, `/etc/config`, `/prd1`; excluídos `/proc`, `/sys`, `/dev`, `/tmp`. Listas salvas não mudam. Veja [o registro das correções](docs/CORRECTIONS_2.1.10_PENDING.md).
+
+## Entrega anterior preservada — 2.1.10
 
 A [2.1.10](install/v2.1.10/README.md) consolida configuração externa Spring, resolução JDBC por processo no WebLogic, classloaders/propriedades/contextos Tomcat e módulos/deployments/JNDI do JBoss. Envie o **assessment-dashboard-web-update-2.1.10.zip** em Administração → Atualização do dashboard. [Notas](docs/RELEASE_2.1.10.md) · [Validação](docs/validation/console-release-2.1.10.md).
-
-Padrões de coleta (a partir das correções pendentes da 2.1.10): incluídos `/usr/java`, `/usr/lib/jvm`, `/opt`, `/u01`, `/etc/config`, `/prd1`; excluídos `/proc`, `/sys`, `/dev`, `/tmp`. Listas salvas não mudam. Veja [correções pendentes](docs/CORRECTIONS_2.1.10_PENDING.md).
 
 **Atualize também os agentes**, separadamente, e solicite nova coleta. A 2.1.9 é ponte interna, sem instalação manual intermediária. Confira a elegibilidade pelo painel.
 
@@ -193,7 +199,7 @@ Os testes de navegador usam Playwright e Chrome. Configure `NODE`, `NODE_PATH`, 
 - [Validações e gates antes de publicar](docs/validation/full-agent-update.md)
 - [Migração e backup](dashboard-installer/BETA_MIGRATION.md)
 
-Os nomes de alguns scripts e documentos mantêm `beta` por compatibilidade com a estrutura anterior. A entrega preparada atual é 2.1.10; a 2.1.0 permanece preservada. Relatórios históricos descrevem somente o cenário e a versão em que foram produzidos.
+Os nomes de alguns scripts e documentos mantêm `beta` por compatibilidade com a estrutura anterior. A entrega preparada atual é 2.1.12; a 2.1.0 permanece preservada. Relatórios históricos descrevem somente o cenário e a versão em que foram produzidos.
 
 Configurações privadas, chaves, inventário, logs, pacotes de ambientes e ferramentas específicas do laboratório ficam fora do Git. Publicar código neste repositório não instala nem atualiza servidores ou agentes.
 

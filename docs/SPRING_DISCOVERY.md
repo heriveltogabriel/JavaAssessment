@@ -1,6 +1,6 @@
 # Descoberta passiva de aplicações Spring
 
-Este documento descreve a descoberta consolidada na entrega 2.1.10. O coletor consolida destinos JDBC, classpath e associação do JAR ao datasource. Para novos campos, atualize o agente e solicite nova coleta; inventários anteriores não são recalculados.
+Este documento descreve a descoberta consolidada na entrega 2.1.12. O coletor consolida destinos JDBC, classpath e associação do JAR ao datasource. Para novos campos, atualize o agente e solicite nova coleta; inventários anteriores não são recalculados.
 
 A inspeção de arquivos (`inspectArchives`) deve estar habilitada no assessment. O coletor relaciona metadados à aplicação em execução sem carregar classes, iniciar JVMs da aplicação ou abrir conexões JDBC.
 
@@ -33,7 +33,7 @@ Configurações externas Spring têm limite de 1 MiB por arquivo, no máximo 64 
 
 ## Pastas externas, JPA, Hibernate e JNDI
 
-`appConfigPaths` aparece como **Pastas de configuração das aplicações**, nos padrões gerais e nas personalizações do ambiente/máquina. O padrão é `/etc/config`; uma lista vazia desativa essa descoberta adicional. A configuração segue a herança máquina → ambiente → padrão geral. As listas de inclusão já salvas não são alteradas. `/opt` sai das inclusões novas e entra nas exclusões padrão. A exclusão também bloqueia arquivos ligados a processos ativos; remova-a para inventariar configurações e drivers nessa pasta. Processo e JVM observados continuam visíveis com observação.
+`appConfigPaths` aparece como **Pastas de configuração das aplicações**, nos padrões gerais e nas personalizações do ambiente/máquina. O padrão é `/etc/config`; uma lista vazia desativa essa descoberta adicional. A configuração segue a herança máquina → ambiente → padrão geral. As listas de inclusão já salvas não são alteradas. `/opt` faz parte das inclusões padrão na 2.1.12. Listas antigas que tenham essa exclusão continuam preservadas; remova-a para inventariar configurações e drivers nessa pasta. Processo e JVM observados continuam visíveis com observação quando houver exclusão explícita.
 
 Arquivos com o nome da aplicação ou citados em locais/imports explícitos são candidatos dessa aplicação. Arquivos `application.*` genéricos só são vinculados automaticamente quando existe um único Spring Boot observado; com vários, ficam como configuração da máquina não vinculada. A busca adicional examina até 512 caminhos, 128 arquivos de texto e três níveis, sem seguir links simbólicos. Perfis não são tratados como ativos só por existirem em disco.
 

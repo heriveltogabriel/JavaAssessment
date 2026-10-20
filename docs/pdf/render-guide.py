@@ -137,7 +137,7 @@ add(p('1. Consultar o acesso temporário',SUB),Code('Servidor do dashboard', 'su
  p('Em <b>Administração → Usuários</b>, cadastre nome, email e perfil. Use <b>Administrador</b> para quem gerencia o ambiente e <b>Leitura</b> para quem consulta o inventário. Cada pessoa usa sua própria conta.'),
  p('3. Criar os ambientes',SUB),
  bullet('Crie os ambientes, por exemplo Desenvolvimento, Homologação e Produção.'),
- bullet('Novos padrões: incluir /usr/java, /usr/lib/jvm, /u01, /etc/config e /prd1; excluir /proc, /sys, /dev, /tmp e /opt. Revise o escopo, os limites e a periodicidade.'),
+ bullet('Novos padrões: incluir /usr/java, /usr/lib/jvm, /opt, /u01, /etc/config e /prd1; excluir /proc, /sys, /dev e /tmp. Revise o escopo, os limites e a periodicidade.'),
  p('4. Gerar o pacote de cada ambiente',SUB),
  p('Abra o ambiente e selecione <b>Baixar agente</b>. Defina validade, número de cadastros autorizados e se deseja a primeira coleta automática.'),
  table([('O ZIP contém','URL do dashboard do cliente, CA pública e autorização temporária de cadastro vinculada ao ambiente.'),('Distribuição','Use um canal protegido. Um pacote expirado, revogado ou com limite esgotado deve ser substituído por um novo download.')]),
@@ -176,7 +176,7 @@ sudo tail -n 60 /opt/java-assessment-collector/logs/install.log'''),
  p('No dashboard do cliente',SUB),
  bullet('Confirme a máquina no ambiente correto, versão esperada e contato recente.'),
  bullet('Solicite um assessment e acompanhe <b>Solicitações</b> até a conclusão. Se a coleta inicial foi automática, acompanhe o pedido já criado.'),
- bullet('Confira Java, aplicações e datasources conhecidos. Se estiverem em /opt, remova essa exclusão e inclua o caminho desejado: exclusões valem também para processos em execução.'),
+ bullet('Confira Java, aplicações e datasources conhecidos. /opt faz parte do padrão de inclusão. Se uma lista salva excluir essa pasta, remova a exclusão para inventariar seus arquivos.'),
  note('Mensagem normal',mono('ASSESSMENT_NO_JOB')+' significa que o agente está conectado e sem tarefa pendente. Não é erro de instalação.'))
 
 section('06','Atualizações e relatórios','Acompanhe a atualização, a coleta e a análise em etapas distintas. Cada uma tem seu próprio resultado.')

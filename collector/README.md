@@ -127,7 +127,7 @@ java -Xmx64m -cp 'classes:lib/*' assessment.AgentTlsTest HTTPS_ORIGIN TRUST_CA_P
 
 Dashboard e agente usam uma versão comum, sem sufixo beta. O empacotador gera as constantes, recompila os dois e valida a versão do JAR, do ZIP e dos downloads. Uma VM continua reportando a versão real instalada até receber o pacote novo. Para atualizar a instalação root mantendo a identidade, baixe o ZIP do ambiente, extraia em uma pasta nova e execute `sudo ./install.sh --system-root`.
 
-## Descoberta na entrega 2.1.10
+## Descoberta na entrega 2.1.12
 
 A entrega amplia parsing de launchers, pastas externas `appConfigPaths` (padrão `/etc/config`), prefixos/imports Spring, JPA/Hibernate/XML e associação JNDI. Veja [Spring e limites](../docs/SPRING_DISCOVERY.md).
 
@@ -135,4 +135,4 @@ O motor compartilhado resolve JAR e versão por PID no WebLogic, Tomcat e JBoss/
 
 As inclusões padrão são `/usr/java`, `/usr/lib/jvm`, `/opt`, `/u01`, `/etc/config`, `/prd1`; o perfil legado conserva `/home/opc/oracle`. As exclusões padrão são `/proc`, `/sys`, `/dev`, `/tmp`. Listas salvas não são migradas. Um caminho excluído impede ler configurações e drivers mesmo de processos ativos; esses processos continuam visíveis com observação. Boot/ext da própria JVM em caminho excluído não bloqueiam a resolução do driver: ficam como ressalva.
 
-Atualize o agente e solicite nova coleta. A atualização somente do dashboard não recalcula inventários anteriores. As validações locais e a compatibilidade dos pacotes estão nas [evidências da entrega](../docs/validation/console-release-2.1.10.md); ambientes reais precisam de validação operacional.
+Atualize o agente e solicite nova coleta. A atualização somente do dashboard não recalcula inventários anteriores. As validações locais e a compatibilidade dos pacotes estão nas [evidências da entrega](../docs/validation/console-release-2.1.12.md); ambientes reais precisam de validação operacional.

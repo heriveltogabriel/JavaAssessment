@@ -243,8 +243,8 @@ text('<b>Alcance dos perfis:</b> ambos consultam todos os ambientes. O filtro po
 y=433
 y=sub('Primeiro acesso e administração','Cada pessoa entra com email e senha. A senha temporária deve ser trocada no primeiro acesso. O administrador cria contas, define o perfil e pode desativar acessos.',right,y)
 y=sub('Comunicação e identidade','Os agentes iniciam conexões HTTPS e validam o servidor. Após o cadastro, usam uma credencial própria, revogável. A autorização temporária do pacote serve para novos registros.',right,y)
-y=sub('Coleta dentro do escopo','Novos ambientes: incluir /usr/java, /usr/lib/jvm, /u01, /etc/config e /prd1; excluir /proc, /sys, /dev, /tmp e /opt. Pastas de configuração das aplicações: /etc/config. Listas já salvas não mudam.',right,y)
-note('Revisar o escopo antes de coletar','/opt fica excluído inclusive para aplicações em execução. Para inventariá-las, remova a exclusão e inclua o caminho desejado. O padrão legado também mantém /home/opc/oracle. A equipe local administra acessos e backups.',62,h=76)
+y=sub('Coleta dentro do escopo','Novos ambientes: incluir /usr/java, /usr/lib/jvm, /opt, /u01, /etc/config e /prd1; excluir /proc, /sys, /dev e /tmp. Pastas de configuração das aplicações: /etc/config. Listas já salvas não mudam.',right,y)
+note('Revisar o escopo antes de coletar','/opt faz parte das inclusões padrão. Listas já salvas não mudam: remova a exclusão de /opt se ela estiver presente e precisar inventariar seus arquivos. O padrão legado também mantém /home/opc/oracle.',62,h=76)
 
 # 10 / Full update flow, drawn as selectable PDF content.
 page('05  /  Atualização de agentes','updates','Atualização de agentes')
