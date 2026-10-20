@@ -51,4 +51,4 @@ Entrega preparada para teste pela console. Reúne melhorias de precisão e veloc
 - O catálogo de suporte é uma referência para planejamento, não substitui o contrato com o fornecedor.
 - O status de suporte é calculado na consulta, sem índice; não foi medido em bases muito grandes.
 
-[Pacotes](../install/v2.1.8/README.md) · [Operação da atualização](DASHBOARD_SELF_UPDATE.md)
+[Validação](validation/console-release-2026-10-20.md) · [Pacotes](../install/v2.1.8/README.md) · [Operação da atualização](DASHBOARD_SELF_UPDATE.md)
