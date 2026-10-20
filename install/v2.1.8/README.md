@@ -13,6 +13,8 @@ Em **Administração → Atualização do dashboard**, envie o ZIP, aguarde **Pr
 - [Instalador de servidor novo](assessment-dashboard-installer-2.1.8.zip): Enterprise Linux 8+, JDK 17+, Python compatível. Não usar sobre instalação existente nem no upload.
 - [Atualização por script](assessment-dashboard-update-2.1.8.zip): para origens compatíveis sem executor independente. Com executor instalado, use o pacote web.
 
+- [Reinstalação limpa](reinstalacao-limpa/README.md): se a atualização por script falhar, remove o dashboard atual com backup, reinstala a 2.1.8 mantendo certificado, dados e agentes, ou desfaz tudo.
+
 Cada ZIP mantém seu arquivo .sha256; versões anteriores foram preservadas.
 
 **Atualize também os agentes**, separadamente pelo painel, começando por uma máquina elegível, e solicite nova coleta para obter os campos novos. Sem rota compatível, use o instalador completo configurado do ambiente. A 2.1.7 é ponte interna, não exige atualização manual intermediária.
