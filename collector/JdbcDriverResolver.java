@@ -9,7 +9,7 @@ import java.util.zip.*;
 /** Passive classpath precedence, never JVM attach, class loading or a database connection. */
 final class JdbcDriverResolver {
     final AssessmentScan scan;
-    static final int MAX_PATHS=512, MAX_CANDIDATES=32;
+    static final int MAX_PATHS=4096, MAX_CANDIDATES=32;
     final Map<String,Archive> cache=new LinkedHashMap<String,Archive>();
     int archivesRead;
     static final class Archive {
@@ -35,14 +35,15 @@ final class JdbcDriverResolver {
         for(Object raw:scan.datasources){Map row=(Map)raw;if(!linked(row,context.pid))continue;String driver=strategy.prepare(context,row);if(SpringDataSource.validDriver(driver)!=null){row.put("driverName",driver);rows.add(row);wanted.add(driver.replace('.','/')+".class");}else if("JBoss".equals(context.launch.serverType)){rows.add(row);wanted.add("__assessment_unresolved_driver__.class");}}
         if(rows.isEmpty())return;
         OpenFiles open=new OpenFiles(context,proc);
-        List<String> cp=new ArrayList<String>(context.launch.classpath);boolean unknown=false;
-        if(strategy.requiresClasspath()&&cp.isEmpty()&&!context.launch.explicitClasspath){String env=scan.metadataText(new File(proc,"environ"),65536,false);unknown=env==null;if(env!=null)for(String pair:env.split("\u0000"))if(pair.startsWith("CLASSPATH="))ProcessLaunch.paths(cp,pair.substring(10),context.launch.cwd);}
+        List<String> cp=new ArrayList<String>(context.launch.classpath);boolean unknown=false, environmentComplete=true;
+        if(strategy.requiresClasspath()&&cp.isEmpty()&&!context.launch.explicitClasspath){String env=scan.metadataText(new File(proc,"environ"),ProcessLaunch.PROCESS_TEXT_LIMIT,false);unknown=env==null;if(env!=null)for(String pair:env.split("\u0000"))if(pair.startsWith("CLASSPATH="))environmentComplete=ProcessLaunch.paths(cp,pair.substring(10),context.launch.cwd);}
         for(Map row:rows){
             Search search=new Search(context,wanted,row.get("driverName")==null?"__assessment_unresolved_driver__.class":((String)row.get("driverName")).replace('.','/')+".class",open);
             if(!Boolean.TRUE.equals(scan.settings.get("inspectArchives")))search.fail("Inspeção de arquivos desligada no ambiente");
             else {
                 if(context.launch.opaqueArguments&&!context.launch.perfDataCompleted)search.fail("Argumentos opacos: classpath efetivo não confirmado");
-                if(context.launch.runtimePathsIncomplete||cp.size()>=64)search.fail("Classpath ou argumentos da JVM truncados; precedência não confirmada");
+                if(context.launch.runtimePathsIncomplete)search.fail(context.launch.pathsReason());
+                if(!environmentComplete)search.fail("CLASSPATH do ambiente excedeu "+ProcessLaunch.MAX_PATH_ENTRIES+" entradas ou contém caminho não resolvido");
                 if(unknown)search.fail("Ambiente do processo não legível; classpath não confirmado");
                 runtimeOrigins(search);
                 strategy.resolve(search,row,cp);

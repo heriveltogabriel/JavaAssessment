@@ -28,6 +28,9 @@ public final class WebLogicPrecedenceTest {
             AssessmentScan scan=ProcessLaunchTest.scanner();Map row=collect(d,Arrays.asList(wl.getCanonicalPath()),100,scan,null,"1.8.0_401");
             check("IDENTIFIED".equals(row.get("driverResolution"))&&driver.getCanonicalPath().equals(row.get("driverArtifact")),"DFS reaches Oracle before 300 unrelated manifests: "+Json.stringify(row));
             check("19.3.0.0.0".equals(row.get("driverVersion"))&&scan.jdbcDrivers.archivesRead==1,"unrelated manifests do not consume candidate archive slots");
+            List<String> longClasspath=new ArrayList<String>();for(int n=0;n<100;n++)longClasspath.add(new File(d,"missing"+n+".jar").getPath());longClasspath.add(wl.getCanonicalPath());
+            Map longRow=collect(d,longClasspath,109,ProcessLaunchTest.scanner(),null,"17");
+            check("IDENTIFIED".equals(longRow.get("driverResolution"))&&"19.3.0.0.0".equals(longRow.get("driverVersion")),"Driver beyond old 64-entry classpath limit is selected");
             File pre=new File(d,"drivers/ojdbc8.jar");jar(pre,"21.9.0.0",null);row=collect(d,Arrays.asList(pre.getCanonicalPath(),wl.getCanonicalPath()),101,ProcessLaunchTest.scanner(),null,"17.0.1");
             check(pre.getCanonicalPath().equals(row.get("driverArtifact"))&&Boolean.FALSE.equals(candidate(row,driver).get("loaded")),"PRE_CLASSPATH wins; later driver visible");
             scan=ProcessLaunchTest.scanner();row=collect(d,Arrays.asList(wl.getCanonicalPath()),110,scan,null,"1.8.0_401");for(int i=111;i<=113;i++)row=collect(d,Arrays.asList(wl.getCanonicalPath()),i,scan,null,"1.8.0_401");check("IDENTIFIED".equals(row.get("driverResolution"))&&((List)row.get("associations")).size()==4,"four PIDs agree");

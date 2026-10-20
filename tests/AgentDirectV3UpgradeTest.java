@@ -41,7 +41,7 @@ public final class AgentDirectV3UpgradeTest {
   Map<String,byte[]> old=zip(Files.readAllBytes(Path.of(args[0]))),target=zip(Files.readAllBytes(Path.of(args[1])));
   check(Arrays.equals(old.get("update-public.der"),target.get("update-public.der")),"public pin preserved");
   Map beforeManifest=obj(old.get("full-update/manifest.json")),afterManifest=obj(target.get("full-update/manifest.json"));
-  String baseline=args.length>2?args[2]:"2.0.53";check(Set.of("2.0.53","2.0.57","2.1.0","2.1.2","2.1.4","2.1.6","2.1.8").contains(baseline),"reviewed client baseline");check(beforeManifest.get("version").equals(baseline),"exact client baseline");
+  String baseline=args.length>2?args[2]:"2.0.53";check(Set.of("2.0.53","2.0.57","2.1.0","2.1.2","2.1.4","2.1.6","2.1.8","2.1.12").contains(baseline),"reviewed client baseline");check(beforeManifest.get("version").equals(baseline),"exact client baseline");
   Path tmp=Files.createTempDirectory("direct-v3-253-").toRealPath(),root=tmp.resolve("collector"),home=tmp.resolve("helper");
   AgentInstallLayout l=new AgentInstallLayout(root.toFile(),home.toFile());l.initialize();
   for(var e:old.entrySet())if(!e.getKey().startsWith("full-update/"))put(root.resolve(e.getKey()),e.getValue());

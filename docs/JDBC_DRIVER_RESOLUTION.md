@@ -26,9 +26,15 @@ Bibliotecas e datasources têm JAR, versão e suporte separados. Relatórios JDB
 
 O mesmo motor atende [Tomcat e JBoss/WildFly](TOMCAT_JBOSS_DISCOVERY.md). Em módulos JBoss sem arquivo disponível, uma coordenada de artefato pode fornecer versão declarada, marcada como provável e `versionSource: module-artifact`, sem afirmar que o arquivo foi carregado.
 
+## Classpath longo e apresentação de candidato (2.1.14)
+
+A tabela mostra JAR e versão com o rótulo **Provável · seleção não confirmada** quando uma inspeção incompleta contém um único candidato com versão conhecida. Todos os processos associados devem concordar com esse mesmo arquivo e versão; resultados ausentes, diferentes ou arquivos substituídos impedem o resumo provável. Alternativas continuam disponíveis na tabela e nos detalhes. O status técnico, o motivo e a classificação de suporte originais são preservados; a apresentação não transforma o candidato em versão confirmada nos relatórios/exportações.
+
+Listas de classpath aceitam até 1.024 caminhos únicos e argumentos/ambiente do processo até 256 KiB. A lista no limite exato permanece completa; conteúdo descartado ou não resolvido é sinalizado. Metadados hsperfdata cortados não substituem um classpath explícito completo quando as entradas iniciais coincidem. Fontes divergentes e opções adicionais da JVM truncadas continuam com ressalva específica. Não é necessário alterar flags ou reiniciar o WebLogic.
+
 ## Limites e privacidade
 
-Até 256 arquivos contendo classes JDBC e 512 referências no cache, profundidade de manifestos 24, 32 candidatos por decisão e 4.096 descritores de arquivo por processo. Índices ZIP têm limite de 65.535 entradas/8 MiB e o cabeçalho do manifesto, 64 KiB. A leitura compartilha os orçamentos globais de metadados, arquivos e tempo. Heap permanece em 96 MiB; não houve aumento dos padrões operacionais nesta mudança.
+Até 256 arquivos contendo classes JDBC e 4.096 referências no cache, profundidade de manifestos 24, 32 candidatos por decisão e 4.096 descritores de arquivo por processo. Índices ZIP têm limite de 65.535 entradas/8 MiB e o cabeçalho do manifesto, 64 KiB. A leitura compartilha os orçamentos globais de metadados, arquivos e tempo. Heap permanece em 96 MiB; não houve aumento dos padrões operacionais nesta mudança.
 
 Bibliotecas de aplicações EAR/WAR são limitadas a 32 JARs internos e 4 MiB descomprimidos por JAR. Preferências e bibliotecas diretamente em APP-INF/lib ou WEB-INF/lib são examinadas. WARs dentro de EARs e classloaders personalizados exigem validação adicional; ausência de evidência não é tratada como confirmação.
 

@@ -26,3 +26,18 @@ assert(table.includes('&lt;script&gt;'));assert(!table.includes('SECRET'));asser
 assert(ui.version({driverResolution:'PROBABLE',driverVersion:'19.3'}).includes('Provável'));
 assert(ui.processes([{pid:123,serverName:'Managed',driverResult:{driverResolution:'IDENTIFIED',driverCandidates:[],driverResolutionReason:'Ordered'}}]).includes('PID 123'));
 console.log('WEBLOGIC_DRIVER_UI=PASS confidence candidate-table PID escaping legacy');
+
+const probableCandidate={path:'/u01/wl/server/lib/ojdbc6.jar',version:'11.2.0.3.0',open:true,loaded:false};
+const incomplete={driverResolution:'INCOMPLETE',driverResolutionReason:'Classpath truncado',driverCandidates:[probableCandidate]};
+const four={...incomplete,associations:[22195,22215,30532,30547].map(pid=>({pid,driverResult:{...incomplete}}))};
+const before=JSON.stringify(four);
+assert(ui.artifact(four).includes('ojdbc6.jar'));assert(ui.version(four).includes('11.2.0.3.0'));assert(ui.version(four).includes('Provável'));
+assert.equal(JSON.stringify(four),before,'Presentation preserves evidence');
+const conflict={...four,associations:[...four.associations,{pid:99,driverResult:{...incomplete,driverCandidates:[{...probableCandidate,version:'19.3'}]}}]};
+assert(!ui.version(conflict).includes('11.2.0.3.0'));
+assert(!ui.version({...four,associations:[{}]}).includes('11.2.0.3.0'));
+assert(!ui.version({...incomplete,driverCandidates:[probableCandidate,{...probableCandidate,path:'/other.jar',version:'21.1'}]}).includes('11.2.0.3.0'));
+assert(!ui.version({...incomplete,driverCandidates:[{...probableCandidate,replacedOnDisk:true}]}).includes('11.2.0.3.0'));
+assert(!ui.version({...incomplete,driverCandidates:[null]}).includes('Provável'));
+assert(ui.artifact({...incomplete,driverCandidates:[{...probableCandidate,path:'/lib/<script>.jar'}]}).includes('&lt;script&gt;'));
+console.log('JDBC_PROBABLE_DISPLAY=PASS four-PID agreement conflicts missing evidence replaced files escaping immutable');

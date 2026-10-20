@@ -57,6 +57,16 @@ public final class HsPerfDataTest {
         String capped = classpath.substring(0, 1024);
         String kept = parse(perf(2, true, "java.property.java.class.path", capped)).get("java.property.java.class.path");
         check(kept.equals(capped.substring(0, capped.lastIndexOf(':'))), "A capped classpath keeps only whole entries");
+        Map<String,String> clipped=parse(perf(2,true,"java.property.java.class.path",capped));
+        check("true".equals(clipped.get("assessment.truncated.java.property.java.class.path")),"Truncation identifies exact field");
+        ProcessLaunch recovered=ProcessLaunch.parse(new String[]{"java","-cp",classpath.toString(),"weblogic.Server"},null,clipped);
+        check(!recovered.runtimePathsIncomplete&&recovered.classpath.get(recovered.classpath.size()-1).endsWith(".jar"),"Complete matching command line survives truncated perfdata");
+        ProcessLaunch conflict=ProcessLaunch.parse(new String[]{"java","-cp","/different.jar","weblogic.Server"},null,clipped);
+        check(conflict.runtimePathsIncomplete&&conflict.pathsReason().contains("compatíveis"),"Conflicting prefix cannot establish precedence");
+        ProcessLaunch opaque=ProcessLaunch.parse(new String[]{"java","@args"},null,clipped);
+        check(opaque.runtimePathsIncomplete,"Opaque command line cannot repair partial classpath");
+        clipped.put("assessment.truncated.java.rt.vmArgs","true");
+        check(ProcessLaunch.parse(new String[]{"java","-cp",classpath.toString(),"weblogic.Server"},null,clipped).runtimePathsIncomplete,"Partial additional JVM options remain uncertain");
         HsPerfData.Mapping mapping = HsPerfData.mapping("55f337a19000-55f337a1a000 r--p 00000000 fe:00 240443                     /usr/lib/jvm/jdk 21/bin/java (deleted)\n"
             + "7f5ba5200000-7f5ba54a3000 r--p 00000000 fe:00 240804                     /usr/lib/jvm/jdk 21/lib/server/libjvm.so (deleted)\n"
             + "7f5ba6a15000-7f5ba6a1d000 rw-s 00000000 fe:00 960729                     /tmp/hsperfdata_app/77\n7f5ba6a1d000-7f5ba6a1e000 rw-p 00000000 00:00 0 \n");

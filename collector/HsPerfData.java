@@ -131,7 +131,7 @@ final class HsPerfData {
                     if (KEYS.contains(key) && !result.containsKey(key)) {
                         int stop = terminator(data, value, value + vector);
                         String text = new String(data, value, stop - value, "UTF-8");
-                        if (stop - value >= STRING_CAP && stop - value == vector - 1) { text = capped(key, text); if (key.endsWith(".path") || key.endsWith(".dirs") || key.equals("java.rt.vmArgs")) result.put("assessment.pathsIncomplete", "true"); }
+                        if (stop - value >= STRING_CAP && stop - value == vector - 1) { text = capped(key, text); result.put("assessment.truncated." + key, "true"); if (key.endsWith(".path") || key.endsWith(".dirs") || key.equals("java.rt.vmArgs")) result.put("assessment.pathsIncomplete", "true"); }
                         if (text != null && text.length() > 0) result.put(key, text);
                     }
                 }

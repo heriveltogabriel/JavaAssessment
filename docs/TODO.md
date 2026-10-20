@@ -1,5 +1,14 @@
 # Melhorias planejadas
 
+## Entrega 2.1.14 — classpath longo e candidato JDBC
+
+- [x] Ampliar classpath para 1.024 entradas, argumentos/ambiente para 256 KiB e resolução JDBC para 4.096 caminhos.
+- [x] Distinguir truncamento real por fonte e preservar classpath completo compatível.
+- [x] Mostrar JAR/versão provável quando único e concordante entre PIDs, preservando motivo e suporte.
+- [x] Regressão, Java 6 bytecode e pacotes finais; atualização/rollback 2.1.12 → 2.1.14 em fixtures. [Evidências](validation/console-release-2.1.14.md).
+- [ ] Operador atualizar dashboard/agentes e confirmar nova coleta no cliente.
+- [ ] Antes da próxima release, revisar o limite de 32 perfis de origem do catálogo, agora preenchido; não descartar origens sem política explícita.
+
 ## Entrega consolidada 2.1.10 — teste pela console
 
 - [x] Tomcat/JBoss no motor compartilhado, novos padrões, fixtures, regressão completa e alvo Java 6.

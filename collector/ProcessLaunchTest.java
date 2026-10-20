@@ -27,6 +27,15 @@ public final class ProcessLaunchTest {
         // Deliberately no readable exe/cwd: matches a collector inspecting another service user's process.
     }
     static void parser() throws Exception {
+        StringBuilder longCp=new StringBuilder();
+        for(int n=0;n<ProcessLaunch.MAX_PATH_ENTRIES;n++){if(n>0)longCp.append(':');longCp.append("/lib/library").append(n).append(".jar");}
+        ProcessLaunch exact=ProcessLaunch.parse(new String[]{"java","-cp",longCp.toString(),"weblogic.Server"},null);
+        check(exact.classpath.size()==1024&&!exact.runtimePathsIncomplete,"Exact 1024-entry classpath is complete");
+        ProcessLaunch over=ProcessLaunch.parse(new String[]{"java","-cp",longCp+":/extra.jar","weblogic.Server"},null);
+        check(over.classpath.size()==1024&&over.runtimePathsIncomplete&&over.pathsReason().contains("1024"),"Only real overflow marks truncation");
+        ProcessLaunch duplicate=ProcessLaunch.parse(new String[]{"java","-cp",longCp+":/lib/library0.jar","weblogic.Server"},null);
+        check(!duplicate.runtimePathsIncomplete,"Duplicate at exact limit does not truncate");
+
         ProcessLaunch misplaced = ProcessLaunch.parse(new String[]{"java", "-jar", "-Duser.country=BR", "-Dspring.profiles.active=prod", "FORMACAO_PERIODOS_SE.jar", "-XX:MaxPermSize=512m", "-Xmx2G", "-Dpassword=SECRET_CANARY"}, new File("/u01/app"));
         check("/u01/app/FORMACAO_PERIODOS_SE.jar".equals(misplaced.jarPath), "Options between -jar and relative artifact");
         check("prod".equals(misplaced.springSystem.get("spring.profiles.active")) && misplaced.jvmOptionsAfterJar, "Pre-JAR properties and post-JAR observation");
@@ -57,6 +66,8 @@ public final class ProcessLaunchTest {
             write(boot,jar(attrs("Main-Class","org.springframework.boot.loader.launch.JarLauncher","Start-Class","com.example.Demo","Implementation-Title","springdemo","Implementation-Version","1.0.0","Spring-Boot-Version","3.3.4"),nested));
             process(proc,"98765001","java","-jar",boot.getCanonicalPath(),"--password","PRIVATE_CANARY");
             process(proc,"98765002","java","-jar",boot.getCanonicalPath(),"--password","OTHER_PRIVATE_CANARY");
+            StringBuilder longProperty=new StringBuilder("-Dignored.password=");for(int n=0;n<70000;n++)longProperty.append('x');
+            process(proc,"98765002","java",longProperty.toString(),"-jar",boot.getCanonicalPath(),"--password","OTHER_PRIVATE_CANARY");
             AssessmentScan scan=scanner(); scan.discoverProcesses(proc);
             check(scan.processes.size()==2 && scan.applications.size()==2,"Readable cmdline retained despite inaccessible exe/cwd");
             Map app=(Map)scan.applications.get(0),first=(Map)scan.processes.get(0);

@@ -9,13 +9,36 @@ const jdbcDriverCandidatesTable = candidates => {
   const esc=jdbcDriverEscape;
   return '<div class="table-scroll"><table><thead><tr><th>Ordem</th><th>Arquivo</th><th>Origem</th><th>Versão</th><th>Fonte da versão</th><th>Aberto pela JVM</th><th>Seleção por precedência</th></tr></thead><tbody>'+rows.map(c=>'<tr>'+[c.order,c.path,c.source,c.version||c.family||'Indisponível',jdbcDriverVersionSourceLabel(c.versionSource),c.open===true?'Sim':c.open===false?'Não observado':'Não verificável',c.loaded===true?'Selecionado':c.loaded===false?'Não confirmado': 'Consulte o PID'].map(v=>'<td>'+esc(v)+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>';
 };
+// Display evidence without promoting an incomplete persisted resolution to a confirmed driver.
+const jdbcDriverProbableCandidate = row => {
+  const unique = result => {
+    if(!result || result.driverResolution !== 'INCOMPLETE' || result.driverArtifact || !Array.isArray(result.driverCandidates) || !result.driverCandidates.length)return null;
+    let candidate=null;
+    for(const c of result.driverCandidates){
+      if(!c || typeof c.path!=='string' || !/\.jar$/i.test(c.path) || typeof c.version!=='string' || !c.version.trim() || c.replacedOnDisk)return null;
+      if(candidate && (candidate.path!==c.path || candidate.version!==c.version))return null;
+      candidate=c;
+    }
+    return candidate;
+  };
+  const candidate=unique(row);if(!candidate)return null;
+  if(Array.isArray(row.associations))for(const association of row.associations){
+    const other=unique(association && association.driverResult);
+    if(!other || other.path!==candidate.path || other.version!==candidate.version)return null;
+  }
+  return candidate;
+};
 const jdbcDriverArtifactCell = row => {
-  const esc=jdbcDriverEscape, candidates=Array.isArray(row.driverCandidates)?row.driverCandidates:[];
-  if(['AMBIGUOUS','VARIES'].includes(row.driverResolution))return '<details><summary>'+candidates.length+' candidatos</summary>'+jdbcDriverCandidatesTable(candidates)+'</details>';
+  const esc=jdbcDriverEscape, candidates=Array.isArray(row.driverCandidates)?row.driverCandidates:[], probable=jdbcDriverProbableCandidate(row);
+  if(probable)return esc(probable.path.split(/[\\/]/).pop())+'<span class="cell-sub">Provável · seleção não confirmada</span>';
+  if(['AMBIGUOUS','VARIES'].includes(row.driverResolution) || row.driverResolution==='INCOMPLETE' && candidates.length)return '<details><summary>'+candidates.length+' candidatos</summary>'+jdbcDriverCandidatesTable(candidates)+'</details>';
   const name=jdbcJarFileName({...row,_kind:'datasources'});
   return name?esc(name)+(row.driverResolution==='PROBABLE'?'<span class="cell-sub">Provável</span>':''):'<span class="unknown">—</span>';
 };
-const jdbcDriverVersionCell = row => jdbcDriverEscape(row.driverVersion||row.version||jdbcDriverResolutionLabel(row.driverResolution)||'—')+(row.driverResolution==='PROBABLE'?'<span class="cell-sub">Provável</span>':'');
+const jdbcDriverVersionCell = row => {
+  const probable=jdbcDriverProbableCandidate(row);
+  return jdbcDriverEscape(row.driverVersion||row.version||(probable && probable.version)||jdbcDriverResolutionLabel(row.driverResolution)||'—')+(probable||row.driverResolution==='PROBABLE'?'<span class="cell-sub">Provável</span>':'');
+};
 const jdbcDriverSupportCell = row => (typeof AssessmentLifecycle==='object'?AssessmentLifecycle.badge(row.support):'<span class="unknown">—</span>')+(row.driverResolution==='PROBABLE'?'<span class="cell-sub">Baseado no driver provável</span>':'');
 const jdbcDriverProcessTable = associations => (Array.isArray(associations)?associations:[]).filter(a=>a&&a.driverResult&&typeof a.driverResult==='object').slice(0,16).map(a=>'<section class="detail-section"><h4>'+jdbcDriverEscape(a.serverName||'Processo')+' · PID '+jdbcDriverEscape(a.pid)+'</h4><p>'+jdbcDriverEscape(jdbcDriverResolutionLabel(a.driverResult.driverResolution))+'</p><p>'+jdbcDriverEscape(a.driverResult.driverResolutionReason)+'</p>'+jdbcDriverCandidatesTable(a.driverResult.driverCandidates)+'</section>').join('');
 'use strict';

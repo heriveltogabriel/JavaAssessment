@@ -589,7 +589,7 @@ public final class AssessmentScan {
             // jsvc -procname renames comm, so a readable jsvc executable also qualifies; other readable non-Java processes are skipped.
             if (exe == null && exeName != null && !exeName.equals("jsvc") && comm != null && !"java".equals(comm.trim()) && !"jsvc".equals(comm.trim())) continue;
 
-            String text = metadataText(new File(directory, "cmdline"), 65536, false);
+            String text = metadataText(new File(directory, "cmdline"), ProcessLaunch.PROCESS_TEXT_LIMIT, false);
             if (text == null || text.length() == 0) { if ("java".equals(comm == null ? null : comm.trim())) restrictedProcesses++; continue; }
             String[] args = text.split("\u0000");
             if(args.length==0)continue;
