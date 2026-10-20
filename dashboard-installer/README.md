@@ -60,3 +60,7 @@ O instalador não substitui uma instalação existente. Ele também não modific
 Uma instalação nova já possui o primeiro administrador provisionado. O arquivo privado de configuração não contém senha temporária nem hash da antiga senha compartilhada; o SQLite guarda hashes Argon2id. Remova o registro da senha temporária em `/root/java-assessment-dashboard-admin.txt` após definir sua senha pessoal. O nome/email continuam visíveis apenas nesse registro root e na conta administrativa.
 
 Ao atualizar um dashboard anterior, a tela de configuração exige a senha administrativa atual e solicita nome, email e uma nova senha pessoal. Só uma conta pode concluir essa ativação. O inventário, os agentes e suas credenciais são preservados. Depois da ativação, o publicador recusa restaurar software antigo com autenticação por senha compartilhada; ele conserva os arquivos novos e o banco e registra o bloqueio no relatório privado. Use sempre o publicador da versão atual. Não execute instaladores ou publicadores históricos para voltar de versão.
+
+## Exportar inventário para análise
+
+Em Administração → Exportar inventário, baixe um ZIP com dados técnicos, vínculos, versões Java/JDBC, JARs e observações da coleta. Não inclui cadastros de usuários, credenciais, chaves ou configurações operacionais. Nomes, IPs e caminhos permanecem identificáveis. O pacote serve para análise em outra aplicação, não para restaurar o dashboard.

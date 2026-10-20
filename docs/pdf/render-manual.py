@@ -38,7 +38,7 @@ CREAM = '#FAFBF7'
 LINE = '#D7E1D1'
 SAGE = '#A6B69A'
 AMBER = '#856423'
-TOTAL = 16
+TOTAL = 17
 for folder in [OUT.parent, DELIVERY, QA]:
     folder.mkdir(parents=True, exist_ok=True)
 c = canvas.Canvas(str(OUT), pagesize=(W,H), pageCompression=1)
@@ -145,9 +145,9 @@ rx=M+469;rw=CW-469
 box(rx,86,rw,428,fill=GREEN,radius=13)
 text('Explore o manual',rx+20,491,rw-40,size=18,leading=23,font='DisplayBold',fill='#FFFFFF')
 text('Clique em um tema para navegar.',rx+20,458,rw-40,size=9.7,leading=15,fill='#DFE9DA')
-chapters=[('01','Arquitetura da solução','architecture',2),('02','Da instalação ao inventário','flow',4),('03','Descoberta e evidências','discovery',6),('04','Segurança e acesso','security',8),('05','Atualização de agentes','updates',10),('06','Operação do dia a dia','operations',12),('07','Relatórios e JDBC','reports',13),('08','Planejar a adoção','adoption',15),('09','Atualizar pela console','dashboard-update',16)]
+chapters=[('01','Arquitetura da solução','architecture',2),('02','Da instalação ao inventário','flow',4),('03','Descoberta e evidências','discovery',6),('04','Segurança e acesso','security',8),('05','Atualização de agentes','updates',10),('06','Operação do dia a dia','operations',12),('07','Relatórios e JDBC','reports',13),('08','Planejar a adoção','adoption',15),('09','Atualizar pela console','dashboard-update',16),('10','Exportar inventário','inventory-export',17)]
 for i,(num,title,key,pno) in enumerate(chapters):
-    y=414-i*34
+    y=414-i*31
     text(num,rx+20,y,24,size=9.5,leading=14,fill='#BDCFB4',font='TextBold')
     text(title,rx+49,y,rw-86,size=10.1,leading=14.5,fill='#FFFFFF',max_h=30)
     c.setFont('Text',9);c.setFillColor(color('#BDCFB4'));c.drawRightString(rx+rw-17,y-12,str(pno).zfill(2))
@@ -365,6 +365,22 @@ y=sub('Conferir o resultado','Aguarde o serviço voltar. Se a sessão terminar, 
 y=sub('Falha ou restauração','Uma falha na aplicação aciona tentativa automática de voltar ao código anterior. A última atualização concluída oferece restauração compatível, com senha e nova confirmação.',right,y)
 y=sub('Banco e agentes','A restauração preserva o banco atual. Atualizar o dashboard não atualiza agentes: revise elegibilidade e solicite a atualização separadamente, começando por uma máquina.',right,y)
 note('Quando usar acesso ao servidor','Sem executor independente, faça a primeira adoção pelo script compatível da entrega. Se o serviço não voltar e a recuperação falhar, consulte o log do executor via SSH. O navegador não recupera um serviço que não consegue iniciar.',61,h=65)
+
+page('Administração / Exportação do inventário','inventory-export','Exportar inventário')
+heading('10  /  EXPORTAÇÃO PARA ANÁLISE','Leve o levantamento em um ZIP','Um pacote do inventário atual para pesquisas em outra aplicação. Disponível na aba Exportar inventário da Administração.')
+left=M;right=M+COL+GAP
+y=431
+for n,t,b in [
+ (1,'Identificar o levantamento','Entre como administrador. Informe, se desejar, o nome do cliente ou levantamento. Não inclua credenciais ou informações pessoais nesse campo.'),
+ (2,'Exportar o inventário','Clique em Exportar inventário em ZIP. A exportação inclui todas as máquinas e ambientes, independentemente dos filtros das outras telas.'),
+ (3,'Guardar e analisar','Aguarde a geração e confira o download. Guarde o arquivo com a identificação do cliente e a data. O dashboard não importa esse pacote.'),
+]:
+    y=numbered(n,t,b,left,y)
+y=431
+y=sub('Dados técnicos preservados','Java, sistemas operacionais, hardware, aplicações, servidores, bibliotecas, JDBC, JARs, versões, destinos configurados, vínculos, evidências por PID e observações da coleta.',right,y)
+y=sub('Dados de acesso excluídos','Não inclui cadastros de usuários, senhas, tokens, chaves, certificados, comandos completos ou configurações operacionais. Nomes, IPs e caminhos continuam identificáveis: compartilhe apenas com pessoas autorizadas.',right,y)
+y=sub('Como interpretar','O ZIP contém manifesto, listas estruturadas e instruções. Versão do driver não é versão do banco. Candidatos a driver e destinos configurados não confirmam conexão ativa. Ausência de um campo não comprova ausência do recurso.',right,y)
+note('Não é um backup','O pacote não restaura o dashboard nem seus acessos. Limites: um milhão de registros e 512 MiB descompactados; exceder um limite retorna erro, sem entregar inventário truncado. Relatórios PDF/CSV continuam disponíveis.',61,h=65)
 
 assert PAGE==TOTAL, PAGE
 c.save()

@@ -1,6 +1,6 @@
 # Exportação de inventário para análise
 
-Funcionalidade em desenvolvimento; os instaladores 2.1.14 publicados permanecem inalterados.
+Disponível a partir da versão 2.1.16. Os instaladores anteriores permanecem preservados.
 
 Em **Administração → Exportar inventário**, o administrador pode preencher uma identificação do levantamento ou cliente e clicar em **Exportar inventário em ZIP**. A identificação é opcional e deve ter até 120 caracteres. O arquivo gerado contém todo o inventário atual, independentemente de ambiente, máquina, busca ou filtros abertos nas demais telas. Não há opção de baixar JSON ou CSV avulso nessa aba. Os relatórios PDF/CSV existentes continuam disponíveis.
 

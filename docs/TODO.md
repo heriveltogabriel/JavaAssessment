@@ -1,5 +1,14 @@
 # Melhorias planejadas
 
+## Entrega 2.1.16 — exportação técnica em ZIP
+
+- [x] Aba administrativa, inventário completo por campos permitidos e exclusão de credenciais; formato documentado para análise externa.
+- [x] Regressão em fontes, navegador desktop/mobile e testes da exportação nas classes finais do runtime.
+- [x] Pacotes, assinaturas, verificadores originais, atualização/restauração do dashboard e atualização direta do agente 2.1.14 → 2.1.16 em fixtures. [Evidências](validation/console-release-2.1.16.md).
+- [x] Catálogo de migração com 32 perfis preservados: origens V3 2.1.14+ assinadas seguem diretamente, mantendo baselines dos helpers.
+- [x] README, documentação, manual genérico e instaladores atualizados.
+- [ ] Operador validar upload pela console e exportação com uma amostra real autorizada.
+
 ## Entrega 2.1.14 — classpath longo e candidato JDBC
 
 - [x] Ampliar classpath para 1.024 entradas, argumentos/ambiente para 256 KiB e resolução JDBC para 4.096 caminhos.
@@ -7,7 +16,7 @@
 - [x] Mostrar JAR/versão provável quando único e concordante entre PIDs, preservando motivo e suporte.
 - [x] Regressão, Java 6 bytecode e pacotes finais; atualização/rollback 2.1.12 → 2.1.14 em fixtures. [Evidências](validation/console-release-2.1.14.md).
 - [ ] Operador atualizar dashboard/agentes e confirmar nova coleta no cliente.
-- [ ] Antes da próxima release, revisar o limite de 32 perfis de origem do catálogo, agora preenchido; não descartar origens sem política explícita.
+- [x] Limite de 32 perfis revisado na 2.1.16 com política explícita e preservação de todas as rotas antigas.
 
 ## Entrega consolidada 2.1.10 — teste pela console
 

@@ -19,7 +19,13 @@ O playbook usa wget, instala com sudo em lotes de duas máquinas e ignora agente
 - [Manual ilustrado da solução](Manual.pdf): arquitetura, inventário, atualização de agentes, relatórios e filtros JDBC.
 - [Guia de instalação](Guia-instalacao.pdf): requisitos, comandos, configuração do dashboard e instalação dos agentes.
 
-## Entrega para teste pela console — 2.1.14
+## Entrega para teste pela console — 2.1.16
+
+[Pacotes da 2.1.16](v2.1.16/README.md): exportação técnica em ZIP pela Administração. Use o [web-update](v2.1.16/assessment-dashboard-web-update-2.1.16.zip) para atualizar pela console. [Notas](../docs/RELEASE_2.1.16.md) · [Validação](../docs/validation/console-release-2.1.16.md).
+
+**Atualize também os agentes separadamente pelo painel.** A exportação já aproveita os dados existentes. Agentes 2.1.14 com atualizador V3 usam atualização direta; instalações sem capacidade/rota elegível precisam do instalador configurado para seu ambiente.
+
+## Entrega anterior preservada — 2.1.14
 
 [Pacotes da 2.1.14](v2.1.14/README.md): classpath longo e versão/JAR candidatos visíveis. Use o [web-update](v2.1.14/assessment-dashboard-web-update-2.1.14.zip) na console. [Notas](../docs/RELEASE_2.1.14.md) · [Validação da origem 2.1.12](../docs/validation/console-release-2.1.14.md).
 

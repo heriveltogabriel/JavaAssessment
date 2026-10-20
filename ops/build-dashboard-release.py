@@ -14,7 +14,8 @@ import tempfile
 from dashboard_release import reserve, finish, java_source, agent_version, agent_source, stable_version, reserve_update_pair, version_numbers, write_state
 from unified_agent import build as build_agent
 from agent_update_signing import ensure_keypair
-from full_agent_release import build_assets
+from full_agent_release import build_assets, inherited_bootstrap
+from agent_update_signing import package_entries
 
 ROOT = Path(__file__).resolve().parents[1]
 JDK = Path(os.environ.get('ASSESSMENT_JAVA_HOME', '/private/tmp/assessment-jdk17/jdk-17.0.20.1+1/Contents/Home'))
@@ -109,6 +110,21 @@ def checked_run(argv, log):
     require(result.returncode == 0, 'Local check failed; see ' + str(log))
 
 
+def requires_legacy_bridge(version, entries, public):
+    """Freeze all published legacy fallback routes through 2.1.12.
+
+    2.1.14+ uses the already shipped V3 manager directly. Fail closed if a
+    newer receipt is not a complete signed V3 installer; never evict an older
+    migration profile to make room. All versions remain helper baselines.
+    """
+    if version_numbers(version) < (2, 1, 14):
+        return True
+    require(entries.get('update-public.der') == public, 'Direct V3 origin has a different trust pin')
+    require(inherited_bootstrap(entries, public) is not None, 'Direct V3 origin requires a signed complete bundle')
+    require(json.loads(entries['full-update/manifest.json'])['version'] == version, 'Direct V3 origin version mismatch')
+    return False
+
+
 def reviewed_agent_origins(support, helper_only=False):
     """Known immutable release receipts supply independent package hashes."""
     state = json.loads((ROOT / 'release/dashboard.json').read_text())
@@ -124,6 +140,9 @@ def reviewed_agent_origins(support, helper_only=False):
         path = packages / name
         require(path.is_file() and not path.is_symlink() and digest(path.read_bytes()) == entry['sha256'],
                 'Known agent origin changed: ' + version)
+        if not helper_only and not requires_legacy_bridge(version, package_entries(path),
+                (ROOT / 'collector/public/agent-update-public.der').read_bytes()):
+            continue
         item = {'path': str(path), 'sha256': entry['sha256']}
         if not helper_only:
             item['minUpdater'] = 1 if version_numbers(version) < (2, 0, 1) else 2
@@ -226,7 +245,7 @@ def package(release, out, support, previous, baselines, agent):
         for path in sorted((ROOT / folder).rglob('*')):
             if path.is_file() and path.suffix in ('.java', '.example', '.md'):
                 review[str(path.relative_to(ROOT))] = path.read_bytes()
-    for name in ('docs/validation/jdbc-discovery-2026-10-16.md', 'docs/runbooks/jdbc-discovery-lab.md', 'docs/SPRING_DISCOVERY.md', 'docs/JDBC_DRIVER_RESOLUTION.md', 'docs/TOMCAT_JBOSS_DISCOVERY.md', 'docs/SPRING_INTEGRATION.md', 'docs/ENVIRONMENT_INSTALL_ACCESS.md', 'docs/validation/recovery-installer-2026-10-16.md', 'docs/DASHBOARD_SELF_UPDATE.md', 'docs/validation/dashboard-self-update-2026-10-16.md', 'docs/runbooks/update-from-2.0.53.md', 'docs/RELEASE_' + version + '.md'):
+    for name in ('docs/validation/jdbc-discovery-2026-10-16.md', 'docs/runbooks/jdbc-discovery-lab.md', 'docs/SPRING_DISCOVERY.md', 'docs/JDBC_DRIVER_RESOLUTION.md', 'docs/TOMCAT_JBOSS_DISCOVERY.md', 'docs/SPRING_INTEGRATION.md', 'docs/ENVIRONMENT_INSTALL_ACCESS.md', 'docs/validation/recovery-installer-2026-10-16.md', 'docs/DASHBOARD_SELF_UPDATE.md', 'docs/validation/dashboard-self-update-2026-10-16.md', 'docs/runbooks/update-from-2.0.53.md', 'docs/INVENTORY_EXPORT.md', 'docs/RELEASE_' + version + '.md'):
         review[name] = (ROOT / name).read_bytes()
     review['ops/build-dashboard-web-update.py'] = (ROOT / 'ops/build-dashboard-web-update.py').read_bytes()
     review['release/dashboard.json'] = (json.dumps({'version': version, 'releases': [{**release, 'status': 'prepared'}]}, indent=2) + '\n').encode()
