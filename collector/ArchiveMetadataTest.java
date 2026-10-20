@@ -213,9 +213,21 @@ public final class ArchiveMetadataTest {
         check("3.45.1.0".equals(fields.get("driverVersion")),"New driver matches its packaged library; pools are ignored");
     }
     static void remove(File path) { File[] files=path.listFiles();if(files!=null)for(File file:files)remove(file);path.delete(); }
+    /** The bounded central-directory read is charged once, not again for the ZipFile that follows. */
+    static void centralCharge(File root) throws Exception {
+        Map<String,byte[]> entries=new LinkedHashMap<String,byte[]>();
+        for (int i=0;i<3000;i++) entries.put("app/resources/file-"+i+".txt",new byte[0]);
+        entries.put("META-INF/context.xml",utf("<Context/>"));
+        byte[] bytes=jar(manifest("Implementation-Title","Fixture"),entries);File file=write(root,"many-entries.war",bytes);
+        int end=bytes.length-22;long central=(bytes[end+12]&255)|(bytes[end+13]&255)<<8|(bytes[end+14]&255)<<16|(long)(bytes[end+15]&255)<<24;
+        AssessmentScan scan=scan(true);scan.archiveMetadata.inspect(file);
+        check(scan.bytesRead>=central && scan.bytesRead<central*3/2,"Archive central directory charged once: central="+central+" read="+scan.bytesRead);
+        AssessmentScan config=scan(true);check(config.serverDataSources.entry(file,"META-INF/context.xml",ServerDataSources.CONFIG_LIMIT)!=null,"Archive entry read");
+        check(config.bytesRead>=central && config.bytesRead<central*3/2,"Datasource archive entry charges the central directory once: central="+central+" read="+config.bytesRead);
+    }
     public static void main(String[] args) throws Exception {
         File root=File.createTempFile("archive-metadata", "-fixtures");if(!root.delete() || !root.mkdir())throw new IOException("Cannot create fixture directory");
-        try { bootAndLibraries(root);productsAndFallback(root);boundedArchives(root);nestedArchives(root);catalog(root); }
+        try { bootAndLibraries(root);productsAndFallback(root);boundedArchives(root);nestedArchives(root);catalog(root);centralCharge(root); }
         finally { remove(root); }
         System.out.println("ARCHIVE_METADATA_TESTS=PASS Boot nestedJDBC storedNested deflatedNested largeArchives driverCatalog pools embeddedTomcat productVersions cache bounds privacy");
     }

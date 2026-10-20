@@ -80,7 +80,7 @@ public final class BoundedDirectoryTest {
             }
             check(results[0].equals(results[1]), "tree and per-directory sweeps differ:\n" + results[0] + "\n" + results[1]);
             check(results[0].contains("orders.war") && results[0].contains("kept.war") && results[0].contains("shop.war") && !results[0].contains("y.war") && !results[0].contains("/w.war")
-                && !results[0].contains("deep.war") && results[0].contains("Directory depth limit reached") && results[0].contains("Symlink path skipped") && results[0].contains("home:"),
+                && !results[0].contains("deep.war") && results[0].contains("Directory depth limit reached") && results[0].contains("Symlink path skipped") && results[0].contains("tomcat/lib/catalina.jar]"),
                 "sweep rules hold: " + results[0]);
         } finally { BoundedDirectory.NIO = BoundedDirectory.nioAvailable(); CollectorTest.remove(root); }
     }

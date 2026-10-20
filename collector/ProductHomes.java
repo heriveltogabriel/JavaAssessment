@@ -23,7 +23,7 @@ final class ProductHomes {
             Map product = inventory ? webLogicRegistry(scan, new File(dir, "inventory/registry.xml")) : new HashMap();
             String source = "Oracle Home inventory registry";
             if (product.get("version") == null) { product.put("version", manifestVersion(scan, new File(wl, "server/lib/weblogic.jar"))); source = "weblogic.jar manifest"; }
-            Map row = register(scan, "WebLogic", path, (String) product.get("version"), "WebLogic Oracle Home found; " + source + " read");
+            Map row = register(scan, "WebLogic", path, (String) product.get("version"), "WebLogic Oracle Home found; " + source + " read", new File(wl, "server/lib/weblogic.jar"));
             if (row != null) for (String field : new String[]{"distribution", "patches"}) if (product.get(field) != null) row.put(field, product.get(field));
             internals(scan, dir, ORACLE_INTERNALS);
             drivers(scan, new File(wl, "server/lib")); drivers(scan, new File(dir, "oracle_common/modules/oracle.jdbc"));
@@ -31,17 +31,17 @@ final class ProductHomes {
         }
         File weblogic = new File(dir, "server/lib/weblogic.jar");
         if (weblogic.isFile()) {
-            register(scan, "WebLogic", path, manifestVersion(scan, weblogic), "WebLogic server home found; weblogic.jar manifest read");
+            register(scan, "WebLogic", path, manifestVersion(scan, weblogic), "WebLogic server home found; weblogic.jar manifest read", weblogic);
             drivers(scan, weblogic.getParentFile()); return true;
         }
         if (new File(dir, "jboss-modules.jar").isFile() && new File(dir, "modules").isDirectory()) {
             String[] product = jboss(scan, dir);
-            register(scan, product[0], path, product[1], "JBoss-family home found; " + (product[1] == null ? "release not identified" : product[2] + " read"));
+            register(scan, product[0], path, product[1], "JBoss-family home found; " + (product[1] == null ? "release not identified" : product[2] + " read"), null);
             internals(scan, dir, JBOSS_INTERNALS); return false;
         }
         File catalina = new File(dir, "lib/catalina.jar");
         if (catalina.isFile() && new File(dir, "bin/catalina.sh").isFile()) {
-            register(scan, "Tomcat", path, manifestVersion(scan, catalina), "Tomcat home found; catalina.jar metadata read");
+            register(scan, "Tomcat", path, manifestVersion(scan, catalina), "Tomcat home found; catalina.jar metadata read", catalina);
             drivers(scan, catalina.getParentFile()); internals(scan, dir, TOMCAT_INTERNALS); return false;
         }
         return false;
@@ -56,8 +56,11 @@ final class ProductHomes {
     static void internals(AssessmentScan scan, File home, String[] names) {
         for (String name : names) if (scan.productInternals.size() < 4096) scan.productInternals.add(new File(home, name).getPath());
     }
-    static Map register(AssessmentScan scan, String type, String path, String version, String evidence) {
+    /** Keeps the historical file:<jar> key where a product jar exists, so installation IDs stay stable; a home a live server runs from gets no second row. */
+    static Map register(AssessmentScan scan, String type, String path, String version, String evidence, File jar) {
+        if (scan.processServerHomes.contains(path)) return null;
         String key = "home:" + path;
+        try { if (jar != null) key = "file:" + jar.getCanonicalPath(); } catch (IOException e) { /* home key */ }
         if (scan.servers.containsKey(key)) return scan.servers.get(key);
         if (scan.servers.size() >= 256) { scan.warn("Server row limit reached"); return null; }
         Map row = AssessmentScan.map("id", AssessmentScan.id("server", scan.hostId + key), "hostId", scan.hostId, "type", type, "name", type + " installation",
@@ -122,13 +125,8 @@ final class ProductHomes {
         }
     }
 
-    /** {type, version, source} for a JBoss/WildFly home: version.txt first, then the product module manifest. */
+    /** {type, version, source} for a JBoss/WildFly home: the product module manifest first, as for live servers, then version.txt. */
     static String[] jboss(AssessmentScan scan, File home) {
-        File versionFile = new File(home, "version.txt");
-        if (versionFile.isFile() && versionFile.length() <= 4096) {
-            String[] product = versionText(scan.read(versionFile, 4096));
-            if (product != null) return new String[]{product[0], product[1], "version.txt"};
-        }
         String slot = "main";
         File conf = new File(home, "bin/product.conf");
         String text = conf.isFile() && conf.length() <= 4096 ? scan.read(conf, 4096) : null;
@@ -139,6 +137,11 @@ final class ProductHomes {
             String[] release = text == null ? null : AssessmentScan.productRelease(text);
             if (release != null) return new String[]{release[0], release[1], "product module manifest"};
         } catch (IOException e) { scan.note("Product release manifest could not be parsed: " + manifest.getPath()); }
+        File versionFile = new File(home, "version.txt");
+        if (versionFile.isFile() && versionFile.length() <= 4096) {
+            String[] product = versionText(scan.read(versionFile, 4096));
+            if (product != null) return new String[]{product[0], product[1], "version.txt"};
+        }
         return new String[]{"JBoss", null, null};
     }
     /** {type, version} from "Red Hat JBoss Enterprise Application Platform - Version 7.4.0.GA", or null. */

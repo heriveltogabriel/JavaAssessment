@@ -77,7 +77,7 @@ final class SpringConfiguration {
             packaged = scan.archiveMetadata.configuration(artifact);
             if (packaged != null) { archivePrefix = packaged.prefix; partial |= packaged.partial; }
             else {
-                long central = scan.archiveMetadata.preflight(artifact); scan.archiveMetadata.charge(central); zip = new ZipFile(artifact);
+                scan.archiveMetadata.preflight(artifact); zip = new ZipFile(artifact);
                 Set<String> seen = new HashSet<String>(); Enumeration<? extends ZipEntry> entries = zip.entries(); int count = 0;
                 while (entries.hasMoreElements() && count++ < ArchiveMetadata.ENTRY_LIMIT) { String name = entries.nextElement().getName(); if (!seen.add(name)) duplicateEntries.add(name); }
                 archivePrefix = zip.getEntry("BOOT-INF/classes/") != null || hasEntryPrefix("BOOT-INF/classes/") ? "BOOT-INF/classes/" : "WEB-INF/classes/";

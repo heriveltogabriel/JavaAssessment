@@ -140,7 +140,7 @@ final class JdbcDriverResolver {
                 // Do not infer an embedded driver version from the WebLogic product version.
                 a.versions.clear();
             } else {
-                reader.charge(reader.preflight(file));
+                reader.preflight(file);
                 ZipFile zip=new ZipFile(file);
                 try {
                     Set<String> names=new HashSet<String>(); List<ZipEntry> metadata=new ArrayList<ZipEntry>();

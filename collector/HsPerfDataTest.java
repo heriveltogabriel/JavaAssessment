@@ -95,6 +95,10 @@ public final class HsPerfDataTest {
             + "7f5ba54a3000-7f5ba631f000 r-xp 002a3000 fe:00 240804                     " + home + "/lib/server/libjvm.so" + suffix + "\n"
             + "7f5ba6a15000-7f5ba6a1d000 rw-s 00000000 fe:00 960729                     /tmp/hsperfdata_app/" + pid + "\n");
         if (perf != null) ProcessLaunchTest.write(new File(dir, "root/tmp/hsperfdata_app/" + pid), perf);
+        mountinfo(dir, "22");
+    }
+    static void mountinfo(File dir, String rootId) throws Exception {
+        ProcessLaunchTest.text(new File(dir, "mountinfo"), "1 0 0:1 / /proc rw - proc proc rw\n" + rootId + " 1 253:0 / / rw,relatime - xfs /dev/root rw\n");
     }
     static void replaced() throws Exception {
         File root = CollectorTest.temp("hsperf-replaced");
@@ -114,14 +118,23 @@ public final class HsPerfDataTest {
             process(proc, "41003", uid, gone.getPath(), true, perf(2, false, "java.property.java.version", "21.0.4"), "java", "Main");
             process(proc, "41004", uid + 1, other.getPath(), false, perf(2, true, "java.property.java.version", "17.0.0-spoofed"), "java", "Main");
             process(proc, "41005", uid, other.getPath(), false, null, "java", "Main");
+            process(proc, "41006", uid, home.getPath(), false, perf(2, true, "java.property.java.version", "11.0.20", "java.property.java.vendor", "Container Vendor"), "java", "Main");
+            mountinfo(new File(proc, "41006"), "1474");
+            process(proc, "41007", uid, other.getPath(), false, perf(2, true, "java.property.java.version", "17.0.9"), "java", "Main");
+            new File(proc, "41007/mountinfo").delete();
+            mountinfo(new File(proc, "self"), "22");
             File target = new File(root, "elsewhere"); ProcessLaunchTest.write(target, perf(2, true, "java.property.java.version", "17.0.0-linked"));
             File link = new File(proc, "41005/root/tmp/hsperfdata_app/41005"); link.getParentFile().mkdirs();
             check(new ProcessBuilder("ln", "-s", target.getPath(), link.getPath()).start().waitFor() == 0, "Fixture symlink");
             AssessmentScan scan = ProcessLaunchTest.scanner(); scan.discoverProcesses(proc);
             Map runtime = scan.runtimes.get(home.getCanonicalPath());
-            check(scan.runtimes.size() == 3 && "21.0.99".equals(runtime.get("version")) && Arrays.asList("21.0.12").equals(runtime.get("runningVersions")), "Disk version kept, running divergence recorded, no duplicate installation");
+            check(scan.runtimes.size() == 3 && "21.0.99".equals(runtime.get("version")) && Arrays.asList("21.0.12").equals(runtime.get("runningVersions")), "Disk version kept, running divergence recorded, no duplicate installation; container version not applied: " + runtime);
+            Map container = (Map) scan.processes.get(5), unknown = (Map) scan.processes.get(6);
+            check("11.0.20".equals(container.get("javaVersion")) && Boolean.TRUE.equals(container.get("containerized")) && !"Container Vendor".equals(runtime.get("vendor")), "Other mount namespace: version stays on the process, host runtime untouched");
+            check("17.0.9".equals(unknown.get("javaVersion")) && unknown.get("containerized") == null, "Unreadable mountinfo is not called a container");
             check(Boolean.TRUE.equals(runtime.get("runtimeReplacedOnDisk")) && scan.restrictedProcesses == 0, "Replaced binary is flagged and not treated as a permission limit");
             Map first = (Map) scan.processes.get(0), second = (Map) scan.processes.get(1), removed = (Map) scan.processes.get(2);
+            check(second.get("containerized") == null, "Same mount namespace is not containerized");
             check("21.0.12".equals(first.get("javaVersion")) && Boolean.TRUE.equals(first.get("runtimeReplacedOnDisk")) && "WebLogic".equals(first.get("serverType")), "Process keeps its running version and argfile classification");
             check(String.valueOf(first.get("evidence")).contains("replaced on disk") && String.valueOf(runtime.get("evidence")).contains("restart pending"), "Evidence names the pending restart");
             check(scan.servers.values().iterator().next().get("name").equals("Managed1"), "WebLogic server name came from perf data -D");
@@ -158,12 +171,29 @@ public final class HsPerfDataTest {
         } finally { child.destroy(); child.waitFor(); }
     }
 
+    /** A perf file swapped for a FIFO after the ownership check must not hang the collector. */
+    static String fifo() throws Exception {
+        File root = CollectorTest.temp("hsperf-fifo");
+        try {
+            File pipe = new File(root, "4242");
+            if (!new File("/usr/bin/mkfifo").isFile() && !new File("/bin/mkfifo").isFile()) return "fifo-skipped";
+            if (new ProcessBuilder("mkfifo", pipe.getPath()).start().waitFor() != 0) return "fifo-skipped";
+            AssessmentScan scan = ProcessLaunchTest.scanner(); long start = System.currentTimeMillis();
+            check(HsPerfData.readBounded(scan, pipe, 300) == null && System.currentTimeMillis() - start < 2000, "FIFO open times out instead of blocking");
+            check(Json.stringify(scan.warnings).contains("did not open in time") && !scan.partial, "Timed-out perf file leaves a note");
+            File regular = new File(root, "4243"); ProcessLaunchTest.write(regular, perf(2, true, "java.property.java.version", "21.0.5"));
+            check("21.0.5".equals(HsPerfData.readBounded(scan, regular, 2000).get("java.property.java.version")) && scan.bytesRead == 32768, "Regular perf file read and charged once");
+            return "fifo-timeout";
+        } finally { CollectorTest.remove(root); }
+    }
+
     public static void main(String[] args) throws Exception {
         if (args.length == 1 && "sleep".equals(args[0])) { Thread.sleep(20000); return; }
         format(); launch(); replaced();
+        String fifo = fifo();
         File owned = File.createTempFile("hsperf", ".bin"); ProcessLaunchTest.text(owned, "x");
         try { check(HsPerfData.ownedByStat(owned, uid()) && !HsPerfData.ownedByStat(owned, uid() + 1) || !new File("/usr/bin/stat").isFile(), "Java 6 stat ownership fallback"); }
         finally { owned.delete(); }
-        System.out.println("HSPERFDATA_TESTS=PASS v1 v2 byte-order fuzz cap maps argfile classpath replaced removed owner symlink no-command-retention " + live());
+        System.out.println("HSPERFDATA_TESTS=PASS v1 v2 byte-order fuzz cap maps argfile classpath replaced removed owner symlink no-command-retention " + fifo + " " + live());
     }
 }

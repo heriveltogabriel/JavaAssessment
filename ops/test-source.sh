@@ -9,7 +9,7 @@ JTMP="$(pwd)/tmp/java-tmp"
 "$JAVA_HOME/bin/javac" --release 17 -encoding UTF-8 -cp 'lib/*' \
   -d tmp/source-classes shared/*.java server/*.java collector/*.java tests/*.java
 CP='tmp/source-classes:lib/*'
-for suite in ProductHomesTest JdbcDriverResolverTest JdbcEndpointTest ArchiveMetadataTest WebLogicVersionTest SpringDataSourceTest SpringConfigurationTest SpringIntegrationTest RuntimeInventoryTest \
+for suite in VisitedPathsTest ProductHomesTest JdbcDriverResolverTest JdbcEndpointTest ArchiveMetadataTest WebLogicVersionTest SpringDataSourceTest SpringConfigurationTest SpringIntegrationTest RuntimeInventoryTest \
   ProcessLaunchTest HsPerfDataTest JdkInventoryTest BoundedDirectoryTest CollectorSweepTest \
   CollectorTest AgentToolTest LegacyDiscoveryTest AgentBundleManifestTest AgentBootstrapHandoffTest AgentRecoveryServiceTest; do
   "$JAVA_HOME/bin/java" -Djava.io.tmpdir="$JTMP" -Xmx96m -cp "$CP" "assessment.$suite"

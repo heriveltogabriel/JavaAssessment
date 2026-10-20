@@ -106,6 +106,10 @@ public final class JdbcEndpointTest {
         for (String alias : new String[]{"jdbc:oracle:thin:@UNKNOWN", "jdbc:oracle:thin:@ORDERS.WORLD.EXTRA"}) { Map none = new LinkedHashMap(); JdbcEndpoint.addTo(none, alias, one); check(none.get("databaseHost") == null, "Unknown alias stays unresolved"); }
         Map placeholder = new LinkedHashMap(); JdbcEndpoint.addTo(placeholder, "jdbc:oracle:thin:@${env.ALIAS:ORDERS}", one);
         check("tns-db.example".equals(placeholder.get("databaseHost")) && ((List)placeholder.get("resolvedFrom")).containsAll(Arrays.asList("default", "tnsnames")), "Placeholder and TNS resolution combine");
+        Map unresolved = new LinkedHashMap(); JdbcEndpoint.addTo(unresolved, "jdbc:oracle:thin:@${db.host}:1521/ORCL", one);
+        check("Oracle".equals(unresolved.get("databaseType")) && unresolved.get("databaseHost") == null, "Unresolved placeholder keeps database type from raw URL");
+        Map unresolvedPg = new LinkedHashMap(); JdbcEndpoint.addTo(unresolvedPg, "jdbc:postgresql://${env.MISSING_HOST}:5432/app", one);
+        check("PostgreSQL".equals(unresolvedPg.get("databaseType")) && unresolvedPg.get("databaseHost") == null, "Unresolved environment placeholder keeps database type");
         ProcessLaunchTest.text(new File(tns, "tnsnames.ora"), "ORDERS = (DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=a.example)(PORT=1)))\nORDERS = (DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=b.example)(PORT=2)))\n");
         Map duplicate = new LinkedHashMap(); JdbcEndpoint.addTo(duplicate, "jdbc:oracle:thin:@ORDERS", new JdbcEndpoint.Resolver(scan, new File(proc, "1")));
         check(duplicate.get("databaseHost") == null && scan.partial, "Ambiguous tnsnames.ora alias is not guessed");

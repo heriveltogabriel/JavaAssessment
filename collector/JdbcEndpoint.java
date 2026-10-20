@@ -19,9 +19,10 @@ final class JdbcEndpoint {
         if (raw == null) return;
         List<String> sources = new ArrayList<String>(resolvedFrom);
         String url = raw.indexOf("${") >= 0 && resolver != null ? resolver.expand(raw, sources) : raw;
-        if (url == null) return;
-        String database = databaseType(url);
+        // An unresolved placeholder still leaves the product prefix readable.
+        String database = databaseType(url == null ? raw : url);
         if (database != null && fields.get("databaseType") == null) fields.put("databaseType", database);
+        if (url == null) return;
         Map parsed = parse(url, resolver, sources);
         if (!parsed.isEmpty()) fields.putAll(parsed);
     }

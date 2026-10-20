@@ -27,7 +27,7 @@ public final class CollectorSweepTest {
             text(new File(privateJdk, "lib/deep/metadata"), "fixture metadata");
             AssessmentScan scan = scanner(jar, settings());
             scan.walk(installation, 0); scan.walk(jar, 13); scan.walk(privateJdk, 0);
-            check(scan.filesVisited == 0 && scan.archivesInspected == 0 && scan.bytesRead == 0 && scan.deferredArchives.isEmpty() && scan.visited.isEmpty(),
+            check(scan.filesVisited == 0 && scan.archivesInspected == 0 && scan.bytesRead == 0 && scan.deferredArchives.isEmpty() && scan.visited.size() == 0,
                 "Collector package, libraries, logs, spool and runtime must consume no sweep budget");
             check(scan.runtimes.isEmpty() && scan.libraries.isEmpty() && scan.applications.isEmpty() && !scan.partial,
                 "Collector self-files must neither become application inventory nor incomplete coverage");

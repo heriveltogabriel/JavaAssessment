@@ -53,7 +53,7 @@ public final class WebLogicVersionTest {
         check(count.archiveMetadata.inspect(jar).get("serverVersion") == null && count.bytesRead == 0, "Archive count enforced");
         AssessmentScan generic = ProcessLaunchTest.scanner(); File other = new File(home, "lib/application.jar");
         ProcessLaunchTest.write(other, bytes(jar));
-        // Its ~2.3 MiB central directory is charged twice: the bounded preflight read and ZipFile's own read.
+        // Its ~2.3 MiB central directory is charged once, by the bounded preflight read.
         check("10.3.6.0".equals(generic.archiveMetadata.inspect(other).get("version")) && !generic.partial && generic.bytesRead < 6 * 1024 * 1024, "Large generic archives are inspected from the bounded central directory");
     }
     static byte[] bytes(File file) throws Exception {

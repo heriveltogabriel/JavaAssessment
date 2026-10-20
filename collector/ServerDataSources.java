@@ -114,9 +114,9 @@ final class ServerDataSources {
         String profile = null;
         if (managed && serverName != null && hostPath != null) {
             String group = null;
-            for (Map<String,String> server : elements(new File(hostPath), "host", "servers", "server", "name", "group"))
+            for (Map<String,String> server : elements(new File(hostPath), CONFIG_LIMIT, "host", "servers", "server", "name", "group"))
                 if (serverName.equals(server.get("name"))) group = server.get("group");
-            if (group != null) for (Map<String,String> candidate : elements(new File(domainPath), "domain", "server-groups", "server-group", "name", "profile"))
+            if (group != null) for (Map<String,String> candidate : elements(new File(domainPath), CONFIG_LIMIT, "domain", "server-groups", "server-group", "name", "profile"))
                 if (group.equals(candidate.get("name"))) profile = ServerDataSources.resourceName(candidate.get("profile"));
         }
         if (managed && profile == null) scan.note("JBoss managed server profile was not resolved; all datasource profiles of the domain configuration were inventoried");
@@ -241,7 +241,7 @@ final class ServerDataSources {
         ZipFile zip = null;
         try {
             if (archive.length() > ArchiveMetadata.FILE_LIMIT) throw new IOException("Archive too large");
-            scan.archiveMetadata.charge(scan.archiveMetadata.preflight(archive));
+            scan.archiveMetadata.preflight(archive); // charges its own bounded read
             zip = new ZipFile(archive); ZipEntry found = zip.getEntry(name);
             if (found == null) return null;
             if (found.getSize() > limit) throw new IOException("Entry too large");
@@ -253,7 +253,9 @@ final class ServerDataSources {
     /** Associates a Tomcat ResourceLink with the global resource of the same server instance. */
     void link(String path, Map fields, AssessmentScan.ProcessContext context) {
         String label = (String)fields.get("configurationContext");
-        if ("context-descriptor".equals(label) || "context:default".equals(label)) {
+        // conf/context.xml is the default context of every application: keep its existing "context:default" label.
+        boolean defaults = path.endsWith("/conf/context.xml");
+        if (!defaults && ("context-descriptor".equals(label) || "context:default".equals(label))) {
             File file = new File(path.endsWith("!/META-INF/context.xml") ? path.substring(0, path.length() - 22) : path);
             if (file.getName().equals("context.xml") && file.getParentFile() != null && file.getParentFile().getName().equals("META-INF")) file = file.getParentFile().getParentFile();
             String name = file.getName().replaceAll("\\.(xml|war)$", "");
@@ -338,7 +340,7 @@ final class ServerDataSources {
             File descriptor = scan.linkedPath(new File(directory, "module.xml"));
             if (descriptor == null || !descriptor.isFile()) continue;
             List<String> jars = new ArrayList<String>();
-            for (Map<String,String> resource : elements(descriptor, "module", "resources", "resource-root", "path")) {
+            for (Map<String,String> resource : elements(descriptor, SMALL_LIMIT, "module", "resources", "resource-root", "path")) {
                 String path = resource.get("path");
                 if (path != null && path.matches("[A-Za-z0-9_.+-]{1,200}\\.jar")) jars.add(path);
             }
@@ -348,12 +350,12 @@ final class ServerDataSources {
         }
         return null;
     }
-    /** Selected attributes of root/.../parent/element in a small trusted-parser XML file. */
-    List<Map<String,String>> elements(File source, final String root, final String parent, final String element, final String... attributes) {
+    /** Selected attributes of root/.../parent/element in a bounded trusted-parser XML file; domain.xml/host.xml take the configuration limit. */
+    List<Map<String,String>> elements(File source, int limit, final String root, final String parent, final String element, final String... attributes) {
         final List<Map<String,String>> result = new ArrayList<Map<String,String>>();
         File file = scan.linkedPath(source);
         if (file == null || !file.isFile() || !scan.visitLinked(file)) return result;
-        String xml = scan.read(file, SMALL_LIMIT);
+        String xml = scan.read(file, limit);
         if (xml == null) return result;
         try {
             parseXml(xml, new DefaultHandler() {

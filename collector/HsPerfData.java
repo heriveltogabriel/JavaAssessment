@@ -39,17 +39,32 @@ final class HsPerfData {
         if (uid == null || !scan.available() || !owned(file, uid.longValue())) return null;
         if (scan.bytesRead >= ArchiveMetadata.READ_LIMIT) { scan.warn("Metadata read budget of 32 MiB reached"); return null; }
         // shortcut: ownership is checked before open, so a same-user swap between check and open is possible; upgrade with O_NOFOLLOW channels when Java 6 support ends.
-        InputStream input = null;
-        try {
-            input = new FileInputStream(file); byte[] data = new byte[READ_LIMIT]; int length = 0;
-            while (length < data.length && scan.available()) {
-                int count = input.read(data, length, data.length - length); if (count < 0) break;
-                length += count; scan.bytesRead += count;
+        return readBounded(scan, file, Math.min(OPEN_TIMEOUT_MILLIS, scan.deadline - System.currentTimeMillis()));
+    }
+    static final long OPEN_TIMEOUT_MILLIS = 2000;
+    /** Opens and reads on a daemon thread: a file swapped for a FIFO after the ownership check would block open() forever. */
+    static Map<String,String> readBounded(AssessmentScan scan, final File file, long timeout) {
+        final byte[] data = new byte[READ_LIMIT]; final int[] result = {-1};
+        Thread reader = new Thread("hsperfdata-reader") {
+            public void run() {
+                InputStream input = null;
+                try {
+                    input = new FileInputStream(file); int length = 0;
+                    while (length < data.length) { int count = input.read(data, length, data.length - length); if (count < 0) break; length += count; }
+                    if (length == data.length && input.read() >= 0) length = -2; // oversized
+                    synchronized (result) { result[0] = length; }
+                } catch (IOException e) { /* unreadable */ }
+                finally { if (input != null) try { input.close(); } catch (IOException e) { } }
             }
-            if (length == data.length && input.read() >= 0) return null;
-            return parse(data, length);
-        } catch (IOException e) { return null; }
-        finally { if (input != null) try { input.close(); } catch (IOException e) { } }
+        };
+        reader.setDaemon(true); reader.start();
+        try { reader.join(Math.max(1, timeout)); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        int length;
+        synchronized (result) { length = result[0]; }
+        if (length == -1 && reader.isAlive()) { scan.note("A JVM perf-data file did not open in time and was skipped: " + file.getName()); return null; }
+        if (length < 0) return null;
+        scan.bytesRead += length;
+        return parse(data, length);
     }
 
     static boolean owned(File file, long uid) {

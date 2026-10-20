@@ -8,7 +8,13 @@ public final class ProductHomesTest {
     static void check(boolean value, String message) { CollectorTest.check(value, message); }
     static void text(File file, String value) throws Exception { ProcessLaunchTest.text(file, value); }
     static void jar(File file, String... attributes) throws Exception { ProcessLaunchTest.write(file, ProcessLaunchTest.jar(ProcessLaunchTest.attrs(attributes), ProcessLaunchTest.entries())); }
-    static Map home(AssessmentScan scan, File home) { return scan.servers.get("home:" + home.getPath()); }
+    static Map home(AssessmentScan scan, File home) throws IOException {
+        // Tomcat and WebLogic keep the historical file:<product jar> key; JBoss has no equivalent jar.
+        for (String jar : new String[]{"lib/catalina.jar", "wlserver/server/lib/weblogic.jar", "server/lib/weblogic.jar"})
+            if (new File(home, jar).isFile()) return scan.servers.get("file:" + new File(home, jar).getCanonicalPath());
+        return scan.servers.get("home:" + home.getPath());
+    }
+    static int installations(AssessmentScan scan) { int count = 0; for (Map row : scan.servers.values()) if (String.valueOf(row.get("name")).endsWith(" installation")) count++; return count; }
     static boolean deferred(AssessmentScan scan, String name) { for (File file : scan.deferredArchives) if (file.getName().equals(name)) return true; return false; }
     static boolean library(AssessmentScan scan, String path) { for (Object row : scan.libraries) if (path.equals(((Map) row).get("path"))) return true; return false; }
     static String registry(String patch) {
@@ -58,6 +64,8 @@ public final class ProductHomesTest {
         check(walked.size() == 1 && linked.applicationsByPath.containsKey(new File(domain, "autodeploy/orders.war").getCanonicalPath()), "Uncovered server base is swept");
         AssessmentScan covered = ProcessLaunchTest.scanner(); covered.discoverProcesses(proc);
         check(covered.walkProcessRoots(Arrays.asList(root.getPath())).isEmpty(), "A base already under includePaths is not swept twice");
+        covered.walk(root, 0);
+        check(installations(covered) == 0 && covered.servers.size() == 1, "Oracle Home of a live WebLogic server gets no installation row: " + covered.servers.keySet());
     }
 
     static void jbossAndTomcat(File root) throws Exception {
@@ -72,6 +80,11 @@ public final class ProductHomesTest {
         text(new File(wildfly, "bin/product.conf"), "slot=wildfly-full\n");
         text(new File(wildfly, "modules/system/layers/base/org/jboss/as/product/wildfly-full/dir/META-INF/MANIFEST.MF"),
             "Manifest-Version: 1.0\nJBoss-Product-Release-Name: WildFly Full\nJBoss-Product-Release-Version: 26.1.3.Final\n\n");
+        File patched = new File(root, "eap-patched");
+        jar(new File(patched, "jboss-modules.jar"), "Implementation-Version", "1.12.0");
+        text(new File(patched, "version.txt"), "Red Hat JBoss Enterprise Application Platform - Version 7.4.0.GA\n");
+        text(new File(patched, "modules/system/layers/base/org/jboss/as/product/main/dir/META-INF/MANIFEST.MF"),
+            "Manifest-Version: 1.0\nJBoss-Product-Release-Name: JBoss EAP\nJBoss-Product-Release-Version: 7.4.13.GA\n\n");
         File tomcat = new File(root, "tomcat");
         jar(new File(tomcat, "lib/catalina.jar"), "Implementation-Title", "Apache Tomcat", "Implementation-Version", "9.0.85");
         jar(new File(tomcat, "lib/tomcat-util.jar"), "Implementation-Version", "9.0.85");
@@ -82,7 +95,9 @@ public final class ProductHomesTest {
         Map jboss = home(scan, eap.getCanonicalFile()), wf = home(scan, wildfly.getCanonicalFile()), cat = home(scan, tomcat.getCanonicalFile());
         check(jboss != null && "JBoss".equals(jboss.get("type")) && "7.4.0.GA".equals(jboss.get("version")), "EAP release comes from version.txt: " + scan.servers);
         check(wf != null && "WildFly".equals(wf.get("type")) && "26.1.3.Final".equals(wf.get("version")), "WildFly falls back to the product module manifest");
-        check(cat != null && "Tomcat".equals(cat.get("type")) && "9.0.85".equals(cat.get("version")) && scan.servers.size() == 3, "Tomcat version comes from catalina.jar without a duplicate row");
+        check(cat != null && "Tomcat".equals(cat.get("type")) && "9.0.85".equals(cat.get("version")) && scan.servers.size() == 4, "Tomcat version comes from catalina.jar without a duplicate row");
+        Map patchedRow = home(scan, patched.getCanonicalFile());
+        check(patchedRow != null && "7.4.13.GA".equals(patchedRow.get("version")), "Product module manifest wins over a stale version.txt, as for live servers: " + patchedRow);
         check(!deferred(scan, "internal.jar") && !deferred(scan, "tomcat-util.jar"), "Module system and Tomcat libraries are product internals");
         check(library(scan, new File(eap, "modules/com/oracle/main/ojdbc8.jar").getCanonicalPath()) && library(scan, new File(tomcat, "lib/ojdbc11.jar").getCanonicalPath()),
             "Customer JDBC modules and Tomcat lib drivers stay inventoried");
@@ -98,6 +113,17 @@ public final class ProductHomesTest {
         Map server = null; for (Map row : linked.servers.values()) server = row;
         check(server != null && "7.4.0.GA".equals(server.get("version")), "Live JBoss without a product manifest falls back to version.txt: " + linked.servers);
         check(linked.processRoots.equals(Arrays.asList(new File(eap, "standalone").getCanonicalPath())), "JBoss server base becomes a sweep root");
+        check(cat == scan.servers.get("file:" + new File(tomcat, "lib/catalina.jar").getCanonicalPath()) && jboss == scan.servers.get("home:" + eap.getCanonicalPath()), "Installation keys stay file:<jar> where a product jar exists");
+        ProcessLaunchTest.process(proc, "98767103", "java", "-Dcatalina.home=" + tomcat.getCanonicalPath(), "-classpath", new File(tomcat, "bin/bootstrap.jar").getCanonicalPath(),
+            "org.apache.catalina.startup.Bootstrap", "start");
+        File patchedProc = new File(root, "proc-patched");
+        ProcessLaunchTest.process(patchedProc, "98767104", "java", "-Djboss.home.dir=" + patched.getCanonicalPath(), "-jar", new File(patched, "jboss-modules.jar").getCanonicalPath(),
+            "-mp", new File(patched, "modules").getCanonicalPath(), "org.jboss.as.standalone");
+        AssessmentScan live = ProcessLaunchTest.scanner(); live.discoverProcesses(patchedProc);
+        Map liveServer = null; for (Map row : live.servers.values()) liveServer = row;
+        check(liveServer != null && "7.4.13.GA".equals(liveServer.get("version")), "Live JBoss uses the same manifest-first order: " + live.servers);
+        AssessmentScan both = ProcessLaunchTest.scanner(); both.discoverProcesses(proc); both.walk(root, 0);
+        check(both.servers.size() == 4 && installations(both) == 2 && home(both, wildfly.getCanonicalFile()) != null, "Live Tomcat and JBoss homes get no installation row, the stopped ones do: " + both.servers.keySet());
     }
 
     public static void main(String[] args) throws Exception {

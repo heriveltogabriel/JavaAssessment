@@ -20,7 +20,7 @@ public final class ServerDataSourcesTest {
     static Map tomcat(File root) throws Exception {
         File home = new File(root, "tomcat-home"), base = new File(root, "tomcat-instance"), proc = new File(root, "tomcat-proc");
         text(new File(base, "conf/server.xml"), "<Server><GlobalNamingResources>" + tomcatResource("jdbc/global") + "</GlobalNamingResources><Service><Engine name='Catalina'><Host name='localhost'><Context path='/orders'>" + tomcatResource("jdbc/orders") + "</Context></Host><Host name='second'><Context path='/orders'>" + tomcatResource("jdbc/orders") + "</Context></Host></Engine></Service></Server>");
-        text(new File(base, "conf/context.xml"), "<Context>" + tomcatResource("jdbc/default") + "</Context>");
+        text(new File(base, "conf/context.xml"), "<Context>" + tomcatResource("jdbc/default") + "<ResourceLink name='jdbc/shared' global='jdbc/global' type='javax.sql.DataSource'/></Context>");
         text(new File(base, "conf/Catalina/localhost/orders.xml"), "<Context>" + tomcatResource("jdbc/descriptor") + "<ResourceLink name='jdbc/link' global='jdbc/global' type='javax.sql.DataSource'/><Resource name='mail/test' type='javax.mail.Session'/></Context>");
         text(new File(base, "webapps/demo/META-INF/context.xml"), "<Context>" + tomcatResource("jdbc/application") + "</Context>");
         ProcessLaunchTest.process(proc, "98665001", "java", "-Dcatalina.home=" + home.getCanonicalPath(), "-Dcatalina.base=" + base.getCanonicalPath(), "org.apache.catalina.startup.Bootstrap", "start");
@@ -34,6 +34,8 @@ public final class ServerDataSourcesTest {
             check(((List)row.get("associations")).size() == 2 && row.get("pid") == null && row.get("serverName") == null, "Shared config deduplicates with two process associations");
             check(row.get("poolCapacity") == null && row.get("activeConnections") == null && row.get("poolAvailable") == null, "No pool runtime counters fabricated");
         }
+        String links = ""; for (Object value : scan.datasources) if ("jdbc/global".equals(((Map)value).get("name"))) links = Json.stringify(((Map)value).get("linkedContexts"));
+        check(links.contains("\"context:default\"") && links.contains("jdbc/shared") && !links.contains("context:/context"), "conf/context.xml ResourceLink is labelled as the default context: " + links);
         long bytes = scan.bytesRead;
         for (Map rows : scan.configuredDatasourceRows.values()) check(rows.get("configurationSource") != null, "Source retained");
         AssessmentScan.ProcessContext context = context("Tomcat", base, home, 98665001);
@@ -282,6 +284,14 @@ public final class ServerDataSourcesTest {
         check(controller.datasources.size() == 3, "Host controller inventories all domain profiles");
         AssessmentScan unknown = domainScan(new File(root, "domain-proc-4"), "98667204", "java", "-D[Server:unknown]", "-Djboss.home.dir=" + dir, "-jar", modules, "org.jboss.as.server");
         check(unknown.datasources.size() == 3 && Json.stringify(unknown.warnings).contains("profile was not resolved"), "Unresolved server profile inventories all profiles with a note");
+        // Real EAP domain.xml files with several profiles exceed 64 KiB; the server-group still resolves within the configuration limit.
+        File large = new File(root, "wf-domain-large"); StringBuilder padding = new StringBuilder("<!--");
+        while (padding.length() < 80 * 1024) padding.append(" unused profile configuration padding ");
+        text(new File(large, "domain/configuration/domain.xml"), domainXml().replace("</profiles>", "</profiles>" + padding + "-->"));
+        text(new File(large, "domain/configuration/host.xml"), "<host xmlns='urn:jboss:domain:20.0' name='primary'><servers><server name='server-one' group='main-server-group'/></servers></host>");
+        String largeDir = large.getCanonicalPath();
+        AssessmentScan big = domainScan(new File(root, "domain-proc-5"), "98667205", "java", "-D[Server:server-one]", "-Djboss.home.dir=" + largeDir, "-jar", new File(large, "jboss-modules.jar").getCanonicalPath(), "org.jboss.as.server");
+        check(big.datasources.size() == 2 && !Json.stringify(big.warnings).contains("rejected") && !Json.stringify(big.warnings).contains("profile was not resolved"), "80 KiB domain.xml still resolves the managed server profile: " + big.warnings);
         for (AssessmentScan scan : new AssessmentScan[]{managed, derived, controller, unknown}) { strict(scan); check(!Json.stringify(scan.warnings).contains("domain and legacy"), "Unsupported-domain note removed"); }
     }
     static void legacyJBoss(File root) throws Exception {

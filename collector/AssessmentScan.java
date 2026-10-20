@@ -35,8 +35,10 @@ public final class AssessmentScan {
     final Map<String, Map> configuredDatasourceRows = new LinkedHashMap<String, Map>();
     final List<String> excluded = new ArrayList<String>();
     final List<String> networkMounts = new ArrayList<String>();
-    final Set<String> visited = new HashSet<String>();
+    final VisitedPaths visited = new VisitedPaths();
     final List<String> productInternals = new ArrayList<String>(), processRoots = new ArrayList<String>();
+    /** Canonical homes of live server processes (WebLogic: WL_HOME and ORACLE_HOME); the sweep adds no installation row for them. */
+    final Set<String> processServerHomes = new HashSet<String>();
     static final List<String> IGNORED_DIRECTORIES = Arrays.asList(".git", ".cache", "node_modules", "logs", "tmp", "temp",
         ".m2", ".gradle", ".npm", ".ivy2", "__pycache__", "oradata", "diag", "lost+found");
     MessageDigest visitedDigest;
@@ -117,15 +119,13 @@ public final class AssessmentScan {
             || under(path, new File(parent, "java-assessment-uninstall").getPath());
     }
 
-    String visitedKey(String path) {
+    /** First 64 bits of SHA-256: a collision among a million paths has probability ~3e-8. */
+    long visitedKey(String path) {
         try {
             if (visitedDigest == null) visitedDigest = MessageDigest.getInstance("SHA-256");
             byte[] digest = visitedDigest.digest(path.getBytes("UTF-8"));
-            char[] key = new char[digest.length * 2]; String hex = "0123456789abcdef";
-            for (int i = 0; i < digest.length; i++) {
-                int value = digest[i] & 255; key[i * 2] = hex.charAt(value >>> 4); key[i * 2 + 1] = hex.charAt(value & 15);
-            }
-            return new String(key);
+            long key = 0; for (int i = 0; i < 8; i++) key = key << 8 | (digest[i] & 255);
+            return key;
         } catch (Exception e) { throw new IllegalStateException("Cannot identify visited path", e); }
     }
 
@@ -343,7 +343,7 @@ public final class AssessmentScan {
     }
 
     void walk(File file, int depth) {
-        String path, key;
+        String path; long key;
         try {
             path = file.getCanonicalPath();
             // Sweep exclusions do not apply to explicit process-linked evidence.
@@ -378,7 +378,7 @@ public final class AssessmentScan {
                 if (skip != null && path.startsWith(skip)) continue;
                 skip = null;
                 char type = tree.type();
-                String key = visitedKey(path);
+                long key = visitedKey(path);
                 if (skipped(path) || visited.contains(key)) { skip = path + "/"; continue; }
                 if (type == 'l') { note("Symlink path skipped: " + path); continue; }
                 int level = depth + 1;
@@ -389,7 +389,7 @@ public final class AssessmentScan {
         finally { tree.close(); }
     }
     /** Counts one sweep entry; true only for a directory whose children must be walked. */
-    boolean visit(File file, String path, String key, int depth, boolean directory) {
+    boolean visit(File file, String path, long key, int depth, boolean directory) {
         // Ignored directories, like exclusions, are skipped before budgets in both enumeration modes.
         if (directory && IGNORED_DIRECTORIES.contains(file.getName())) return false;
         if (!available()) return false;
@@ -541,6 +541,7 @@ public final class AssessmentScan {
         } catch (IOException e) { warn("Process directory enumeration incomplete (read or resource limit)"); }
         finally { if (proc != null) proc.close(); }
         Collections.sort(directories);
+        String ownRootMount = rootMount(new File(procRoot, "self/mountinfo"));
         for (File directory : directories) {
             if (!available()) break;
             String pid = directory.getName();
@@ -582,13 +583,17 @@ public final class AssessmentScan {
             if (replaced) runtimeEvidence = "Java executable replaced on disk after process start; restart pending; " + (runningVersion != null ? "version from running JVM perf data" : "version unknown");
             else if (runningVersion != null) runtimeEvidence += "; version from running JVM perf data";
             String javaHome = null;
+            // Kernels without mountinfo (RHEL 5) predate containers; an unreadable process mountinfo leaves the namespace unknown.
+            String processRootMount = ownRootMount == null ? null : rootMount(new File(directory, "mountinfo"));
+            boolean containerized = processRootMount != null && !processRootMount.equals(ownRootMount), hostVersion = ownRootMount == null || ownRootMount.equals(processRootMount);
             if (processHome != null) {
                 // The observed Java home is inventoried even without a compiler.
                 try { javaHome = normalizeHome(processHome); }
                 catch (IOException e) { warn("Cannot resolve Java process home: " + processHome); }
                 Map runtime = addRuntime(processHome, true, runtimeEvidence, timestamp, null, null, null);
-                if (runtime == null && replaced && javaHome != null) runtime = removedRuntime(javaHome, runtimeEvidence, runningVersion, runningVendor);
-                if (runtime != null) runningRuntime(runtime, replaced, runningVersion, runningVendor);
+                if (runtime == null && replaced && hostVersion && javaHome != null) runtime = removedRuntime(javaHome, runtimeEvidence, runningVersion, runningVendor);
+                // In another mount namespace (a container), exe resolves inside the container and may match an unrelated host JDK path.
+                if (runtime != null) runningRuntime(runtime, replaced, hostVersion ? runningVersion : null, hostVersion ? runningVendor : null);
             }
             String name = launch.mainClass != null ? launch.mainClass : launch.jarPath != null ? new File(launch.jarPath).getName() : launch.moduleName != null ? launch.moduleName : "Java process";
             Map process = map("id", id("process", hostId + ":" + pid), "hostId", hostId, "pid", Long.valueOf(pid), "name", name,
@@ -600,6 +605,7 @@ public final class AssessmentScan {
             if (runningVersion != null) process.put("javaVersion", runningVersion);
             if (runningVendor != null) process.put("javaVendor", runningVendor);
             if (replaced) process.put("runtimeReplacedOnDisk", Boolean.TRUE);
+            if (containerized) process.put("containerized", Boolean.TRUE);
             processes.add(process);
             if (launch.opaqueArguments && !launch.perfDataCompleted) note("A Java argument file was not inspected; launcher classification may be incomplete");
             Map app = null;
@@ -618,6 +624,8 @@ public final class AssessmentScan {
                     "version", null, "path", launch.serverBase, "pid", Long.valueOf(pid), "javaHome", javaHome, "mainClass", launch.mainClass,
                     "state", "PROCESS_RUNNING", "evidence", "Known server launcher in a live Java process; service health not tested", "observedAt", timestamp);
                 if (servers.size() < 256) servers.put(key, context.server); else warn("Server row limit reached");
+                File serverHome = launch.serverHome == null ? null : linkedPath(new File(launch.serverHome));
+                for (int up = 0; serverHome != null && up < ("WebLogic".equals(launch.serverType) ? 3 : 1); up++, serverHome = serverHome.getParentFile()) processServerHomes.add(serverHome.getPath());
                 if (app != null) { app.put("serverName", serverName); app.put("serverId", context.server.get("id")); }
             }
             serverDataSources.discover(context);
@@ -630,6 +638,21 @@ public final class AssessmentScan {
         if (restrictedArtifacts > 0) warn("The collector user could not access " + restrictedArtifacts + " process-linked artifact location(s); versions and JDBC inventory may be incomplete");
     }
 
+    /** Mount ID (field 1) of the mountinfo line mounted at "/" (field 5); only the first 64 KiB are read, null when unreadable. */
+    String rootMount(File mountinfo) {
+        InputStream input = null;
+        try {
+            input = new FileInputStream(mountinfo); byte[] buffer = new byte[65536]; int size = 0, count;
+            while (size < buffer.length && (count = input.read(buffer, size, buffer.length - size)) > 0) size += count;
+            bytesRead += size;
+            for (String line : new String(buffer, 0, size, "UTF-8").split("\n")) {
+                String[] fields = line.split(" ");
+                if (fields.length > 4 && fields[4].equals("/")) return fields[0];
+            }
+        } catch (IOException e) { /* unreadable */ }
+        finally { if (input != null) try { input.close(); } catch (IOException ignored) { } }
+        return null;
+    }
     /** The live JVM's version is authoritative for its home unless the binary was replaced; divergence stays visible. */
     void runningRuntime(Map runtime, boolean replaced, String version, String vendor) {
         if (replaced) runtime.put("runtimeReplacedOnDisk", Boolean.TRUE);
@@ -664,7 +687,7 @@ public final class AssessmentScan {
     }
     boolean visitLinked(File file) {
         if (!available()) return false;
-        String key = visitedKey(file.getPath());
+        long key = visitedKey(file.getPath());
         if (visited.contains(key)) return true;
         // Process evidence has its own budget: the later sweep cannot starve it, nor it the sweep.
         if (filesVisited - sweepFiles >= maxFiles) { warn("File count limit reached; remaining process artifacts were not examined"); return false; }

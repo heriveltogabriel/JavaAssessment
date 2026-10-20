@@ -38,7 +38,7 @@ public final class ArchiveMetadata {
         String key = "classpath:" + file.getCanonicalPath();
         if (configurations.containsKey(key)) return configurations.get(key);
         if (!scan.visitLinked(file) || !file.isFile() || file.length() > FILE_LIMIT || !claimArchive(file.getPath())) throw new Limit("Classpath archive inspection unavailable");
-        long central = preflight(file); charge(central);
+        preflight(file); // validates and charges the bounded central directory read
         ConfigurationArchive result = new ConfigurationArchive(); result.prefix = "";
         ZipFile archive = new ZipFile(file);
         try {
@@ -103,7 +103,6 @@ public final class ArchiveMetadata {
                     if (manifest != null) accept(document, "META-INF/MANIFEST.MF", manifest);
                 } else {
                     byte[] central = central(file, ENTRY_LIMIT, CENTRAL_LIMIT); long start = centralStart;
-                    charge(central.length); // ZipFile reads its central directory; count that bounded work too.
                     if (!scan.available()) throw new Limit("Assessment deadline reached during archive discovery");
                     archive = new ZipFile(file);
                     readOuter(document, archive, file, central, start);
