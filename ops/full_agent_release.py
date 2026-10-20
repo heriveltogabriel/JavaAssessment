@@ -13,7 +13,7 @@ import sys
 import tempfile
 import zipfile
 
-from agent_update_signing import (ensure_keypair, legacy_bridge_profile, package_entries,
+from agent_update_signing import (MAX_HELPER_BASELINES, ensure_keypair, legacy_bridge_profile, package_entries,
                                  sha, sign_bridge_release, sign_bundle_release,
                                  sign_release, _signed_bytes, require, VERSION, bundle_entries, openssl,
                                  validate_helper_hashes)
@@ -93,7 +93,7 @@ def build_assets(product_root, signing_root, output, agent, target, bridge, orig
     require(json.loads(generic['DEPENDENCIES.json'])['version'] == target, 'Generic version differs from target')
     require(not any(name.startswith('full-update/') for name in generic), 'Use the unembedded generic build as bundle input')
     helper_profiles = []
-    require(isinstance(helper_baselines or [], list) and len(helper_baselines or []) <= 32, 'At most 32 reviewed helper baselines')
+    require(isinstance(helper_baselines or [], list) and len(helper_baselines or []) <= MAX_HELPER_BASELINES, 'Too many reviewed helper baselines')
     for row in helper_baselines or []:
         require(isinstance(row, dict) and set(row) == {'path', 'sha256'}, 'Helper baseline requires path and independent ZIP hash')
         entries, profile = legacy_bridge_profile(Path(row['path']), row['sha256'])

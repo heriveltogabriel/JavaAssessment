@@ -4,9 +4,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'ops'))
 from agent_update_signing import validate_helper_hashes, sha, MAX_HELPER_BASELINES
 
-hashes = [sha(('test-only-helper-' + str(i)).encode()) for i in range(33)]
+hashes = [sha(('test-only-helper-' + str(i)).encode()) for i in range(65)]
 checks = 0
-for count in (1, 16, 17, 32):
+for count in (1, 16, 17, 32, 33, 64):
     validate_helper_hashes(hashes[:count], hashes[0])
     checks += 1
 for invalid in ([], hashes, [hashes[0], hashes[0]], [hashes[1]], ['*'], ['A' * 64],
@@ -17,5 +17,5 @@ for invalid in ([], hashes, [hashes[0], hashes[0]], [hashes[1]], ['*'], ['A' * 6
         checks += 1
     else:
         raise AssertionError('Invalid helper allowlist accepted')
-assert MAX_HELPER_BASELINES == 32
+assert MAX_HELPER_BASELINES == 64
 print('HELPER_BASELINE_LIMIT=PASS checks=' + str(checks))

@@ -12,7 +12,8 @@ import tempfile
 import zipfile
 
 MAX_JAR = 32 * 1024 * 1024
-MAX_HELPER_BASELINES = 32
+# One helper hash per prepared release since 1.5.8; 2.1.6 was the 33rd.
+MAX_HELPER_BASELINES = 64
 VERSION = re.compile(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)')
 ASSET = re.compile(r'(?:[a-z][a-z0-9-]*\.sh|lib/[A-Za-z0-9_.-]+\.jar|update-public\.der)')
 
