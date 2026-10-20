@@ -24,7 +24,7 @@ SOURCE_OUTPUT = PROJECT / ('dist/assessment-dashboard-source-' + RELEASE_VERSION
 INSTALLER_FILES = ('install.sh', 'install.py', 'bootstrap.py', 'dependencies.py', 'agent_updates.py',
                    'DatabaseTool.java', 'README.md', 'GUIA_INSTALACAO.md',
                    'BETA_RELEASE.md', 'BETA_MIGRATION.md', 'VERSION')
-WEB_SUFFIXES = {'.html', '.css', '.js', '.svg', '.png', '.ico', '.woff2'}
+WEB_SUFFIXES = {'.html', '.css', '.js', '.json', '.svg', '.png', '.ico', '.woff2'}
 UPDATE_ASSET = re.compile(r'(?:[A-Za-z0-9_-]+\.sh|lib/[A-Za-z0-9_.-]+\.jar|update-public\.der)')
 
 

@@ -13,7 +13,7 @@ final class InventoryQueries {
     static long n(Object o){return o instanceof Number?((Number)o).longValue():0;}
     @SuppressWarnings("unchecked") static Map<String,Object> obj(Object o){return (Map<String,Object>)o;}
     static final class Scope {
-        String environment="",host="",view="overview",q="",version="",mode="family",subset="",from="",to="";
+        String environment="",host="",view="overview",q="",version="",mode="family",subset="",from="",to="",support="";
         int page=1,size=20,minimumSeconds=300;
         Instant now=Instant.now();
         final List<Object> args=new ArrayList<>();
@@ -47,6 +47,10 @@ final class InventoryQueries {
         if(!f.from.isEmpty()){w+=" AND (coalesce("+stamp+",'')='' OR julianday("+stamp+") >= julianday(?))";a.add(f.from);}
         if(!f.to.isEmpty()){w+=" AND (coalesce("+stamp+",'')='' OR julianday("+stamp+") < julianday(?))";a.add(f.to);}
         if(kind.equals("runtimes")&&!f.version.isEmpty()){w+=" AND i."+(f.mode.equals("exact")?"version":"major")+"=?";a.add((f.version.equals("Version unknown")||f.version.equals("Versão desconhecida"))?"":f.mode.equals("exact")?f.version:f.version.replaceFirst("^Java ",""));}
+        if(!f.support.isEmpty()&&Lifecycle.KINDS.contains(kind)){w+=" AND "+Lifecycle.SQL+"=?";a.add(Lifecycle.today(f.now));a.add(f.support);}
+        if(kind.equals("runtimes")&&f.subset.equals("replaced"))w+=" AND "+Lifecycle.REPLACED;
+        if(kind.equals("datasources")&&f.subset.equals("driver-unresolved"))w+=" AND "+Lifecycle.DRIVER_UNRESOLVED;
+        if(kind.equals("hosts")&&f.subset.equals("coverage-partial"))w+=" AND h.coverage_status='partial'";
         if(kind.equals("servers")&&f.subset.equals("runtime"))w+=" AND coalesce(json_extract(i.payload,'$.state'),'') <> ''";
         if(kind.equals("datasources")&&f.subset.startsWith(DatabaseGroups.PREFIX))w+=" AND "+DatabaseGroups.condition(f.subset,a);
         if(kind.equals("libraries")&&f.subset.equals("jdbc"))w+=" AND lower(coalesce(json_extract(i.payload,'$.category'),''))='jdbc'";
@@ -65,6 +69,7 @@ final class InventoryQueries {
         else {if(!KINDS.contains(kind))throw new IllegalArgumentException("Unknown inventory kind");from="inventory i JOIN hosts h ON h.id=i.host_id";select="i.payload";order="h.hostname,i.host_id,i.id";w+=" AND i.kind=?";a.add(kind);}
         long total=db.scalar("SELECT count(*) FROM "+from+" WHERE "+w,a.toArray());int pages=(int)Math.max(1,(total+f.size-1)/f.size),p=Math.min(f.page,pages);a.add(f.size);a.add((p-1)*f.size);
         List<Map<String,Object>> items=db.documents("SELECT "+select+" FROM "+from+" WHERE "+w+" ORDER BY "+order+" LIMIT ? OFFSET ?",a.toArray());
+        Lifecycle.decorate(kind,items,f.now);
         return map("items",items,"pagination",map("collection",kind,"page",p,"pageSize",f.size,"total",total,"pages",pages));
     }
     Map<String,Object> libraryPage(Scope f){
@@ -72,6 +77,7 @@ final class InventoryQueries {
         long total=db.scalar("SELECT count(*) FROM inventory i JOIN hosts h ON h.id=i.host_id WHERE "+kinds+" AND "+w,a.toArray());int pages=(int)Math.max(1,(total+f.size-1)/f.size),p=Math.min(f.page,pages);a.add(f.size);a.add((p-1)*f.size);
         List<Object> libraries=new ArrayList<>(),datasources=new ArrayList<>();Set<String> hosts=new LinkedHashSet<>();
         for(Map<String,Object> row:db.rows("SELECT i.kind,i.host_id,i.payload FROM inventory i JOIN hosts h ON h.id=i.host_id WHERE "+kinds+" AND "+w+" ORDER BY i.kind DESC,h.hostname,i.host_id,i.id LIMIT ? OFFSET ?",a.toArray())){(s(row.get("kind")).equals("datasources")?datasources:libraries).add(Json.parse(s(row.get("payload"))));hosts.add(s(row.get("host_id")));}
+        Lifecycle.decorate("libraries",(List<Map<String,Object>>)(List<?>)libraries,f.now);
         return map("libraries",libraries,"datasources",datasources,"hostIds",hosts,"pagination",map("collection","libraries","page",p,"pageSize",f.size,"total",total,"pages",pages));
     }
     Map<String,Object> summary(Scope f){
@@ -133,9 +139,11 @@ final class InventoryQueries {
         }else{
             List<Map<String,Object>> groups=(List<Map<String,Object>>)result.get("javaGroups");long shown=0;for(Map<String,Object> group:groups)shown+=n(group.get("count"));long others=n(obj(result.get("summary")).get("runtimes"))-shown;if(others>0)groups.add(map("name","Outras versões","count",others,"hostCount",0,"other",true));
         }
+        Lifecycle.decorateJavaGroups((List<Map<String,Object>>)result.get("javaGroups"),f.now);Lifecycle.decorateJavaGroups((List<Map<String,Object>>)result.get("exactJavaGroups"),f.now);
         for(String kind:KINDS)result.put(kind,new ArrayList<>());result.put("jobs",new ArrayList<>());List<Map<String,Object>> hosts=new ArrayList<>();String kind=f.view.equals("versions")?"runtimes":f.view;
-        if(kind.equals("libraries")&&f.subset.equals("datasources"))kind="datasources";
-        if(f.view.equals("libraries")&&!f.subset.equals("datasources")){
+        boolean datasourcesOnly=f.subset.equals("datasources")||f.subset.equals("driver-unresolved");
+        if(kind.equals("libraries")&&datasourcesOnly)kind="datasources";
+        if(f.view.equals("libraries")&&!datasourcesOnly){
             Map<String,Object> page=libraryPage(f);result.put("libraries",page.get("libraries"));result.put("datasources",page.get("datasources"));result.put("pagination",page.get("pagination"));for(String id:(Set<String>)page.get("hostIds")){Map<String,Object> h=db.get("hosts",id);if(h!=null)hosts.add(h);}
         }else if(KINDS.contains(kind)||Set.of("hosts","jobs").contains(kind)){
             if(!f.view.equals("versions")||!f.version.isEmpty()){
@@ -153,7 +161,8 @@ final class InventoryQueries {
             if(f.host.isEmpty()){
                 preview.size=10;preview.page=f.page;preview.q=f.q;Map<String,Object> hostPage=page(preview,"hosts");hosts=(List<Map<String,Object>>)hostPage.get("items");
                 result.put("pagination",hostPage.get("pagination"));result.put("machineQuery",f.q);
-                Map<String,Object> totals=obj(result.get("summary"));result.put("serverGroups",productGroups(f,"servers",n(totals.get("reportedServers"))));result.put("jdbcGroups",productGroups(f,"datasources",n(totals.get("datasources"))));
+                Map<String,Object> totals=obj(result.get("summary"));result.put("serverGroups",productGroups(f,"servers",n(totals.get("reportedServers"))));Lifecycle.decorate("servers",(List<Map<String,Object>>)result.get("serverGroups"),f.now);
+                result.put("risks",Lifecycle.risks(db,f));result.put("javaSupport",Lifecycle.javaSupport(db,f));result.put("jdbcGroups",productGroups(f,"datasources",n(totals.get("datasources"))));
             }else hosts=(List<Map<String,Object>>)page(preview,"hosts").get("items");
             if(!f.host.isEmpty()){preview.size=8;for(String k:KINDS){preview.subset=k.equals("libraries")?"jdbc":"";result.put(k,page(preview,k).get("items"));}}
         }

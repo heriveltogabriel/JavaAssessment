@@ -70,6 +70,7 @@ public final class InventoryStore implements AutoCloseable {
             org.sqlite.Function.create(c,"assessment_lower",new org.sqlite.Function(){
                 @Override protected void xFunc()throws SQLException {String value=value_text(0);result(value==null?"":java.text.Normalizer.normalize(value,java.text.Normalizer.Form.NFC).toLowerCase(Locale.ROOT));}
             },1,org.sqlite.Function.FLAG_DETERMINISTIC);
+            Lifecycle.register(c);
             return c;
         } catch(SQLException e) {c.close();throw e;}
     }
@@ -400,7 +401,7 @@ public final class InventoryStore implements AutoCloseable {
         try {return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));}
         catch(Exception error) {throw failure("Cannot hash credential",error);}
     }
-    private static String major(String version) {
+    static String major(String version) {
         String normalized=version.startsWith("1.")?version.substring(2):version;
         java.util.regex.Matcher matcher=java.util.regex.Pattern.compile("^(\\d+)").matcher(normalized);
         return matcher.find()?matcher.group(1):"";
