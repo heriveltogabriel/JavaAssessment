@@ -56,7 +56,7 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
     AssessmentServer(File root,boolean provisioning)throws Exception {this(root,provisioning,java.nio.file.Path.of("/var/lib/java-assessment-dashboard-updater"));}
     AssessmentServer(File root,boolean provisioning,java.nio.file.Path maintenanceState)throws Exception {
         maintenance=new DashboardMaintenance(maintenanceState);
-        this.root=root.getCanonicalFile();data=new File(root,"data");conf=new Properties();try(InputStream in=new FileInputStream(new File(root,"conf/server.properties"))){conf.load(in);}
+        this.root=root.getCanonicalFile();Lifecycle.load(new File(this.root,"web/lifecycle.json"));data=new File(root,"data");conf=new Properties();try(InputStream in=new FileInputStream(new File(root,"conf/server.properties"))){conf.load(in);}
         for(String k:new String[]{"agentToken","hostId"})if(conf.getProperty(k,"").length()<4)throw new IllegalArgumentException("Missing server configuration: "+k);
         boolean legacy=Boolean.parseBoolean(conf.getProperty("seedLegacyHost","true"));
         Map<String,Object> defaults=map("fleet",map("name",conf.getProperty("fleetName","Java Assessment"),"description","Java estate assessment","createdAt",now()),"hosts",new ArrayList<>(),"jobs",new ArrayList<>(),"environments",new ArrayList<>(),"settings",map("enabled",false,"frequency","once","timeZone","America/Sao_Paulo","windowStart","00:00","windowEnd","06:00","maxDurationSeconds",180,"maxFiles",50000,"batchSize",100,"pauseMillis",30,"includePaths",legacy?Arrays.asList("/home/opc/oracle","/usr/java","/usr/lib/jvm","/opt"):Arrays.asList("/usr/java","/usr/lib/jvm","/opt","/u01"),"excludePaths",Arrays.asList("/proc","/sys","/dev","/tmp"),"inspectArchives",true),"coverage",map("status","pending","warnings",new ArrayList<>()),"eventIds",new ArrayList<>(),"scheduleRevision",UUID.randomUUID().toString());
@@ -239,7 +239,7 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
     private InventoryQueries.Scope scope(HttpExchange x)throws Exception{
         InventoryQueries.Scope f=selectedScope(x);
         String view=query(x,"view");if(!view.isEmpty())f.view=view;if(!Set.of("overview","machine","environments","versions","hosts","runtimes","applications","servers","libraries","datasources","processes","jobs","settings").contains(f.view))throw new ApiError(400,"Invalid view");
-        f.page=queryInteger(x,"page",1,1,1000000);f.size=queryInteger(x,"pageSize",20,1,100);f.q=query(x,"q");if(f.q.length()>200)throw new ApiError(400,"Search is too long");f.subset=query(x,"subset");f.version=query(x,"version");f.mode=query(x,"versionMode").equals("exact")?"exact":"family";
+        f.page=queryInteger(x,"page",1,1,1000000);f.size=queryInteger(x,"pageSize",20,1,100);f.q=query(x,"q");if(f.q.length()>200)throw new ApiError(400,"Search is too long");f.subset=query(x,"subset");f.support=query(x,"support");if(!f.support.isEmpty()&&!Lifecycle.STATUSES.contains(f.support))throw new ApiError(400,"Invalid support status");f.version=query(x,"version");f.mode=query(x,"versionMode").equals("exact")?"exact":"family";
         f.minimumSeconds=queryInteger(x,"minimumSeconds",300,300,2592000);MachineCleanup.period(f.minimumSeconds);
         f.from=InventoryQueries.time(query(x,"from"),false);f.to=InventoryQueries.time(query(x,"to"),true);String range=query(x,"range");if(f.from.isEmpty()&&!range.isEmpty()&&!range.equals("all")){long hours=switch(range){case "24h"->24;case "7d"->168;case "30d"->720;default->throw new ApiError(400,"Invalid range");};f.from=java.time.Instant.now().minusSeconds(hours*3600).toString();}
         if(!f.from.isEmpty()&&!f.to.isEmpty()&&!java.time.Instant.parse(f.from).isBefore(java.time.Instant.parse(f.to)))throw new ApiError(400,"Invalid date range");return f;
@@ -262,6 +262,7 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
             if(k.equals("applications")&&!applicationIds.isEmpty()){condition="("+condition+" OR i.id IN ("+String.join(",",Collections.nCopies(applicationIds.size(),"?"))+"))";params.addAll(applicationIds);}
             related.put(k,store.documents("SELECT i.payload FROM inventory i WHERE i.host_id=? AND i.kind=? AND "+condition+" ORDER BY i.id LIMIT 20",params.toArray()));
         }
+        Lifecycle.decorate(kind,List.of(item),f.now);
         return map("item",item,"host",publicHost(host(f.host)),"related",related,"relatedLimit",20);
     }
     private Reply environmentChange(HttpExchange x)throws Exception{

@@ -1,0 +1,34 @@
+.support-badge{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-size:12px;line-height:1.5;border-radius:16px;padding:1px 10px 1px 3px;border:1px solid transparent;color:var(--ink)}
+.support-icon{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:50%;font-size:10px;font-weight:700;color:#fff;line-height:1}
+.support-fora{background:#f7dcd8;border-color:#e9b3ab;color:#7d1f17}
+.support-fora .support-icon,.support-icon.icon-fora{background:#d03b3b}
+.support-estendido{background:#fbe3d6;border-color:#efbfa5;color:#7a3511}
+.support-estendido .support-icon,.support-icon.icon-estendido{background:#c4602f}
+.support-proximo{background:#fcefc9;border-color:#ecd28a;color:#6b4b00}
+.support-proximo .support-icon,.support-icon.icon-proximo{background:#a87a00}
+.support-suportado{background:#dcefd6;border-color:#b2d6a7;color:#1f5a1f}
+.support-suportado .support-icon,.support-icon.icon-suportado{background:#2f7d2f}
+.support-desconhecido{background:#ebe9e4;border-color:#d6d3cc;color:#534e46}
+.support-desconhecido .support-icon,.support-icon.icon-desconhecido{background:#8a867d}
+.support-detail a{color:var(--link);overflow-wrap:anywhere}
+#support-filter-label select{max-width:220px}
+.risk-panel{margin-bottom:22px}
+.risk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;padding:16px 23px 20px}
+.risk-tile{position:relative;display:flex;flex-direction:column;gap:4px;min-width:0;padding:12px 14px;border-radius:8px;border:1px solid var(--dash-border);background:#fbfaf6;color:var(--ink);text-decoration:none;border-left-width:4px}
+.risk-tile strong{font-size:22px;font-weight:600;line-height:1.1}
+.risk-tile>span:not(.risk-go){font-size:12px;line-height:1.35;color:#4f4c46}
+a.risk-tile:hover span:not(.risk-go){text-decoration:underline}
+a.risk-tile:focus-visible{outline:2px solid #5e8555;outline-offset:2px}
+.risk-go{position:absolute;top:10px;right:12px;font-size:12px;color:#466f55}
+.risk-fora{border-left-color:#d03b3b}
+.risk-proximo{border-left-color:#fab219}
+.risk-desconhecido{border-left-color:#a8a59b}
+.risk-none{border-left-color:#d8d7cf;color:#8a8b80}
+.risk-none strong{color:#8a8b80}
+.landscape-group .support-icon{flex:none}
+@media (max-width:600px){.risk-grid{grid-template-columns:repeat(2,minmax(0,1fr));padding:14px 18px 16px;gap:8px}.risk-tile{padding:10px 11px}.risk-tile strong{font-size:19px}.risk-panel{margin-bottom:17px}}
+a.landscape-group{color:inherit;text-decoration:none}
+a.landscape-group:focus-visible{outline:2px solid #5e8555;outline-offset:2px}
+.version-group h3 .support-badge{vertical-align:middle;margin-left:6px}
+.runtime-card .support-badge{margin-left:6px}
+.support-detail{margin-bottom:18px}
