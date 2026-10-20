@@ -53,3 +53,7 @@ Logs finais locais: `tmp/direct-v3-218-to-2110.log`, `tmp/original-218-verifiers
 4. Validar Java 6/Linux real e as configurações do cliente. TomEE, `.installation`, bootable JAR em `/tmp`, segredos, classloaders personalizados e servidores parados permanecem fora do escopo desta ampliação.
 
 Logs locais: `tmp/tomcat-jboss-source.log`, `tmp/tomcat-jboss-ecj.log`, `output/dashboard-releases/2.1.10/evidence/` e `tmp/pdfs/documentation/review/`. Esses resultados são evidência de testes, não confirmação de implantação.
+
+## Publicação
+
+Código, documentação e três pacotes publicados em `main` e `tomcat-jboss-agente`, commit `eb40c8c`, com referências remotas conferidas. Os 149 arquivos executáveis/fontes selecionados do pacote de revisão coincidem com a árvore de trabalho. Aviso de conclusão enviado ao usuário; nenhum deploy remoto foi realizado.

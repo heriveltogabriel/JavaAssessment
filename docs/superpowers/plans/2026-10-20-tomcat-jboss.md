@@ -14,6 +14,8 @@ Execução com as skills brainstorming, writing-plans e executing-plans. Especif
 - [x] D: exibir proveniência, observações, VARIES por instância/servidor e preservar inventário antigo.
 - [x] Regressão: JAVA_HOME=JDK17 NODE=runtime /bin/sh ops/test-source.sh; ECJ source/target1.6 e major50. Regressão WebLogic intacta. Corrigir todas as falhas antes da versão.
 - [x] Revisão final e README/TODO/notas/guias. Só então incrementar uma vez e executar builds de release, web-update e instalador; comparar compatibilidade com pacote 2.1.8 e verificar artefatos finais.
-- [ ] Publicar código/documentação/instaladores em Git sem sobrescrever releases anteriores. Confirmar remoto. Enviar WhatsApp para Herivelto Gabriel com arquivo web-update e orientação de atualizar agentes/nova coleta.
+- [x] Publicar código/documentação/instaladores em Git sem sobrescrever releases anteriores. Confirmar remoto. Enviar WhatsApp para Herivelto Gabriel com arquivo web-update e orientação de atualizar agentes/nova coleta.
 
 Não fazer deploy remoto: o usuário vai validar a atualização pela console. Validações locais e compatibilidade de pacotes serão diferenciadas de ensaio em servidor real. Manter /home/opc/oracle somente no perfil legado conforme fallback autorizado na especificação.
+
+Entrega publicada em `main` e `tomcat-jboss-agente`: commit `eb40c8c`. Aviso de conclusão enviado ao usuário pelo WhatsApp. Console real permanece para validação do operador.
