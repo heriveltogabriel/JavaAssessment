@@ -489,6 +489,20 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
         } finally {if(temporary!=null)java.nio.file.Files.deleteIfExists(temporary);exportSlot.release();}
     }
 
+    private void exportInventoryArchive(HttpExchange x,Session session)throws Exception{
+        method(x,"GET");authorize(x,session);
+        String label=InventoryArchive.label(query(x,"label"));
+        if(!exportSlot.tryAcquire())throw new ApiError(429,"Outra exportação ou relatório está em andamento. Tente novamente em instantes.");
+        java.nio.file.Path temporary=null;
+        try{
+            temporary=java.nio.file.Files.createTempFile(data.toPath(),"inventory-archive-",".zip");
+            try{java.nio.file.Files.setPosixFilePermissions(temporary,java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"));}catch(UnsupportedOperationException ignored){}
+            try(OutputStream out=java.nio.file.Files.newOutputStream(temporary)){InventoryArchive.write(out,store,label);}
+            authorize(x,session);
+            x.getResponseHeaders().set("Content-Disposition","attachment; filename=\"java-assessment-inventario-"+java.time.LocalDate.now(java.time.ZoneOffset.UTC)+".zip\"");
+            file(x,temporary.toFile(),"application/zip");
+        }finally{try{if(temporary!=null)java.nio.file.Files.deleteIfExists(temporary);}finally{exportSlot.release();}}
+    }
     private void exportCsv(HttpExchange x,Session session)throws Exception{
         method(x,"GET");if(!exportSlot.tryAcquire())throw new ApiError(429,"An export is already running; retry shortly");java.nio.file.Path temporary=null;
         try{
@@ -534,6 +548,7 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
                 Session session=null;if(!path.startsWith("/api/agent/")){session=session(x);if(session==null)throw new ApiError(401,"Sign in required");authorize(x,session);if(write){origin(x);csrf(x,session);}}
                 if(path.equals("/api/session")){method(x,"GET");json(x,200,envelope(session,authority(session)));return;}
                 if(path.equals("/api/logout")){method(x,"POST");auth.logout(authority(session));Session ending=session;sessions.entrySet().removeIf(e->e.getValue()==ending);x.getResponseHeaders().set("Set-Cookie","assessment_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"+(x instanceof HttpsExchange?"; Secure":""));json(x,200,map("ok",true));return;}
+                if(path.equals("/api/admin/inventory-export")){exportInventoryArchive(x,session);return;}
                 if(path.equals("/api/export")){export(x,session);return;}
                 if(path.equals("/api/export.csv")){exportCsv(x,session);return;}
                 if(Set.of("/api/reports","/api/reports/options","/api/reports/export.csv","/api/reports/export.pdf").contains(path)){reports(x,session);return;}
@@ -559,6 +574,7 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
             }
             method(x,"GET");if(path.equals("/"))path="/index.html";File web=new File(root,"web").getCanonicalFile(),f=new File(web,path.substring(1)).getCanonicalFile();if(!f.getPath().startsWith(web.getPath()+File.separator))throw new ApiError(404,"Not found");String type=path.endsWith(".html")?"text/html; charset=utf-8":path.endsWith(".css")?"text/css; charset=utf-8":path.endsWith(".js")?"application/javascript; charset=utf-8":path.endsWith(".svg")?"image/svg+xml":"application/octet-stream";file(x,f,type);
         }catch(ApiError e){json(x,e.status,map("error",Portuguese.error(e.getMessage())));}
+        catch(InventoryArchive.Failure e){json(x,400,map("error",e.getMessage()));}
         catch(Reports.Failure e){json(x,e.status,map("error",Portuguese.error(e.getMessage())));}
         catch(UserAuth.Failure e){json(x,e.status,map("error",Portuguese.error(e.getMessage())));}
         catch(EnrollmentRegistry.Failure e){json(x,e.status,map("error",Portuguese.error(e.getMessage())));}

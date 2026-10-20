@@ -1,0 +1,11 @@
+# Exportação de inventário para análise
+
+Escopo aprovado: uma aba **Exportar inventário** em Administração, com download de um ZIP. Não haverá importação neste dashboard. A futura aplicação de análise consumirá o pacote. A escolha anterior de substituir cópias foi superada por este escopo.
+
+O administrador informa opcionalmente a identificação do levantamento/cliente e exporta todo o inventário atual, independentemente dos filtros abertos. O ZIP contém manifesto com versão do formato, versão do dashboard, data UTC, identificação e contagens; ambientes, máquinas e as seis coleções de inventário em JSON; e uma descrição do formato. JSON é interno ao ZIP, sem opção de download avulso nesta aba. Relatórios existentes continuam disponíveis.
+
+A exportação preserva IDs e vínculos, detalhes de Java, aplicações, servidores, JDBC, candidatos a driver, versões, destinos configurados e sistema operacional. Usa lista explícita de campos permitidos, inclusive nos objetos aninhados. Não exporta o banco SQLite, usuários, credenciais, tokens, certificados, configurações operacionais, comandos de processos, conteúdo de arquivos ou histórico de solicitações. Textos permitidos passam também por remoção de padrões de credenciais. Nomes de máquinas, IPs, caminhos e destinos de banco são dados de infraestrutura e permanecem identificáveis; o texto da tela informa isso, sem prometer que todo dado técnico é não sensível.
+
+O servidor exige administrador, gera o pacote em uma leitura transacional consistente, escreve incrementalmente em arquivo temporário privado e só inicia o download após concluir. Compartilha o limite de uma exportação/relatório por vez; limita bytes e registros e falha sem entregar arquivo truncado. Remove o temporário ao concluir ou falhar. A tela mostra geração em andamento, erros e confirmação de download iniciado, com proteção contra mudanças de sessão.
+
+Validação: ZIP legível; contagens e relacionamentos; versões/JARs JDBC e evidências; exclusão de credenciais inclusive aninhadas; arquivos temporários removidos; anonimato e leitor bloqueados; limite de tamanho; regressões do dashboard e navegação por teclado na nova aba. Sem incremento de versão nem publicação nesta etapa.

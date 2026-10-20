@@ -7,3 +7,7 @@
 .access-users-panel .table-wrap{position:relative;max-width:100%;overscroll-behavior-x:contain}.access-user-table th,.access-user-table td{position:relative}
 
 #profile-name,#profile-email{display:block}#profile-name{font-size:12px;color:#566548;margin-bottom:4px}
+
+/* Portable technical inventory export. */
+.inventory-export{max-width:900px;padding:24px}.inventory-export h2{margin:8px 0 12px}.inventory-export p{line-height:1.6}.inventory-export-details{margin:24px 0;padding:4px 20px 12px;border:1px solid var(--border,#d8d5cc);border-radius:8px;background:var(--surface,#faf9f6)}.inventory-export-details h3{font-size:15px;margin-bottom:4px}.inventory-export form>input{display:block;width:min(100%,540px);box-sizing:border-box;padding:12px;border:1px solid #918e87;border-radius:3px;background:#fff;color:#262522}.inventory-export .field span{font-weight:normal}.inventory-export [role=status]{min-height:1.6em}.inventory-export button:disabled{opacity:.65;cursor:wait}@media(max-width:640px){.inventory-export{padding:16px}.inventory-export-details{padding:2px 12px 10px}}
+@media(max-width:700px){.access-tabs{flex-wrap:wrap;gap:4px 16px}.access-tabs button{white-space:normal}}

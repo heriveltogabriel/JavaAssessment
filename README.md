@@ -6,6 +6,10 @@ Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versã
 
 Esta entrega reúne [configurações Spring/JDBC](docs/SPRING_DISCOVERY.md), [driver WebLogic por processo](docs/JDBC_DRIVER_RESOLUTION.md) e [Tomcat/JBoss](docs/TOMCAT_JBOSS_DISCOVERY.md). Veja as [notas da 2.1.14](docs/RELEASE_2.1.14.md).
 
+## Em desenvolvimento
+
+**Administração → Exportar inventário** gera um ZIP para análises em outra aplicação, com dados técnicos, vínculos e evidências da coleta. Não inclui cadastros de usuários, credenciais ou chaves. A funcionalidade está no código em desenvolvimento e ainda não faz parte dos instaladores 2.1.14 publicados. Consulte [o formato e o conteúdo do pacote](docs/INVENTORY_EXPORT.md).
+
 ## Recursos
 
 - Visão geral com quatro distribuições compactas: Java, sistemas operacionais, servidores por produto/versão e datasources por nome/versão do driver; máquinas em lista com busca e dez itens por página.

@@ -18,13 +18,13 @@ done
   --export tmp/source-evidence/jdbc-fixtures.json
 for suite in JdbcEndpointReportsTest DatabaseGroupsHttpTest EnvironmentPresenceTest ArchiveDefaultsHttpTest SettingsPathsHttpTest PortugueseTest InventoryStoreTest UserAuthTest UserAccessHttpTest DashboardMaintenanceHttpTest EnvironmentInstallAccessTest EnvironmentInstallHttpTest InstallCommandTest \
   MachineActionsHttpTest MachineCleanupHttpTest AgentUpdateWorkerTest AgentUpdateStartTimeoutTest AgentUpdateHttpTest \
-  WorkRequestsHttpTest RuntimeInventoryHttpTest CsvExportTest \
+  WorkRequestsHttpTest RuntimeInventoryHttpTest CsvExportTest InventoryArchiveTest InventoryArchiveHttpTest \
   VersionedCsvHttpTest DashboardVersionHttpTest CompactOverviewTest LifecycleHttpTest PostUpdateAssessmentsTest PostUpdateAssessmentHttpTest; do
   "$JAVA_HOME/bin/java" -Djava.io.tmpdir="$JTMP" -Xmx384m -cp "$CP" "assessment.$suite"
 done
 "$JAVA_HOME/bin/java" -Djava.io.tmpdir="$JTMP" -Xmx384m -cp "$CP" assessment.JdbcOverviewHttpTest \
   tmp/source-evidence/jdbc-fixtures.json tmp/source-evidence/jdbc-http
-for suite in jdbc-driver-ui.test.cjs jdbc-endpoint-ui.test.cjs datasources-ui.test.cjs environment-presence.test.cjs locale.test.cjs dashboard.test.cjs interface-refresh.test.cjs version-js.test.cjs agent-release-notice.test.cjs lifecycle-ui.test.cjs; do
+for suite in inventory-export-ui.test.cjs jdbc-driver-ui.test.cjs jdbc-endpoint-ui.test.cjs datasources-ui.test.cjs environment-presence.test.cjs locale.test.cjs dashboard.test.cjs interface-refresh.test.cjs version-js.test.cjs agent-release-notice.test.cjs lifecycle-ui.test.cjs; do
   "${NODE:-node}" "tests/$suite"
 done
 "${NODE:-node}" tests/jdbc-overview.test.cjs tmp/source-evidence/jdbc-http/overview-fixtures.json
