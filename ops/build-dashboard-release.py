@@ -99,7 +99,12 @@ def known_artifacts(support):
 
 
 def checked_run(argv, log):
-    result = subprocess.run(list(map(str, argv)), cwd=ROOT, capture_output=True, text=True, timeout=180)
+    command = list(map(str, argv))
+    if Path(command[0]).name == 'java':
+        fixture_dir = ROOT / 'tmp/java-tmp'
+        fixture_dir.mkdir(parents=True, exist_ok=True)
+        command.insert(1, '-Djava.io.tmpdir=' + str(fixture_dir))
+    result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, timeout=180)
     log.write_text(result.stdout + result.stderr)
     require(result.returncode == 0, 'Local check failed; see ' + str(log))
 
@@ -221,7 +226,7 @@ def package(release, out, support, previous, baselines, agent):
         for path in sorted((ROOT / folder).rglob('*')):
             if path.is_file() and path.suffix in ('.java', '.example', '.md'):
                 review[str(path.relative_to(ROOT))] = path.read_bytes()
-    for name in ('docs/validation/jdbc-discovery-2026-10-16.md', 'docs/runbooks/jdbc-discovery-lab.md', 'docs/SPRING_DISCOVERY.md', 'docs/SPRING_INTEGRATION.md', 'docs/ENVIRONMENT_INSTALL_ACCESS.md', 'docs/validation/recovery-installer-2026-10-16.md', 'docs/DASHBOARD_SELF_UPDATE.md', 'docs/validation/dashboard-self-update-2026-10-16.md', 'docs/runbooks/update-from-2.0.53.md', 'docs/RELEASE_' + version + '.md'):
+    for name in ('docs/validation/jdbc-discovery-2026-10-16.md', 'docs/runbooks/jdbc-discovery-lab.md', 'docs/SPRING_DISCOVERY.md', 'docs/JDBC_DRIVER_RESOLUTION.md', 'docs/TOMCAT_JBOSS_DISCOVERY.md', 'docs/SPRING_INTEGRATION.md', 'docs/ENVIRONMENT_INSTALL_ACCESS.md', 'docs/validation/recovery-installer-2026-10-16.md', 'docs/DASHBOARD_SELF_UPDATE.md', 'docs/validation/dashboard-self-update-2026-10-16.md', 'docs/runbooks/update-from-2.0.53.md', 'docs/RELEASE_' + version + '.md'):
         review[name] = (ROOT / name).read_bytes()
     review['ops/build-dashboard-web-update.py'] = (ROOT / 'ops/build-dashboard-web-update.py').read_bytes()
     review['release/dashboard.json'] = (json.dumps({'version': version, 'releases': [{**release, 'status': 'prepared'}]}, indent=2) + '\n').encode()
@@ -293,7 +298,7 @@ def main():
         jdbc_fixture = evidence / 'jdbc-collector-fixtures.json'
         checked_run([JDK / 'bin/java', '-Xmx96m', '-cp', str(worker_tests) + ':' + worker_cp,
                      'assessment.ServerDataSourcesTest', '--export', jdbc_fixture], evidence / 'jdbc-collector.log')
-        for suite in ('ProductHomesTest', 'HsPerfDataTest', 'JdbcDriverResolverTest', 'JdbcEndpointTest', 'SpringConfigurationTest', 'SpringIntegrationTest', 'SpringDataSourceTest', 'RuntimeInventoryTest', 'ProcessLaunchTest', 'JdkInventoryTest', 'ArchiveMetadataTest', 'WebLogicVersionTest', 'BoundedDirectoryTest', 'CollectorSweepTest', 'CollectorTest', 'AgentToolTest'):
+        for suite in ('ProductHomesTest', 'HsPerfDataTest', 'JdbcDriverResolverTest', 'WebLogicPrecedenceTest', 'TomcatDiscoveryTest', 'JbossDiscoveryTest', 'NativeTomcatTest', 'JdbcEndpointTest', 'ApplicationConfigFilesTest', 'SpringExtendedTest', 'JndiLinksTest', 'ApplicationJdbcTest', 'AgentConfigAcceptanceTest', 'SpringConfigurationTest', 'SpringIntegrationTest', 'SpringDataSourceTest', 'RuntimeInventoryTest', 'ProcessLaunchTest', 'JdkInventoryTest', 'ArchiveMetadataTest', 'WebLogicVersionTest', 'BoundedDirectoryTest', 'CollectorSweepTest', 'CollectorTest', 'AgentToolTest'):
             checked_run([JDK / 'bin/java', '-Xmx96m', '-cp', str(worker_tests) + ':' + worker_cp,
                          'assessment.' + suite], evidence / (suite + '.log'))
         checked_run([JDK / 'bin/java', '-Xmx96m', '-cp', str(worker_tests) + ':' + worker_cp,

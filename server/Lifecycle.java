@@ -15,10 +15,10 @@ import static assessment.AssessmentServer.map;
 final class Lifecycle {
     static final String OUT="fora",EXTENDED="estendido",ENDING="proximo",SUPPORTED="suportado",UNKNOWN="desconhecido";
     static final List<String> STATUSES=List.of(OUT,EXTENDED,ENDING,SUPPORTED,UNKNOWN);
-    static final Set<String> KINDS=Set.of("runtimes","servers","applications","libraries");
+    static final Set<String> KINDS=Set.of("runtimes","servers","applications","libraries","datasources");
     /** SQL expression for the row status; bind the reference date (yyyy-MM-dd) once where it appears. */
-    static final String SQL="lifecycle_status(i.kind,i.type,i.version,i.major,coalesce(json_extract(i.payload,'$.applicationType'),''),coalesce(json_extract(i.payload,'$.frameworkVersion'),''),coalesce(json_extract(i.payload,'$.name'),''),?)";
-    static final String DRIVER_UNRESOLVED="(upper(coalesce(json_extract(i.payload,'$.driverResolution'),'')) IN ('NOT_FOUND','INCOMPLETE','AMBIGUOUS') OR coalesce(json_extract(i.payload,'$.driverVersion'),'')='')";
+    static final String SQL="lifecycle_status(i.kind,CASE WHEN i.kind='datasources' THEN coalesce(json_extract(i.payload,'$.driverName'),'') ELSE i.type END,CASE WHEN i.kind='datasources' THEN CASE WHEN upper(coalesce(json_extract(i.payload,'$.driverResolution'),'')) IN ('AMBIGUOUS','INCOMPLETE','VARIES','NOT_FOUND') THEN '' ELSE coalesce(json_extract(i.payload,'$.driverVersion'),'') END ELSE i.version END,i.major,coalesce(json_extract(i.payload,'$.applicationType'),''),coalesce(json_extract(i.payload,'$.frameworkVersion'),''),coalesce(json_extract(i.payload,'$.name'),''),?)";
+    static final String DRIVER_UNRESOLVED="(upper(coalesce(json_extract(i.payload,'$.driverResolution'),'')) IN ('NOT_FOUND','INCOMPLETE','AMBIGUOUS') OR (coalesce(json_extract(i.payload,'$.driverVersion'),'')='' AND upper(coalesce(json_extract(i.payload,'$.driverResolution'),'')) NOT IN ('PROBABLE','VARIES')))";
     static final String REPLACED="json_extract(i.payload,'$.runtimeReplacedOnDisk')=1";
     private static volatile Map<String,Object> catalog=map("produtos",List.of());
 
@@ -42,6 +42,7 @@ final class Lifecycle {
             case "servers":return t.contains("weblogic")?"weblogic":t.contains("wildfly")?"wildfly":t.contains("jboss")?"jboss-eap":t.contains("tomcat")?"tomcat":"";
             case "applications":return "spring boot".equalsIgnoreCase(applicationType)||"spring boot".equals(t)?"spring-boot":"";
             case "libraries":return name.toLowerCase(Locale.ROOT).contains("ojdbc")?"oracle-jdbc":"";
+            case "datasources":return t.startsWith("oracle.jdbc.")||name.toLowerCase(Locale.ROOT).contains("ojdbc")?"oracle-jdbc":"";
             default:return "";
         }
     }
@@ -94,14 +95,16 @@ final class Lifecycle {
     @SuppressWarnings("unchecked")
     static Map<String,Object> support(String kind,Map<String,Object> item,LocalDate today){
         if(!KINDS.contains(kind))return null;
-        String version=s(item.get("version"));
-        String type=s(item.containsKey("type")?item.get("type"):item.get("name"));
+        String version=s(item.get(kind.equals("datasources")?"driverVersion":"version"));
+        if(kind.equals("datasources")&&Set.of("AMBIGUOUS","INCOMPLETE","VARIES","NOT_FOUND").contains(s(item.get("driverResolution"))))version="";
+        String type=kind.equals("datasources")?s(item.get("driverName")):s(item.containsKey("type")?item.get("type"):item.get("name"));
         Map<String,Object> line=line(kind,type,version,InventoryStore.major(version),s(item.get("applicationType")),s(item.get("frameworkVersion")),s(item.get("name")));
         if(line==null)return map("status",UNKNOWN,"dataReferencia",catalog.get("dataReferencia"));
         Map<String,Object> product=(Map<String,Object>)line.remove("produto");
         Object fixed=line.remove("status");
         Map<String,Object> result=map("status",fixed!=null?fixed:status(line,today),"produto",product.get("produto"),"fornecedor",product.get("fornecedor"),"referencia",product.get("referencia"),"dataReferencia",catalog.get("dataReferencia"));
         for(Map.Entry<String,Object> entry:line.entrySet())if(entry.getValue()!=null)result.put(entry.getKey(),entry.getValue());
+        if(kind.equals("datasources")&&"PROBABLE".equals(item.get("driverResolution")))result.put("confidence","PROBABLE");
         if(!result.containsKey("fonte"))result.put("fonte",product.get("fonte"));
         if(!result.containsKey("observacao")&&product.get("observacao")!=null)result.put("observacao",product.get("observacao"));
         return result;

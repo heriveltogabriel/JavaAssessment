@@ -78,6 +78,7 @@ final class InventoryQueries {
         List<Object> libraries=new ArrayList<>(),datasources=new ArrayList<>();Set<String> hosts=new LinkedHashSet<>();
         for(Map<String,Object> row:db.rows("SELECT i.kind,i.host_id,i.payload FROM inventory i JOIN hosts h ON h.id=i.host_id WHERE "+kinds+" AND "+w+" ORDER BY i.kind DESC,h.hostname,i.host_id,i.id LIMIT ? OFFSET ?",a.toArray())){(s(row.get("kind")).equals("datasources")?datasources:libraries).add(Json.parse(s(row.get("payload"))));hosts.add(s(row.get("host_id")));}
         Lifecycle.decorate("libraries",(List<Map<String,Object>>)(List<?>)libraries,f.now);
+        Lifecycle.decorate("datasources",(List<Map<String,Object>>)(List<?>)datasources,f.now);
         return map("libraries",libraries,"datasources",datasources,"hostIds",hosts,"pagination",map("collection","libraries","page",p,"pageSize",f.size,"total",total,"pages",pages));
     }
     Map<String,Object> summary(Scope f){

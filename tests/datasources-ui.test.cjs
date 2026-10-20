@@ -20,7 +20,7 @@ assert(!ds.reportCell('<img src=x> — d · Destino configurado: <b>').includes(
 const h={link:(k,id,label,sub)=>'['+label+(sub?'|'+sub:'')+']',hostLink:id=>'host:'+id,value:v=>v==null||v===''?'—':String(v),resolutionLabel:s=>({IDENTIFIED:'Identificado em arquivo',NOT_FOUND:'Driver não localizado'})[s]||''};
 const row={id:'a',hostId:'h1',name:'jdbc/Pedidos',jndiNames:['jdbc/Pedidos','java:/Pedidos'],serverName:'AdminServer',associations:[{applicationName:'loja'}],linkedContexts:[{context:'context:/shop'}],databaseType:'Oracle',databaseHost:'db1',databasePort:1521,databaseName:'PEDIDOS',driverName:'oracle.jdbc.OracleDriver',driverVersion:'19.3',driverResolution:'NOT_FOUND',state:'DISABLED'};
 const cols=ds.columns(h);
-assert.deepEqual(cols.map(c=>c.key),['name','host','relations','databaseType','destination','driver','driverResolution','state']);
+assert.deepEqual(cols.map(c=>c.key),['name','host','relations','databaseType','destination','driver','driverArtifact','driverVersion','support','driverResolution','state']);
 const rendered=Object.fromEntries(cols.map(c=>[c.key,c.render(row)]));
 assert.equal(rendered.name,'[jdbc/Pedidos|java:/Pedidos]');
 assert(rendered.relations.includes('AdminServer')&&rendered.relations.includes('loja')&&rendered.relations.includes('context:/shop'));

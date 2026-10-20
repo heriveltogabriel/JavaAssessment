@@ -27,6 +27,14 @@ public final class ProcessLaunchTest {
         // Deliberately no readable exe/cwd: matches a collector inspecting another service user's process.
     }
     static void parser() throws Exception {
+        ProcessLaunch misplaced = ProcessLaunch.parse(new String[]{"java", "-jar", "-Duser.country=BR", "-Dspring.profiles.active=prod", "FORMACAO_PERIODOS_SE.jar", "-XX:MaxPermSize=512m", "-Xmx2G", "-Dpassword=SECRET_CANARY"}, new File("/u01/app"));
+        check("/u01/app/FORMACAO_PERIODOS_SE.jar".equals(misplaced.jarPath), "Options between -jar and relative artifact");
+        check("prod".equals(misplaced.springSystem.get("spring.profiles.active")) && misplaced.jvmOptionsAfterJar, "Pre-JAR properties and post-JAR observation");
+        check(!misplaced.springSystem.toString().contains("SECRET_CANARY"), "Post-JAR values are not JVM properties");
+        check(ProcessLaunch.parse(new String[]{"java","-jar","-Xmx1G"},new File("/app")).jarPath==null,"No artifact after options");
+        check(ProcessLaunch.parse(new String[]{"java","-jar"},null).jarPath==null,"Missing jar");
+        Map<String,String> perf=attrs("sun.rt.javaCommand","correct.jar --password SECRET_CANARY");
+        check("/app/correct.jar".equals(ProcessLaunch.parse(new String[]{"java","-jar","wrong.jar"},new File("/app"),perf).jarPath),"Perfdata confirms artifact without retaining application arguments");
         ProcessLaunch jar = ProcessLaunch.parse(new String[]{"java","-Dpassword=PRIVATE_CANARY","-jar","/opt/app.jar","--password","PRIVATE_CANARY","org.jboss.as.standalone"},null);
         check(jar.mainClass==null && jar.serverType==null && "/opt/app.jar".equals(jar.jarPath),"Application arguments must never become a main class/server");
         ProcessLaunch main = ProcessLaunch.parse(new String[]{"java","--add-opens","java.base/java.lang=ALL-UNNAMED","--class-path=/opt/lib/a.jar:/opt/lib/b.jar","com.example.Main","weblogic.Server"},null);

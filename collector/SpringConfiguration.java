@@ -12,7 +12,9 @@ final class SpringConfiguration {
     static String normalized(String s) { return SpringDataSource.key(s); }
     static boolean relevant(String s) {
         String k = normalized(s);
+        if (JdbcEndpoint.Resolver.secret(k)) return false;
         for (String c : CONTROLS) if (k.equals(normalized(c))) return true;
+        if (Arrays.asList("spring.jpa.database", "spring.jpa.databaseplatform", "spring.jpa.properties.hibernate.dialect", "hibernate.dialect").contains(k)) return true;
         if (k.startsWith("spring.profiles.group.")) return true;
         if (!(k.startsWith("spring.datasource.") || k.indexOf("datasource.") >= 0)) return false;
         for (String suffix : new String[]{"url", "jdbcurl", "driverclassname", "maximumpoolsize", "name", "poolname", "jndiname", "type"})
@@ -24,6 +26,7 @@ final class SpringConfiguration {
     }
     final AssessmentScan scan; final AssessmentScan.ProcessContext context;
     final List<String> prefixes = new ArrayList<String>();
+    final Map<String,String> prefixLabels = new LinkedHashMap<String,String>();
     final List<File> classpathRoots = new ArrayList<File>();
     final Map<String,String> startup = new LinkedHashMap<String,String>(), values = new LinkedHashMap<String,String>();
     final Map<String,String> origins = new LinkedHashMap<String,String>(), environment = new LinkedHashMap<String,String>();
@@ -34,20 +37,28 @@ final class SpringConfiguration {
     File artifact; ZipFile zip; String archivePrefix; boolean partial, artifactIdentityVerified; int files;
     final Set<String> duplicateEntries = new HashSet<String>();
     String rawEnvironment;
+    final Set<String> merging = new HashSet<String>(), imports = new HashSet<String>(), importedSources = new HashSet<String>();
+    int importDepth;
     JdbcEndpoint.Resolver resolver;
     SpringConfiguration(AssessmentScan scan, AssessmentScan.ProcessContext context) {
         this.scan = scan; this.context = context; prefixes.add("spring.datasource");
         String custom = scan.config.getProperty("spring.datasourcePrefixes", "");
         for (String prefix : custom.split(",")) {
             prefix = prefix.trim();
-            if (prefixes.size() < 9 && prefix.matches("[a-zA-Z][a-zA-Z0-9_.-]{0,119}") && !prefixes.contains(prefix)) prefixes.add(prefix);
+            if (prefixes.size() < 9 && prefix.matches("[a-zA-Z][a-zA-Z0-9_.-]{0,119}") && !prefixes.contains(normalized(prefix))) { prefixes.add(normalized(prefix)); prefixLabels.put(normalized(prefix), prefix); }
         }
     }
     static final class Capture extends SpringDataSource.AllowedProperties {
         final SpringConfiguration owner;
         Capture(SpringConfiguration owner) { this.owner = owner; }
         public synchronized Object put(Object k, Object v) {
-            String key = normalized(String.valueOf(k));
+            String rawKey = String.valueOf(k);
+            String key = normalized(rawKey);
+            int dot = rawKey.lastIndexOf('.');
+            if (dot > 0 && owner.prefixLabels.size() < 32) {
+                String prefix = rawKey.substring(0, dot);
+                if (prefix.matches("[a-zA-Z][a-zA-Z0-9_.-]{0,119}") && normalized(prefix).endsWith("datasource")) owner.prefixLabels.put(normalized(prefix), prefix);
+            }
             boolean keep = relevant(key);
             for (String prefix : owner.prefixes) if (key.startsWith(normalized(prefix) + ".")) {
                 String suffix = key.substring(normalized(prefix).length() + 1);
@@ -71,7 +82,7 @@ final class SpringConfiguration {
     void run(File processDirectory) throws IOException {
         String jar = context.launch.jarPath;
         if (jar != null) {
-            artifact = scan.linkedPath(new File(jar));
+            artifact = ApplicationConfigFiles.safe(scan, new File(jar));
             if (artifact == null || !artifact.isFile() || !"Spring Boot".equals(context.application.get("applicationType"))) return;
             if (artifact.length() > ArchiveMetadata.FILE_LIMIT) return;
             packaged = scan.archiveMetadata.configuration(artifact);
@@ -86,7 +97,7 @@ final class SpringConfiguration {
             // An exploded Boot launcher has an explicit process classpath, not a guessed working directory.
             for (String path : context.launch.classpath) {
                 if (!(ProcessLaunch.springLauncher(context.launch.mainClass) || context.springBootEvidence)) break;
-                File dir = scan.linkedPath(new File(path));
+                File dir = ApplicationConfigFiles.safe(scan, new File(path));
                 if (dir == null) { partial = true; classpathRoots.add(new File(path)); break; }
                 if (classpathRoots.size() >= 16) { partial = true; break; }
                 File boot = new File(dir, "BOOT-INF/classes");
@@ -107,6 +118,18 @@ final class SpringConfiguration {
         // Spring order for placeholder keys: loaded configuration and startup values, -D properties, then the environment.
         resolver = new JdbcEndpoint.Resolver(scan, processDirectory) {
             String environment(String key) { return envValue(key); }
+            String property(String key) {
+                if (secret(key)) return null;
+                String found = null; String[] argv = lines("cmdline", arguments); arguments = argv;
+                for (int i = 1; i < argv.length; i++) {
+                    String arg = argv[i];
+                    if (arg.equals("-jar")) continue;
+                    if (arg.equals("-cp") || arg.equals("-classpath") || arg.equals("--class-path") || ProcessLaunch.takesValue(arg)) { i++; continue; }
+                    if (!arg.startsWith("-")) break;
+                    if (arg.startsWith("-D" + key + "=")) found = arg.substring(key.length() + 3);
+                }
+                return found;
+            }
             String lookup(String key, List<String> sources) {
                 String found = values.get(normalized(key));
                 if (found != null) { source(sources, "configuration"); return found; }
@@ -125,8 +148,14 @@ final class SpringConfiguration {
         startup.putAll(context.launch.springSystem); startup.putAll(context.launch.springArguments);
         List<String> locations = locations();
         String basename = get(startup, "spring.config.name"); if (basename == null) basename = "application";
-        List<String> names = tokens(basename, false); if (names.isEmpty()) { partial = true; return; }
+        List<String> names = tokens(basename, false); if ("application".equals(basename)) names.add(0, "bootstrap"); if (names.isEmpty()) { partial = true; return; }
         load(locations, names, Collections.<String>emptyList());
+        String configuredName = ProcessLaunch.label(SpringDataSource.first(get(startup, "spring.application.name"), get(values, "spring.application.name")));
+        if (configuredName != null) {
+            context.application.put("name", configuredName);
+            for (String loc : scan.applicationConfigFiles.locations(context)) if (!locations.contains(loc)) locations.add(loc);
+            load(locations, names, Collections.<String>emptyList());
+        }
         Map<String,String> controls = new LinkedHashMap<String,String>(values); controls.putAll(startup);
         String active = get(controls, "spring.profiles.active");
         if (active == null) active = get(controls, "spring.profiles.default");
@@ -138,15 +167,34 @@ final class SpringConfiguration {
         load(locations, names, profiles);
         values.putAll(startup);
         for (String key : startup.keySet()) origins.put(key, "process startup configuration");
-        if (get(values, "spring.config.import") != null) partial = true;
+        followImports(get(startup, "spring.config.import"), null);
+        values.putAll(startup);
         String appName = ProcessLaunch.label(setting("spring.application", "name"));
         if (appName != null) context.application.put("name", appName);
         context.application.put("activeProfiles", new ArrayList<String>(profiles));
         context.application.put("configurationResolution", partial ? "partial" : "local-candidate");
         context.application.put("configurationEvidence", "Local configuration candidates; programmatic overrides, remote imports and actual datasource use are not verified");
+        autoPrefixes();
         for (String prefix : prefixes) add(prefix);
         context.application.put("configurationResolution", partial ? "partial" : "local-candidate");
         if (partial) scan.note("Spring configuration includes unresolved activation, imports or unsupported local sources; effective configuration was not verified");
+    }
+    static void machine(AssessmentScan scan, File file) {
+        Map app = AssessmentScan.map("name", "Configuração da máquina");
+        AssessmentScan.ProcessContext context = new AssessmentScan.ProcessContext(new ProcessLaunch(), 0, null, new LinkedHashMap(), app);
+        SpringConfiguration config = new SpringConfiguration(scan, context); config.artifact = file;
+        config.resolver = new JdbcEndpoint.Resolver(scan, null);
+        config.merge(file.getPath());
+        int before = scan.datasources.size();
+        config.autoPrefixes();
+        for (String prefix : config.prefixes) config.add(prefix);
+        for (int i = before; i < scan.datasources.size(); i++) {
+            Map row = (Map)scan.datasources.get(i);
+            for (String key : new String[]{"pid", "applicationId", "applicationName", "associations"}) row.remove(key);
+            row.put("configurationBinding", "machine-unbound"); row.put("scanScope", "app-config-dir");
+            row.put("evidence", "Configuração da máquina não vinculada a uma aplicação");
+        }
+        config.values.clear(); config.cache.clear();
     }
     boolean hasEntryPrefix(String prefix) {
         Enumeration<? extends ZipEntry> entries = zip.entries(); int n = 0;
@@ -180,6 +228,7 @@ final class SpringConfiguration {
             result.add("classpath:"); result.add("classpath:config/");
             if (context.launch.cwd != null) { result.add(context.launch.cwd.getPath() + "/"); result.add(new File(context.launch.cwd, "config").getPath() + "/"); }
         } else appendLocations(result, explicit);
+        result.addAll(scan.applicationConfigFiles.locations(context));
         appendLocations(result, get(startup, "spring.config.additional-location"));
         return result;
     }
@@ -224,11 +273,78 @@ final class SpringConfiguration {
         }
     }
     boolean merge(String location) {
-        Properties properties = readConfig(location);
-        if (properties == null) return false;
-        if (properties.containsKey(normalized("spring.config.activate.on-profile")) || properties.containsKey(normalized("spring.config.activate.on-cloud-platform")) || properties.containsKey("spring.profiles")) { partial = true; return true; }
-        for (Object raw : properties.keySet()) { String k = String.valueOf(raw); values.put(k, properties.getProperty(k)); origins.put(k, source(location)); }
-        return true;
+        if (!merging.add(location)) { incomplete("Ciclo de imports locais do Spring detectado"); return false; }
+        try {
+            Properties properties = readConfig(location);
+            if (properties == null) return false;
+            if (properties.containsKey(normalized("spring.config.activate.on-profile")) || properties.containsKey(normalized("spring.config.activate.on-cloud-platform")) || properties.containsKey("spring.profiles")) { partial = true; return true; }
+            for (Object raw : properties.keySet()) { String k = String.valueOf(raw); values.put(k, properties.getProperty(k)); origins.put(k, source(location)); }
+            followImports(properties.getProperty(normalized("spring.config.import")), location);
+            return true;
+        } finally { merging.remove(location); }
+    }
+    void incomplete(String message) { partial = true; scan.note(message); }
+    void followImports(String value, String from) {
+        if (value == null) return;
+        if (importDepth >= 3) { incomplete("Limite de profundidade dos imports Spring atingido"); return; }
+        for (String item : value.split(",")) {
+            String target = item.trim(); boolean optional = target.startsWith("optional:");
+            if (optional) target = target.substring(9);
+            if (target.length() == 0) continue;
+            target = resolve(target, new ArrayList<String>());
+            if (target == null) { incomplete("Import Spring com caminho não resolvido"); continue; }
+            boolean local = target.startsWith("file:"); if (local) target = target.substring(5);
+            if (target.startsWith("classpath:")) {
+                if (zip == null && packaged == null) { incomplete("Import classpath fora do arquivo inspecionado não foi seguido"); continue; }
+                target = "classpath:" + target.substring(10).replaceFirst("^/", "");
+            } else if (target.indexOf(':') >= 0 || target.indexOf('*') >= 0) {
+                incomplete("Import Spring remoto ou protocolo não suportado não foi seguido"); continue;
+            } else if (!local && !new File(target).isAbsolute() && from != null && from.startsWith("classpath:")) {
+                String origin = from.substring(10); int slash = origin.lastIndexOf('/');
+                target = "classpath:" + (slash < 0 ? "" : origin.substring(0, slash + 1)) + target;
+            } else {
+                File base = from != null && !from.startsWith("classpath:") ? new File(from).getParentFile() : context.launch.cwd;
+                String resolved = ProcessLaunch.path(target, base);
+                File safe = resolved == null ? null : ApplicationConfigFiles.safe(scan, new File(resolved));
+                if (safe == null) { incomplete("Import Spring excluído, inválido ou com link simbólico"); continue; }
+                target = safe.getPath();
+            }
+            if (!imports.contains(target) && imports.size() >= 20) { incomplete("Limite de 20 arquivos importados pelo Spring atingido"); continue; }
+            if (!target.matches(".*\\.(properties|yml|yaml)")) { incomplete("Formato de import Spring não suportado"); continue; }
+            imports.add(target); importedSources.add(source(target));
+            importDepth++;
+            try { if (!merge(target) && !optional) incomplete("Arquivo de import Spring obrigatório não encontrado"); }
+            finally { importDepth--; }
+        }
+    }
+    void autoPrefixes() {
+        for (String key : values.keySet()) {
+            int end = key.lastIndexOf("datasource."); if (end < 0) continue;
+            String suffix = key.substring(end + 11);
+            if (!Arrays.asList("url", "jdbcurl", "jndiname", "driverclassname").contains(suffix)) continue;
+            String prefix = key.substring(0, end + 10);
+            if (prefixes.size() < 32 && !prefixes.contains(prefix)) prefixes.add(prefix);
+        }
+    }
+    static String dialectType(String value) {
+        if (value == null) return null;
+        String v = value.toLowerCase(Locale.ENGLISH);
+        if (v.contains("postgres")) return "PostgreSQL";
+        if (v.contains("oracle")) return "Oracle";
+        if (v.contains("sqlserver") || v.equals("sql_server")) return "SQL Server";
+        if (v.contains("mariadb")) return "MariaDB";
+        if (v.contains("mysql")) return "MySQL";
+        if (v.contains("db2")) return "DB2";
+        return null;
+    }
+    void dialect(Map fields) {
+        String hint = null;
+        for (String key : new String[]{"spring.jpa.database", "spring.jpa.database-platform", "spring.jpa.properties.hibernate.dialect", "hibernate.dialect"}) {
+            hint = dialectType(get(values, key)); if (hint != null) break;
+        }
+        if (hint == null) return;
+        if (fields.get("databaseType") == null) { fields.put("databaseType", hint); fields.put("databaseTypeEvidence", "Tipo inferido pelo dialeto/JPA; conexão não verificada"); }
+        else if (!hint.equals(fields.get("databaseType"))) fields.put("configurationObservation", "O tipo de banco da URL diverge do dialeto/JPA; o tipo da URL foi preservado");
     }
     String source(String loc) {
         if (resourceOrigins.containsKey(loc)) return resourceOrigins.get(loc);
@@ -238,10 +354,10 @@ final class SpringConfiguration {
         if (!ArchiveMetadata.safeName(name)) throw new IOException("Unsafe resource");
         for (File root : classpathRoots) {
             if (!scan.available()) throw new IOException("Deadline");
-            File safeRoot = scan.linkedPath(root);
+            File safeRoot = ApplicationConfigFiles.safe(scan, root);
             if (safeRoot == null || root.getName().equals("*")) throw new IOException("Classpath order not resolved");
             if (safeRoot.isDirectory()) {
-                File file = scan.linkedPath(new File(safeRoot, name));
+                File file = ApplicationConfigFiles.safe(scan, new File(safeRoot, name));
                 if (file == null) throw new IOException("Excluded resource");
                 if (!file.exists()) continue;
                 if (!scan.visitLinked(file) || !file.isFile() || file.length() > ArchiveMetadata.METADATA_LIMIT) throw new IOException("Resource limit");
@@ -260,7 +376,7 @@ final class SpringConfiguration {
     }
     Properties readConfig(String location) {
         if (cache.containsKey(location)) return cache.get(location);
-        if (!scan.available() || files >= 32) { partial = true; return null; }
+        if (!scan.available() || files >= 64) { partial = true; return null; }
         byte[] bytes = null;
         try {
             if (location.startsWith("classpath:") && !classpathRoots.isEmpty()) {
@@ -283,11 +399,12 @@ final class SpringConfiguration {
                 try { bytes = scan.archiveMetadata.read(in, ArchiveMetadata.METADATA_LIMIT); } finally { in.close(); }
             } else {
                 File file = location.startsWith("classpath:") ? new File(artifact, location.substring(10)) : new File(location);
-                File safe = scan.linkedPath(file); if (safe == null) { partial = true; return null; }
+                File safe = ApplicationConfigFiles.safe(scan, file); if (safe == null) { partial = true; return null; }
                 if (!safe.exists()) { cache.put(location, null); return null; }
-                files++; if (!scan.visitLinked(safe) || !safe.isFile() || safe.length() > ArchiveMetadata.METADATA_LIMIT) throw new IOException("Size");
+                scan.applicationConfigFiles.claim(safe, context);
+                files++; if (!scan.visitLinked(safe) || !safe.isFile() || safe.length() > 1024 * 1024) throw new IOException("Size");
                 InputStream in = new FileInputStream(safe);
-                try { bytes = scan.archiveMetadata.read(in, ArchiveMetadata.METADATA_LIMIT); } finally { in.close(); }
+                try { bytes = scan.archiveMetadata.read(in, 1024 * 1024); } finally { in.close(); }
             }
             Capture p = new Capture(this);
             if (location.endsWith(".properties")) {
@@ -321,7 +438,13 @@ final class SpringConfiguration {
         JdbcEndpoint.addTo(fields, url, resolver, sources);
         if (db != null) fields.put("databaseType", db); if (driver != null) fields.put("driverName", driver);
         if (jndi != null) fields.put("jndiName", jndi);
-        String name = ProcessLaunch.label(setting(prefix, "name")); if (name != null) fields.put("configuredName", name);
+        dialect(fields);
+        String name = ProcessLaunch.label(setting(prefix, "name"));
+        if (name == null && !normalized(prefix).equals("spring.datasource")) {
+            name = prefixLabels.containsKey(normalized(prefix)) ? prefixLabels.get(normalized(prefix)) : prefix;
+            name = name.replaceFirst("[.]datasource$", "");
+        }
+        if (name != null) fields.put("configuredName", name);
         // Pool names are deliberately excluded: existing snapshots promised not to retain arbitrary pool identifiers.
         String max = setting(prefix, "hikari.maximum-pool-size");
         if (max != null && max.matches("[0-9]{1,6}")) { int n = Integer.parseInt(max); if (n > 0 && n <= 100000) fields.put("configuredMaxPoolSize", Integer.valueOf(n)); }
@@ -330,13 +453,17 @@ final class SpringConfiguration {
             if (origins.containsKey(normalized(prefix + "." + suffix))) { origin = origins.get(normalized(prefix + "." + suffix)); break; }
         }
         fields.put("configurationSource", origin == null ? artifact.getPath() : origin);
+        String method = importedSources.contains(origin) ? "spring-import" : origin != null && scan.applicationConfigFiles.claimed.contains(origin) ? "app-config-dir" : "spring-properties";
+        fields.put("discoveryMethod", method);
+        List methods = fields.get("resolvedFrom") instanceof List ? (List)fields.get("resolvedFrom") : new ArrayList();
+        if (!methods.contains(method)) methods.add(method); fields.put("resolvedFrom", methods);
         fields.put("configurationResolution", partial ? "partial" : "local-candidate");
         fields.put("activeProfiles", new ArrayList<String>(profiles));
         List candidates = new ArrayList();
         for (Object raw : scan.libraries) {
             Map lib = (Map)raw; Object associations = lib.get("associations");
-            boolean belongs = context.application.get("id").equals(lib.get("applicationId"));
-            if (associations instanceof List) for (Object a : (List)associations) if (context.application.get("id").equals(((Map)a).get("applicationId"))) belongs = true;
+            boolean belongs = context.application.get("id") != null && context.application.get("id").equals(lib.get("applicationId"));
+            if (associations instanceof List) for (Object a : (List)associations) if (context.application.get("id") != null && context.application.get("id").equals(((Map)a).get("applicationId"))) belongs = true;
             if (belongs) candidates.add(lib);
         }
         SpringDataSource.matchPackagedDriver(fields, candidates);
@@ -348,10 +475,10 @@ final class SpringConfiguration {
         if (context.launch.mainClass == null) return;
         String name = context.launch.mainClass.replace('.', '/') + ".class";
         for (File root : classpathRoots) try {
-            File safe = scan.linkedPath(root);
+            File safe = ApplicationConfigFiles.safe(scan, root);
             if (safe == null || root.getName().equals("*")) { partial = true; return; }
             if (safe.isDirectory()) {
-                File main = scan.linkedPath(new File(safe, name));
+                File main = ApplicationConfigFiles.safe(scan, new File(safe, name));
                 if (main == null) { partial = true; return; }
                 if (main.isFile()) { artifact = safe; artifactIdentityVerified = true; return; }
             } else if (safe.isFile() && safe.getName().toLowerCase(Locale.ENGLISH).endsWith(".jar")) {
@@ -374,7 +501,7 @@ final class SpringConfiguration {
                     if (jar.duplicates.contains(name)) { partial = true; continue; }
                     identity = jar.entries.get(name);
                 } else {
-                    File file = scan.linkedPath(new File(artifact, name));
+                    File file = ApplicationConfigFiles.safe(scan, new File(artifact, name));
                     if (file == null || !file.isFile()) continue;
                     if (!scan.visitLinked(file)) { partial = true; continue; }
                     String text = scan.metadataText(file, 65536, false);

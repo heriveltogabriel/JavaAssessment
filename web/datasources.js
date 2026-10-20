@@ -53,10 +53,13 @@
         if (resolved) return '<span class="ds-destination">' + esc(value) + '</span>';
         return '<span class="unknown">Não identificado</span>' + (value ? '<span class="cell-sub" title="Host não resolvido na configuração">' + esc(value) + '</span>' : '');
       }),
-      column('driver', 'Driver e versão', r => {
+      column('driver', 'Driver JDBC', r => {
         const driver = text(r.driverName) || text(r.driverClass);
-        return driver ? esc(driver) + '<span class="cell-sub">' + esc(text(r.driverVersion) || 'Versão não identificada') + '</span>' : h.value(null);
+        return driver ? esc(driver) : h.value(null);
       }),
+      column('driverArtifact', 'Arquivo JAR', r => h.artifact?h.artifact(r):h.value(r.driverArtifact)),
+      column('driverVersion', 'Versão do driver', r => h.version?h.version(r):h.value(r.driverVersion)),
+      column('support', 'Suporte', r => h.support?h.support(r):h.value(null)),
       column('driverResolution', 'Identificação do driver', r => {
         const label = h.resolutionLabel(r.driverResolution);
         if (!label) return h.value(null);

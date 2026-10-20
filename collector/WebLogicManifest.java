@@ -1,6 +1,8 @@
 package assessment;
 
 import java.io.*;
+import java.util.*;
+import java.util.zip.*;
 
 /** Reads one manifest from a bounded classic ZIP; never opens or inflates application classes. */
 final class WebLogicManifest {
@@ -8,7 +10,8 @@ final class WebLogicManifest {
 
     /** Used for weblogic.jar and legacy rt.jar, whose many entries need no enumeration to find the manifest. */
     static byte[] read(ArchiveMetadata metadata, File file) throws IOException { return read(metadata, file, ArchiveMetadata.METADATA_LIMIT); }
-    static byte[] read(ArchiveMetadata metadata, File file, int limit) throws IOException {
+    static byte[] read(ArchiveMetadata metadata, File file, int limit) throws IOException { return read(metadata, file, limit, null, null); }
+    static byte[] read(ArchiveMetadata metadata, File file, int limit, Set<String> wanted, Set<String> foundClasses) throws IOException {
         if (file.length() > ArchiveMetadata.FILE_LIMIT) throw invalid("file size");
         byte[] central = metadata.central(file, ArchiveMetadata.ENTRY_LIMIT, ArchiveMetadata.CENTRAL_LIMIT);
         long centralStart = metadata.centralStart;
@@ -16,6 +19,10 @@ final class WebLogicManifest {
         for (int p = 0; p < central.length;) {
             metadata.ensureBudget();
             int nameLength = ArchiveMetadata.u16(central, p + 28);
+            if (wanted != null) {
+                String name = new String(central, p + 46, nameLength, "UTF-8");
+                if (wanted.contains(name) && !foundClasses.add(name)) throw invalid("duplicate driver class");
+            }
             if (manifestName(central, p + 46, nameLength)) {
                 if (found >= 0) throw invalid("duplicate manifest");
                 found = p;
@@ -23,6 +30,11 @@ final class WebLogicManifest {
             p += 46 + nameLength + ArchiveMetadata.u16(central, p + 30) + ArchiveMetadata.u16(central, p + 32);
         }
         if (found < 0) return null;
+        // Signed manifests may contain a large per-entry digest section. Only main attributes are needed.
+        if (wanted != null && ArchiveMetadata.u32(central, found + 24) > limit) {
+            ZipFile zip = new ZipFile(file);
+            try { InputStream in = zip.getInputStream(zip.getEntry(NAME)); try { return JdbcDriverResolver.manifestHead(metadata, in); } finally { in.close(); } } finally { zip.close(); }
+        }
         RandomAccessFile input = new RandomAccessFile(file, "r");
         try { return metadata.entry(input, central, found, 0, centralStart, limit); }
         finally { input.close(); }

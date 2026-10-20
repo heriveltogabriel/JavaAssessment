@@ -6,7 +6,7 @@ import java.util.*;
 /** Passive, bounded extraction. Never returns a raw URL, credentials or connection properties. */
 final class JdbcEndpoint {
     static final int MAX_ENDPOINTS = 16, TNS_LIMIT = 256 * 1024;
-    static final String SECRET_KEY = ".*(password|passwd|pwd|secret|token|credential).*";
+    static final String SECRET_KEY = ".*(password|passwd|pwd|secret|token|credential|username|user_name|userid|user_id).*|.*user$";
     static final String[][] TYPES = {{"jdbc:jtds:sqlserver:", "SQL Server"}, {"jdbc:jtds:sybase:", "Sybase"}, {"jdbc:sybase:", "Sybase"},
         {"jdbc:informix-sqli:", "Informix"}, {"jdbc:as400:", "DB2 for i"}, {"jdbc:teradata:", "Teradata"}, {"jdbc:sap:", "SAP HANA"}, {"jdbc:snowflake:", "Snowflake"}};
     static void addTo(Map fields, String url) {
@@ -214,22 +214,25 @@ final class JdbcEndpoint {
     static class Resolver {
         final AssessmentScan scan; final File process;
         String[] arguments, environment; boolean used;
+        Map<String,String> serverProperties = new HashMap<String,String>();
+        String serverPropertySource; boolean environmentPropertySource;
         final Map<String,Node> aliases = new HashMap<String,Node>();
         Resolver(AssessmentScan scan, File process) { this.scan = scan; this.process = process; }
         static void source(List<String> sources, String value) { if (!sources.contains(value)) sources.add(value); }
-        static boolean secret(String key) { return key.toLowerCase(Locale.ENGLISH).matches(SECRET_KEY); }
+        static boolean secret(String key) { return key.toLowerCase(Locale.ENGLISH).matches(SECRET_KEY) || key.toLowerCase(Locale.ENGLISH).matches("(?:.*[._-])?pass(?:[._-].*)?"); }
         String[] lines(String name, String[] cached) {
             if (cached != null) return cached;
             String text = process == null || scan == null ? null : scan.metadataText(new File(process, name), 65536, false);
             return text == null ? new String[0] : text.split("\u0000");
         }
         /** Last -Dkey=value wins, as in the JVM. */
-        String property(String key) {
+        String systemProperty(String key) {
             if (secret(key)) return null;
             arguments = lines("cmdline", arguments); String found = null;
             for (String arg : arguments) if (arg.startsWith("-D" + key + "=")) found = arg.substring(key.length() + 3);
             return found;
         }
+        String property(String key) { String value=systemProperty(key);return value!=null?value:secret(key)?null:serverProperties.get(key); }
         String environment(String key) {
             if (!key.matches("[A-Za-z_][A-Za-z0-9_]{0,127}") || secret(key)) return null;
             environment = lines("environ", environment);
@@ -238,13 +241,15 @@ final class JdbcEndpoint {
         }
         /** JBoss/WildFly semantics: env.NAME reads the environment; other keys are -D system properties. */
         String lookup(String key, List<String> sources) {
-            String found = key.startsWith("env.") ? environment(key.substring(4)) : property(key);
-            if (found != null) source(sources, key.startsWith("env.") ? "environment" : "system-property");
+            if(secret(key))return null;
+            String found=key.startsWith("env.")?environment(key.substring(4)):systemProperty(key);
+            if(found!=null)source(sources,key.startsWith("env.")?"environment":"system-property");
+            else if(!key.startsWith("env.")){found=serverProperties.get(key);if(found!=null)source(sources,serverPropertySource==null?"server-properties":serverPropertySource);else if(environmentPropertySource){found=environment(key);if(found!=null)source(sources,"environment");}}
             return found;
         }
         String expand(String value, List<String> sources) { return expand(value, sources, 0); }
         String expand(String value, List<String> sources, int depth) {
-            if (value == null || depth > 8 || value.length() > 8192 || value.indexOf("#{") >= 0 || value.startsWith("ENC(")) return null;
+            if (value == null || depth > 8 || value.length() > 8192 || value.indexOf("#{") >= 0 || value.startsWith("ENC(") || value.indexOf("VAULT::") >= 0) return null;
             StringBuilder out = new StringBuilder(); int index = 0, count = 0;
             while (true) {
                 int start = value.indexOf("${", index);

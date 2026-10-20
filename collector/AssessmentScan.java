@@ -46,6 +46,8 @@ public final class AssessmentScan {
     final ArchiveMetadata archiveMetadata = new ArchiveMetadata(this);
     final ServerDataSources serverDataSources = new ServerDataSources(this);
     int restrictedProcesses, restrictedArtifacts;
+    final List<ProcessContext> processContexts = new ArrayList<ProcessContext>();
+    final ApplicationConfigFiles applicationConfigFiles = new ApplicationConfigFiles(this);
 
     public AssessmentScan(Properties config, String hostId, String hostname, Map settings) {
         this(config, hostId, hostname, settings, collectorCodeLocation());
@@ -62,6 +64,7 @@ public final class AssessmentScan {
         pauseMillis = number(settings.get("pauseMillis"), 30, 0, 2000);
         excluded.addAll(Arrays.asList("/proc", "/sys", "/dev", "/tmp"));
         Object exclusions = settings.get("excludePaths");
+        if (!(exclusions instanceof List)) excluded.add("/opt");
         // A trailing slash would keep the excluded directory itself in scope and defeat the find -path prune.
         if (exclusions instanceof List) for (Object path : (List) exclusions) if (path instanceof String) excluded.add(((String) path).replaceAll("(.)/+$", "$1"));
     }
@@ -220,7 +223,7 @@ public final class AssessmentScan {
         addRuntime(new File(System.getProperty("java.home")), false, "Collector runtime properties; collector alone is excluded from application usage", timestamp,
             System.getProperty("java.version"), System.getProperty("java.vendor"), System.getProperty("os.arch"));
         Object includes = settings.get("includePaths");
-        if (!(includes instanceof List)) includes = Arrays.asList("/home/opc/oracle", "/usr/java", "/usr/lib/jvm", "/opt");
+        if (!(includes instanceof List)) includes = Arrays.asList("/usr/java", "/usr/lib/jvm", "/u01", "/etc/config", "/prd1");
         for (Object item : (List) includes) {
             if (!available()) break;
             if (!(item instanceof String)) continue;
@@ -508,6 +511,7 @@ public final class AssessmentScan {
     static final class ProcessContext {
         final ProcessLaunch launch; final long pid; final String javaHome; final Map process, application;
         Map server;
+        HsPerfData.Mapping mapping;
         boolean productVersion, springBootEvidence;
         String springBootVersion;
         ProcessContext(ProcessLaunch launch, long pid, String javaHome, Map process, Map application) {
@@ -528,6 +532,7 @@ public final class AssessmentScan {
 
     void discoverProcesses() { discoverProcesses(new File("/proc")); }
     void discoverProcesses(File procRoot) {
+        serverDataSources.procRoot = procRoot;
         List<File> directories = new ArrayList<File>(); BoundedDirectory proc = null;
         String ownPid = ManagementFactory.getRuntimeMXBean().getName().split("@")[0];
         try {
@@ -550,11 +555,14 @@ public final class AssessmentScan {
             catch (IOException e) { }
             String comm = metadataText(new File(directory, "comm"), 256, false);
             // RHEL 5 may not expose comm. A readable cmdline remains useful when proc/exe is protected.
-            if (exe == null && comm != null && !"java".equals(comm.trim())) continue;
+
             String text = metadataText(new File(directory, "cmdline"), 65536, false);
             if (text == null || text.length() == 0) { if ("java".equals(comm == null ? null : comm.trim())) restrictedProcesses++; continue; }
             String[] args = text.split("\u0000");
-            if (exe == null && (args.length == 0 || !ProcessLaunch.javaExecutable(args[0]))) continue;
+            if(args.length==0)continue;
+            boolean ordinaryJava=exe!=null||ProcessLaunch.javaExecutable(args[0]);
+            boolean tomcatArgument=false;for(String arg:args)if(arg.equals("org.apache.catalina.startup.Bootstrap")||arg.equals("org.apache.commons.daemon.support.DaemonLoader"))tomcatArgument=true;
+            if(!ordinaryJava&&!tomcatArgument)continue;
             if (processes.size() >= 512) { warn("Java process row limit reached"); break; }
             try { File candidate = new File(directory, "cwd"), resolved = candidate.getCanonicalFile(); if (!resolved.equals(candidate.getAbsoluteFile())) cwd = resolved; }
             catch (IOException e) { }
@@ -563,6 +571,7 @@ public final class AssessmentScan {
             Long uid = processUid(directory);
             Map<String,String> perf = mapping == null || mapping.perfData == null ? null : HsPerfData.read(this, new File(directory, "root" + mapping.perfData), uid);
             ProcessLaunch launch = ProcessLaunch.parse(args, cwd, perf);
+            if(!ordinaryJava){if(!"Tomcat".equals(launch.serverType)||!(new File(args[0]).getName().equals("jsvc")||mapping!=null&&mapping.javaHome!=null))continue;launch.nativeTomcat=true;}
             if (collectorTool(launch)) continue;
             boolean replaced = mapping != null && mapping.replaced;
             String runningVersion = perf == null ? null : clean(perf.get("java.property.java.version"));
@@ -570,6 +579,8 @@ public final class AssessmentScan {
             File processHome = null;
             String runtimeEvidence = "Live /proc/" + pid + "/exe; collector process excluded";
             if (exe != null) processHome = exe.getParentFile().getParentFile();
+            else if (launch.nativeTomcat && launch.nativeJavaHome != null) processHome=new File(launch.nativeJavaHome);
+            else if (mapping != null && mapping.javaHome != null) processHome=new File(mapping.javaHome);
             else if (mapping != null && mapping.executable != null) processHome = new File(mapping.executable).getParentFile().getParentFile();
             else {
                 restrictedProcesses++;
@@ -590,7 +601,7 @@ public final class AssessmentScan {
                 // The observed Java home is inventoried even without a compiler.
                 try { javaHome = normalizeHome(processHome); }
                 catch (IOException e) { warn("Cannot resolve Java process home: " + processHome); }
-                Map runtime = addRuntime(processHome, true, runtimeEvidence, timestamp, null, null, null);
+                Map runtime = linkedPath(processHome)==null ? removedRuntime(javaHome,runtimeEvidence+"; caminho excluído, somente evidência de processo",runningVersion,runningVendor) : addRuntime(processHome, true, runtimeEvidence, timestamp, null, null, null);
                 if (runtime == null && replaced && hostVersion && javaHome != null) runtime = removedRuntime(javaHome, runtimeEvidence, runningVersion, runningVendor);
                 // In another mount namespace (a container), exe resolves inside the container and may match an unrelated host JDK path.
                 if (runtime != null) runningRuntime(runtime, replaced, hostVersion ? runningVersion : null, hostVersion ? runningVendor : null);
@@ -616,7 +627,12 @@ public final class AssessmentScan {
                 applications.add(app); process.put("applicationId", app.get("id"));
                 if (launch.jarPath != null) { File f = linkedPath(new File(launch.jarPath)); if (f != null) applicationsByPath.put(f.getPath(), app); }
             }
+            if (launch.jvmOptionsAfterJar) {
+                String observation = "Opções da JVM após o JAR não são aplicadas pela JVM; -X/-XX/-D são argumentos da aplicação";
+                process.put("launcherObservation", observation); if (app != null) app.put("launcherObservation", observation); note(observation);
+            }
             ProcessContext context = new ProcessContext(launch, Long.parseLong(pid), javaHome, process, app);
+            context.mapping = mapping;
             if (launch.serverType != null) {
                 String serverName = launch.serverName == null ? launch.serverType + " process " + pid : launch.serverName;
                 String key = launch.serverType + ":" + serverName + ("WebLogic".equals(launch.serverType) ? ":process:" + pid : "");
@@ -628,14 +644,31 @@ public final class AssessmentScan {
                 for (int up = 0; serverHome != null && up < ("WebLogic".equals(launch.serverType) ? 3 : 1); up++, serverHome = serverHome.getParentFile()) processServerHomes.add(serverHome.getPath());
                 if (app != null) { app.put("serverName", serverName); app.put("serverId", context.server.get("id")); }
             }
+            if(launch.nativeTomcat){process.put("launcherObservation","Tomcat iniciado via jsvc");if(app!=null)app.put("launcherObservation","Tomcat iniciado via jsvc");if(context.server!=null)context.server.put("launcherObservation","Tomcat iniciado via jsvc");}
+            excludedProcess(context);
             serverDataSources.discover(context);
             jdbcDrivers.discover(context, directory);
             discoverLinked(context);
+            processContexts.add(context);
+        }
+        for (ProcessContext context : processContexts) {
+            File directory = new File(procRoot, String.valueOf(context.pid));
             SpringConfiguration.discover(this, context, directory);
             SpringIntegration.enrich(this, context, directory);
         }
+        applicationConfigFiles.unbound();
+        new ApplicationJdbc(this).discover();
+        JndiLinks.link(this);
         if (restrictedProcesses > 0) warn("Process permissions limited executable, working-directory or command metadata for " + restrictedProcesses + " Java process(es); readable launcher evidence was retained");
         if (restrictedArtifacts > 0) warn("The collector user could not access " + restrictedArtifacts + " process-linked artifact location(s); versions and JDBC inventory may be incomplete");
+    }
+
+    void excludedProcess(ProcessContext context) {
+        Set<String> paths=new LinkedHashSet<String>();
+        for(String path:new String[]{context.launch.serverBase,context.launch.serverHome,context.launch.jarPath,context.javaHome})if(path!=null){boolean omit=excluded(path);try{omit|=excluded(new File(path).getCanonicalPath());}catch(IOException e){}if(omit)paths.add(path);}
+        if(paths.isEmpty())return;
+        String observation="Processo em execução em caminho excluído ("+paths.iterator().next()+"): configuração, datasources e drivers não foram lidos. Remova o caminho de 'Caminhos excluídos' para inventariá-lo.";
+        context.process.put("excludedPathObservation",observation);if(context.application!=null)context.application.put("excludedPathObservation",observation);if(context.server!=null)context.server.put("excludedPathObservation",observation);note(observation);
     }
 
     /** Mount ID (field 1) of the mountinfo line mounted at "/" (field 5); only the first 64 KiB are read, null when unreadable. */
@@ -907,7 +940,7 @@ public final class AssessmentScan {
                 "state", "CONFIGURED", "evidenceLevel", "configuration", "scanScope", "process-linked",
                 "evidence", "Local Spring datasource configuration candidate; programmatic overrides, driver loading and database connectivity were not verified",
                 "observedAt", timestamp);
-            for (String field : new String[]{"driverName", "driverVersion", "driverArtifact", "databaseType", "databaseHost", "databasePort", "databaseName", "databaseEndpoints", "configuredMaxPoolSize", "configurationKey", "datasourceKey", "configurationResolution", "activeProfiles", "jndiName", "databaseEndpointEvidence", "resolvedFrom"})
+            for (String field : new String[]{"driverName", "driverVersion", "driverArtifact", "databaseType", "databaseHost", "databasePort", "databaseName", "databaseEndpoints", "configuredMaxPoolSize", "configurationKey", "datasourceKey", "configurationResolution", "activeProfiles", "jndiName", "databaseEndpointEvidence", "resolvedFrom", "databaseTypeEvidence", "configurationObservation", "discoveryMethod"})
                 if (configuration.get(field) != null) row.put(field, configuration.get(field));
             if (row.get("driverVersion") != null) row.put("driverVersionEvidence", "Matching packaged JDBC library; runtime loading not verified");
             configuredDatasourceRows.put(key, row); datasources.add(row);

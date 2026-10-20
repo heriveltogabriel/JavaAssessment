@@ -1,5 +1,22 @@
 # Melhorias planejadas
 
+## Entrega consolidada 2.1.10 — teste pela console
+
+- [x] Tomcat/JBoss no motor compartilhado, novos padrões, fixtures, regressão completa e alvo Java 6.
+- [x] Pacotes assinados 2.1.10, verificador original 2.1.8, atualização de agente e upgrade/rollback do dashboard em ambiente isolado. [Evidências](validation/console-release-2.1.10.md).
+
+- [x] Implementar parsing `-jar`, `appConfigPaths`, prefixos/imports/dialetos Spring, vínculo JNDI e leitores JPA/Hibernate/XML/JDBC genérico com testes locais.
+- [x] Implementar resolução WebLogic por PID: precedência, fd/maps, proveniência, módulos de aplicação, candidatos e relatórios/exportações. Ver [guia JDBC](JDBC_DRIVER_RESOLUTION.md).
+- [ ] Validar drivers reais e preferências de classloader em RHEL 5/OL7, incluindo JAR substituído em disco e múltiplos processos.
+- [ ] Obter amostra de inventário de patches JDBC antes de implementar fallback por registry.xml; testar aplicações WAR dentro de EAR.
+- [x] Consolidar Spring, WebLogic, Tomcat/JBoss e padrões de coleta na mesma entrega.
+- [ ] Validar em Linux/Java 6 real e nos ambientes de laboratório; o teste ECJ não substitui execução no Java 6.
+- [x] Documentar a entrega em [notas 2.1.10](RELEASE_2.1.10.md), guias e READMEs; preservar instaladores anteriores.
+- [ ] Localizar os scripts pessoais `gerar-2.1.8.sh`/`.command`, ausentes neste checkout, para generalizar a versão. Os scripts oficiais de release são usados na entrega.
+
+- [ ] Operador validar upload/reinício pela console, atualizar uma máquina de cada servidor e solicitar nova coleta; registrar resultados em [validação](validation/console-release-2.1.10.md).
+- [ ] TomEE opcional e patches `.installation` permanecem fora desta entrega.
+
 ## Entrega 2.1.8 — agente e dashboard
 
 - [x] Agente: pausa adaptativa, find único no Java 6, poda de homes de produto, orçamentos separados, hsperfdata, Java substituído em disco, JARs internos sem descompactar, catálogo de drivers/pools, placeholders, JBoss domain/XA/módulos/legado, Tomcat pools/ResourceLink, TNS, módulos JDBC de aplicação no WebLogic. Revisão independente e correções.

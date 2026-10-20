@@ -87,7 +87,7 @@ class Doc(BaseDocTemplate):
             c.setFillColor(GREEN);c.setFont('DVB',8.5);c.drawCentredString(M+15.5,y-6,num)
             c.setFont('DVB',10);c.drawString(M+44,y,title);c.setFont('DV',8.3);c.setFillColor(MUTED);c.drawString(M+44,y-15,detail);c.drawRightString(W-M,y-5,f'{page:02d}')
             c.linkRect('',f'stage-{num}',(M,y-20,W-M,y+15),relative=0,thickness=0)
-        c.setStrokeColor(LINE);c.line(M,75,W-M,75);c.setFont('DV',8);c.drawString(M,55,'19 de outubro de 2026');c.drawRightString(W-M,55,'HTTPS 443  •  Credenciais individuais')
+        c.setStrokeColor(LINE);c.line(M,75,W-M,75);c.setFont('DV',8);c.drawString(M,55,'20 de outubro de 2026');c.drawRightString(W-M,55,'HTTPS 443  •  Credenciais individuais')
     def afterFlowable(self,f):
         if hasattr(f,'bookmark'):
             self.canv.bookmarkPage(f.bookmark);self.canv.addOutlineEntry(f.title_text,f.bookmark,level=0)
@@ -136,12 +136,12 @@ add(p('1. Consultar o acesso temporário',SUB),Code('Servidor do dashboard', 'su
  p('2. Criar as contas da equipe',SUB),
  p('Em <b>Administração → Usuários</b>, cadastre nome, email e perfil. Use <b>Administrador</b> para quem gerencia o ambiente e <b>Leitura</b> para quem consulta o inventário. Cada pessoa usa sua própria conta.'),
  p('3. Criar os ambientes',SUB),
- bullet('No menu de ambientes, crie os grupos desejados, por exemplo Desenvolvimento, Homologação e Produção.'),
- bullet('Ajuste os limites e a periodicidade da coleta conforme a política do cliente.'),
+ bullet('Crie os ambientes, por exemplo Desenvolvimento, Homologação e Produção.'),
+ bullet('Novos padrões: incluir /usr/java, /usr/lib/jvm, /u01, /etc/config e /prd1; excluir /proc, /sys, /dev, /tmp e /opt. Revise o escopo, os limites e a periodicidade.'),
  p('4. Gerar o pacote de cada ambiente',SUB),
  p('Abra o ambiente e selecione <b>Baixar agente</b>. Defina validade, número de cadastros autorizados e se deseja a primeira coleta automática.'),
  table([('O ZIP contém','URL do dashboard do cliente, CA pública e autorização temporária de cadastro vinculada ao ambiente.'),('Distribuição','Use um canal protegido. Um pacote expirado, revogado ou com limite esgotado deve ser substituído por um novo download.')]),
- note('Use o dashboard do próprio cliente','Baixe os agentes nessa instalação. Isso direciona os novos cadastros ao servidor e ao ambiente corretos.'))
+ note('Pastas de configuração das aplicações','O campo appConfigPaths usa /etc/config. Listas salvas não mudam; o padrão legado mantém também /home/opc/oracle. Baixe o agente no dashboard do cliente, vinculado ao ambiente correto.'))
 
 section('04','Instalar os agentes','Execute em cada máquina monitorada. O ZIP pode estar em qualquer pasta adequada; o usuário administrativo não precisa se chamar opc.')
 add(p('1. Extrair o pacote do ambiente',SUB),
@@ -176,7 +176,7 @@ sudo tail -n 60 /opt/java-assessment-collector/logs/install.log'''),
  p('No dashboard do cliente',SUB),
  bullet('Confirme a máquina no ambiente correto, versão esperada e contato recente.'),
  bullet('Solicite um assessment e acompanhe <b>Solicitações</b> até a conclusão. Se a coleta inicial foi automática, acompanhe o pedido já criado.'),
- bullet('Confira instalações Java, aplicações e datasources conhecidos. Abra eventuais observações de cobertura.'),
+ bullet('Confira Java, aplicações e datasources conhecidos. Se estiverem em /opt, remova essa exclusão e inclua o caminho desejado: exclusões valem também para processos em execução.'),
  note('Mensagem normal',mono('ASSESSMENT_NO_JOB')+' significa que o agente está conectado e sem tarefa pendente. Não é erro de instalação.'))
 
 section('06','Atualizações e relatórios','Acompanhe a atualização, a coleta e a análise em etapas distintas. Cada uma tem seu próprio resultado.')
@@ -189,8 +189,8 @@ add(p('1. Revisar e atualizar os agentes',SUB),
  p('Se aparecer <b>Aguardando confirmação</b>, o resultado ainda é desconhecido. Consulte o motivo no mesmo pedido. Não apague arquivos nem force uma reinstalação enquanto houver uma operação pendente.',SMALL),
  p('3. Consultar e exportar relatórios',SUB),
  p('Em <b>Relatórios</b>, escolha Máquinas, Java, Servidores Java, JDBC ou Resumo por ambiente. Selecione ambiente, filtros e colunas; exporte PDF ou CSV. As exportações respeitam a consulta e incluem todas as páginas.'),
- p('Todos os modelos incluem JDBC. Combine datasource, banco, driver e versão, classe, referência, servidor, aplicação, tipo, estado e presença de JDBC. Em Servidores Java, confira também IP, Java associado e JDBC do servidor.'),
- note('Validar o resultado','Compare uma aplicação conhecida com seu servidor e datasource. JDBC do servidor usa os vínculos registrados; JDBC da máquina mostra o contexto do host. Recarregar a tela não solicita uma nova coleta.'),
+ p('Todos os modelos incluem JDBC. Confira Arquivo JAR, Versão e Suporte: essa versão é a do driver, não a do banco. Em Tomcat e JBoss/WildFly, como no WebLogic, abra os candidatos, a origem e o motivo; resultados podem variar por instância.'),
+ note('Validar o resultado','Provável indica evidência de arquivo aberto, sem comprovar que a classe foi carregada. Múltiplos candidatos ou variação por instância exigem revisar os detalhes por PID. Compare com uma aplicação conhecida antes de expandir.'),
  p('Dashboard com executor independente: em Administração, envie o ZIP web-update da entrega, revise a preparação e confirme Atualizar e reiniciar com sua senha. Aguarde o retorno e confira versão e log. Sem executor, use o script compatível para a primeira adoção.',SMALL))
 
 section('07','Operação e homologação','Organize a confiança HTTPS, os backups e uma validação representativa antes de ampliar a instalação.')

@@ -79,6 +79,9 @@ public final class LifecycleTest {
         expect("libraries",jdbc("ojdbc11","21.9.0.0"),"Oracle JDBC 21c",Lifecycle.ENDING);
         expect("libraries",jdbc("ojdbc11-23.26.0.0.0.jar","23.26.0.0.0"),"Oracle JDBC 23ai/26ai",Lifecycle.SUPPORTED);
         expect("libraries",jdbc("postgresql","42.7.4"),null,Lifecycle.UNKNOWN);
+        expect("datasources",map("driverName","oracle.jdbc.OracleDriver","driverVersion","19.3.0.0","driverResolution","PROBABLE"),"Oracle JDBC 19c",Lifecycle.SUPPORTED);
+        check("PROBABLE".equals(support("datasources",map("driverName","oracle.jdbc.OracleDriver","driverVersion","19.3.0.0","driverResolution","PROBABLE")).get("confidence")),"probable support confidence");
+        expect("datasources",map("driverName","oracle.jdbc.OracleDriver","driverVersion","19.3.0.0","driverResolution","VARIES"),null,Lifecycle.UNKNOWN);
         check(support("hosts",map())==null,"hosts have no lifecycle");
 
         Map<String,Object> line=map("fimPrincipal","2026-12-31","fimEstendido","2027-12-31");

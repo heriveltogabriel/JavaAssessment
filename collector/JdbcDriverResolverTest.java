@@ -8,7 +8,7 @@ public final class JdbcDriverResolverTest {
     static void jar(File f,String driver,String version,String cp,String pom) throws Exception {
         f.getParentFile().mkdirs(); ZipOutputStream z=new ZipOutputStream(new FileOutputStream(f));
         try {
-            entry(z,"META-INF/MANIFEST.MF","Manifest-Version: 1.0\n"+(version==null?"":"Implementation-Version: "+version+"\n")+(cp==null?"":"Class-Path: "+cp+"\n")+"\n");
+            java.util.jar.Manifest mf=new java.util.jar.Manifest();mf.getMainAttributes().putValue("Manifest-Version","1.0");if(version!=null)mf.getMainAttributes().putValue("Implementation-Version",version);if(cp!=null)mf.getMainAttributes().putValue("Class-Path",cp);ByteArrayOutputStream manifest=new ByteArrayOutputStream();mf.write(manifest);entry(z,"META-INF/MANIFEST.MF",new String(manifest.toByteArray(),"UTF-8"));
             if(driver!=null) entry(z,driver.replace('.','/')+".class","fixture");
             if(pom!=null) entry(z,"META-INF/maven/com.oracle.database.jdbc/ojdbc8/pom.properties","groupId=com.oracle.database.jdbc\nartifactId=ojdbc8\nversion="+pom+"\n");
         } finally { z.close(); }
@@ -42,7 +42,7 @@ public final class JdbcDriverResolverTest {
             AssessmentScan excluded=ProcessLaunchTest.scanner();excluded.excluded.add(indirect.getCanonicalPath());row=row(scan(two,manifest.getCanonicalPath(),104,excluded));
             check("INCOMPLETE".equals(row.get("driverResolution")) && row.get("driverVersion")==null,"Excluded reference cannot claim complete");
             AssessmentScan limited=ProcessLaunchTest.scanner();limited.jdbcDrivers.archivesRead=256;row=row(scan(two,manifest.getCanonicalPath(),105,limited));check("INCOMPLETE".equals(row.get("driverResolution")),"Archive budget honored");
-            jar(indirect,"oracle.jdbc.OracleDriver","21.0",null,"23.2.0");row=row(scan(two,manifest.getCanonicalPath(),106,null));check(row.get("driverVersion")==null,"Conflicting internal versions not selected");
+            jar(indirect,"oracle.jdbc.OracleDriver","21.0",null,"23.2.0");row=row(scan(two,manifest.getCanonicalPath(),106,null));check("21.0".equals(row.get("driverVersion")) && "manifest".equals(row.get("driverVersionSource")),"Manifest version takes precedence over Maven metadata");
             File wrong=new File(root,"wrong");JdbcEndpointTest.domain(wrong,"third.local");jar(new File(wrong,"lib/ojdbc8.jar"),"some.other.Driver","99.0",null,null);
             row=row(scan(wrong,null,107,null));check("NOT_FOUND".equals(row.get("driverResolution")),"Filename never substitutes exact class");
             for(String filename:new String[]{"ojdbc6.jar","ojdbc7.jar","ojdbc8.jar","ojdbc11.jar"}) {

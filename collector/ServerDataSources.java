@@ -23,41 +23,25 @@ final class ServerDataSources {
     // Files whose rows depend on one process's properties, environment or TNS files are cached per PID.
     final Set<String> processDependent = new HashSet<String>();
     final WebLogicDataSources weblogic;
+    final TomcatDataSources tomcat;
+    final JbossDataSources jboss;
     File procRoot = new File("/proc");
     JdbcEndpoint.Resolver resolver; long resolverPid = -1;
     int cachedRows;
-    ServerDataSources(AssessmentScan scan) { this.scan = scan; this.weblogic = new WebLogicDataSources(this); }
+    ServerDataSources(AssessmentScan scan) { this.scan = scan; this.weblogic = new WebLogicDataSources(this);this.tomcat=new TomcatDataSources(this);this.jboss=new JbossDataSources(this); }
 
     JdbcEndpoint.Resolver resolver(AssessmentScan.ProcessContext context) {
-        if (resolver == null || resolverPid != context.pid) { resolver = new JdbcEndpoint.Resolver(scan, new File(procRoot, String.valueOf(context.pid))); resolverPid = context.pid; }
+        if (resolver == null || resolverPid != context.pid) { resolver = new JdbcEndpoint.Resolver(scan, new File(procRoot, String.valueOf(context.pid))); resolverPid = context.pid; tomcat.configureResolver(context,resolver); }
         return resolver;
     }
     void discover(AssessmentScan.ProcessContext context) {
         ProcessLaunch launch = context.launch;
         if ("Tomcat".equals(launch.serverType) && launch.serverBase != null) {
-            File base = new File(launch.serverBase);
-            List<Map> server = inspectRequired(new File(base, "conf/server.xml"), "Tomcat", context, null);
-            inspect(new File(base, "conf/context.xml"), "Tomcat", context);
-            descriptors(new File(base, "conf"), 2, context);
-            Set<String> appBases = new LinkedHashSet<String>();
-            for (Map row : server) if ("appBase".equals(row.get("marker")) && appBases.size() < 8) {
-                String value = resolver(context).expand((String)row.get("appBase"), new ArrayList<String>());
-                String path = value == null ? null : ProcessLaunch.path(value, base);
-                if (path != null) appBases.add(path); else scan.note("Tomcat Host appBase could not be resolved; its application contexts were not examined");
-            }
-            if (appBases.isEmpty()) appBases.add(new File(base, "webapps").getPath());
-            for (String appBase : appBases) applications(new File(appBase), context);
+            tomcat.discover(context);
         } else if ("WebLogic".equals(launch.serverType)) {
             weblogic.discover(context);
         } else if ("JBoss".equals(launch.serverType)) {
-            if ("org.jboss.as.server".equals(launch.moduleName) || "org.jboss.as.host-controller".equals(launch.moduleName)) { domain(context); return; }
-            if (launch.moduleName == null && "org.jboss.Main".equals(launch.mainClass)) { legacy(context); return; }
-            if (!"org.jboss.as.standalone".equals(launch.moduleName)) return;
-            File directory = launch.serverConfigDirectory != null ? new File(launch.serverConfigDirectory) : standaloneBase(launch) == null ? null : new File(standaloneBase(launch), "configuration");
-            String selected = launch.serverConfigFile == null ? "standalone.xml" : launch.serverConfigFile;
-            String path = ProcessLaunch.path(selected, directory);
-            if (path != null && selected.indexOf("${") < 0 && selected.indexOf("#{") < 0) inspectRequired(new File(path), "JBoss", context, null);
-            else scan.warn("JBoss JDBC configuration path could not be resolved from the process launcher");
+            jboss.discover(context);
         }
     }
     static File standaloneBase(ProcessLaunch launch) {
@@ -147,6 +131,7 @@ final class ServerDataSources {
         }
         String deploy = ProcessLaunch.path(serverHome, null);
         if (deploy == null) { scan.warn("Legacy JBoss configuration directory could not be resolved from the process launcher"); return; }
+        jboss.state(context).base = new File(deploy);
         legacyDescriptors(new File(deploy, "deploy"), 2, context);
     }
     void legacyDescriptors(File source, int depth, AssessmentScan.ProcessContext context) {
@@ -295,7 +280,9 @@ final class ServerDataSources {
             association.put("applicationId", context.application.get("id")); association.put("applicationName", context.application.get("name"));
         }
         List associations = row.get("associations") instanceof List ? (List)row.get("associations") : new ArrayList();
-        if (!associations.contains(association)) {
+        boolean associationExists = false;
+        for (Object raw : associations) { Map identityOnly = new LinkedHashMap((Map)raw); identityOnly.remove("driverResult"); if (identityOnly.equals(association)) { associationExists = true; break; } }
+        if (!associationExists) {
             if (associations.size() < 16) associations.add(association);
             else scan.warn("JDBC datasource process association limit reached; additional associations were not retained");
         }
@@ -305,50 +292,12 @@ final class ServerDataSources {
         }
     }
 
-    /** JBoss drivers declared as modules or deployed JARs: the JAR is a candidate, its classes are never loaded. */
+    /** Preserve module/deployment declarations for the shared class-loading resolver. */
     void driverArtifacts(List<Map> rows, AssessmentScan.ProcessContext context) {
-        for (Map row : rows) {
-            Object module = row.remove("driverModule"), deployment = row.remove("driverDeployment");
-            File jar = null;
-            if (module instanceof String) jar = moduleJar((String)module, context);
-            else if (deployment instanceof String && "org.jboss.as.standalone".equals(context.launch.moduleName) && standaloneBase(context.launch) != null) {
-                File candidate = scan.linkedPath(new File(new File(standaloneBase(context.launch), "deployments"), (String)deployment));
-                if (candidate != null && candidate.isFile()) jar = candidate;
-            }
-            if (jar == null) continue;
-            scan.linkedFile(jar, context);
-            row.put("driverArtifact", jar.getPath());
-            Object libraries = scan.archiveMetadata.inspect(jar).get("libraries");
-            if (libraries instanceof List) for (Object raw : (List)libraries) {
-                Map library = (Map)raw; Object version = library.get("version");
-                if ("JDBC".equals(library.get("category")) && jar.getPath().equals(library.get("path")) && version instanceof String && ((String)version).matches("[0-9][A-Za-z0-9._+\\-]{0,127}")) {
-                    row.put("driverVersion", version);
-                    row.put("driverVersionEvidence", "JDBC library metadata of the JAR declared by the JBoss driver; runtime loading not verified");
-                }
-            }
-        }
+        if ("JBoss".equals(context.launch.serverType)) for (Map row : rows) jboss.prepare(context, row);
     }
     File moduleJar(String module, AssessmentScan.ProcessContext context) {
-        int colon = module.indexOf(':');
-        String name = colon < 0 ? module : module.substring(0, colon), slot = colon < 0 ? "main" : module.substring(colon + 1);
-        if (!name.matches("[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+){0,15}") || !slot.matches("[A-Za-z0-9_.-]{1,64}") || slot.indexOf("..") >= 0) return null;
-        List<String> roots = new ArrayList<String>(context.launch.modulePaths);
-        if (roots.isEmpty() && context.launch.serverHome != null) roots.add(new File(context.launch.serverHome, "modules").getPath());
-        for (String root : roots) for (String prefix : new String[]{"system/layers/base/", ""}) {
-            // shortcut: only the base layer and the module root; add-ons and custom layers are not searched.
-            File directory = new File(root, prefix + name.replace('.', '/') + "/" + slot);
-            File descriptor = scan.linkedPath(new File(directory, "module.xml"));
-            if (descriptor == null || !descriptor.isFile()) continue;
-            List<String> jars = new ArrayList<String>();
-            for (Map<String,String> resource : elements(descriptor, SMALL_LIMIT, "module", "resources", "resource-root", "path")) {
-                String path = resource.get("path");
-                if (path != null && path.matches("[A-Za-z0-9_.+-]{1,200}\\.jar")) jars.add(path);
-            }
-            if (jars.size() != 1) return null;
-            File jar = scan.linkedPath(new File(directory, jars.get(0)));
-            return jar != null && jar.isFile() && AssessmentScan.under(jar.getPath(), scan.linkedPath(directory).getPath()) ? jar : null;
-        }
-        return null;
+        return jboss.firstJar(module, context);
     }
     /** Selected attributes of root/.../parent/element in a bounded trusted-parser XML file; domain.xml/host.xml take the configuration limit. */
     List<Map<String,String>> elements(File source, int limit, final String root, final String parent, final String element, final String... attributes) {
@@ -426,7 +375,7 @@ final class ServerDataSources {
         final Map<String,String> xa = new HashMap<String,String>();
         Map current, driver; int currentDepth, driverDepth, elements;
         Handler(String kind, AssessmentScan scan, JdbcEndpoint.Resolver resolver) { this.kind = kind; this.scan = scan; this.resolver = resolver; }
-        boolean jboss() { return "JBoss".equals(kind) || "JBossLegacy".equals(kind); }
+        boolean jboss() { return "JBoss".equals(kind) || "JBossLegacy".equals(kind) || "JBossDeployment".equals(kind); }
         Frame parent() { return stack.size() < 2 ? null : stack.get(stack.size() - 2); }
         String scope() throws SAXException {
             StringBuilder value = new StringBuilder();
@@ -441,7 +390,7 @@ final class ServerDataSources {
         }
         String profile() { for (Frame frame : stack) if (frame.scope != null && frame.scope.startsWith("profile:")) return frame.scope.substring(8); return null; }
         boolean datasourceSubsystem() {
-            if ("JBossLegacy".equals(kind)) return true;
+            if ("JBossLegacy".equals(kind) || "JBossDeployment".equals(kind)) return true;
             for (Frame frame : stack) if (frame.name.equals("subsystem") && frame.uri.startsWith("urn:jboss:domain:datasources:")) return true;
             return false;
         }
@@ -461,13 +410,13 @@ final class ServerDataSources {
             }
             stack.add(new Frame(name, uri == null ? "" : uri, scope));
             if (stack.size() == 1) {
-                boolean root = "Tomcat".equals(kind) ? name.equals("Server") || name.equals("Context") : "JBossLegacy".equals(kind) ? name.equals("datasources") || name.equals("connection-factories") : name.equals("server") || name.equals("domain");
+                boolean root = "Tomcat".equals(kind) ? name.equals("Server") || name.equals("Context") : "JBossLegacy".equals(kind) ? name.equals("datasources") || name.equals("connection-factories") : "JBossDeployment".equals(kind) ? name.equals("datasources") : name.equals("server") || name.equals("domain");
                 if (!root) throw new SAXException("Unexpected configuration root");
             }
             if ("Tomcat".equals(kind)) { tomcat(name, attrs); return; }
             if (!jboss() || !datasourceSubsystem()) return;
             if (name.equals("xa-datasource-property") && current != null) stack.get(stack.size() - 1).property = attrs.getValue("name");
-            boolean modern = "JBoss".equals(kind) && (name.equals("datasource") || name.equals("xa-datasource")) && parent() != null && parent().name.equals("datasources");
+            boolean modern = ("JBoss".equals(kind) || "JBossDeployment".equals(kind)) && (name.equals("datasource") || name.equals("xa-datasource")) && parent() != null && parent().name.equals("datasources");
             boolean legacy = "JBossLegacy".equals(kind) && stack.size() == 2 && LEGACY.contains(name) && parent().name.equals("datasources");
             if (modern || legacy) {
                 String resource = modern ? resourceName(SpringDataSource.first(attrs.getValue("jndi-name"), attrs.getValue("pool-name"))) : null;
@@ -482,7 +431,7 @@ final class ServerDataSources {
                     else current.put("activationUnresolved", Boolean.TRUE);
                     currentDepth = stack.size(); xa.clear();
                 }
-            } else if ("JBoss".equals(kind) && name.equals("driver") && parent() != null && parent().name.equals("drivers")) {
+            } else if (("JBoss".equals(kind) || "JBossDeployment".equals(kind)) && name.equals("driver") && parent() != null && parent().name.equals("drivers")) {
                 String resource = resourceName(attrs.getValue("name"));
                 if (resource != null) {
                     driver = AssessmentScan.map("name", resource); driverDepth = stack.size();
@@ -551,7 +500,7 @@ final class ServerDataSources {
                 if (stack.size() == driverDepth + 1 && (frame.name.equals("driver-class") || frame.name.equals("xa-datasource-class"))) {
                     String token = SpringDataSource.validDriver(value); if (token != null) driver.put(frame.name, token);
                 }
-                if (stack.size() == driverDepth) { drivers.put((String)driver.get("name"), driver); driver = null; }
+                if (stack.size() == driverDepth) { drivers.put((profile() == null ? "" : profile() + ":") + (String)driver.get("name"), driver); driver = null; }
             }
             stack.remove(stack.size() - 1);
         }
@@ -562,9 +511,12 @@ final class ServerDataSources {
         List<Map> finish() throws SAXException {
             Map<String,Map> unique = new LinkedHashMap<String,Map>();
             for (Map row : rows) {
-                Object reference = row.remove("driverReference"); Map declaration = drivers.get(reference);
+                Object reference = row.remove("driverReference"); String scope = AssessmentScan.clean(row.get("configurationContext"));
+                String referenceKey = scope != null && scope.startsWith("domain profile ") ? scope.substring(15) + ":" + reference : String.valueOf(reference);
+                Map declaration = drivers.get(referenceKey);
                 if (row.get("driverName") == null && declaration != null) {
                     Object driverName = declaration.get("javax.sql.XADataSource".equals(row.get("resourceType")) ? "xa-datasource-class" : "driver-class");
+                    if (driverName == null) driverName = declaration.get("xa-datasource-class");
                     if (driverName != null) row.put("driverName", driverName);
                 }
                 if (declaration != null && declaration.get("module") != null) row.put("driverModule", declaration.get("module"));

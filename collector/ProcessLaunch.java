@@ -8,9 +8,12 @@ final class ProcessLaunch {
     File cwd;
     final Map<String,String> springSystem = new LinkedHashMap<String,String>(), springArguments = new LinkedHashMap<String,String>();
     String mainClass, jarPath, moduleName, serverType, serverHome, serverBase, serverName, applicationType;
-    String serverConfigDirectory, serverConfigFile, webLogicHome, wlsHome;
+    String serverConfigDirectory, serverConfigFile, webLogicHome, wlsHome, nativeJavaHome;
+    boolean nativeTomcat;
+    final List<String> bootClasspath = new ArrayList<String>(), bootPrepend = new ArrayList<String>(), bootAppend = new ArrayList<String>(), extDirs = new ArrayList<String>();
+    boolean explicitExtDirs, runtimePathsIncomplete;
     final List<String> classpath = new ArrayList<String>(), modulePaths = new ArrayList<String>();
-    boolean javaCommand, opaqueArguments, serverBaseExplicit, explicitClasspath, perfDataCompleted;
+    boolean javaCommand, opaqueArguments, serverBaseExplicit, explicitClasspath, perfDataCompleted, jvmOptionsAfterJar;
 
     static boolean javaExecutable(String value) {
         if (value == null) return false;
@@ -38,11 +41,15 @@ final class ProcessLaunch {
         }
     }
     void property(String arg, File cwd) {
+        if (arg.startsWith("-Xbootclasspath/p:")) { paths(bootPrepend, arg.substring(18), cwd); return; }
+        if (arg.startsWith("-Xbootclasspath/a:")) { paths(bootAppend, arg.substring(18), cwd); return; }
+        if (arg.startsWith("-Xbootclasspath:")) { bootClasspath.clear(); paths(bootClasspath, arg.substring(16), cwd); return; }
         if (!arg.startsWith("-D")) return;
         int equals = arg.indexOf('='); if (equals < 0) return;
         String key = arg.substring(2, equals), value = arg.substring(equals + 1);
         SpringConfiguration.input(springSystem, key, value);
-        if (key.equals("catalina.home") || key.equals("jboss.home.dir")) serverHome = path(value, cwd);
+        if (key.equals("java.ext.dirs")) { explicitExtDirs = true; extDirs.clear(); if (value.length() > 0) paths(extDirs, value, cwd); }
+        else if (key.equals("catalina.home") || key.equals("jboss.home.dir")) serverHome = path(value, cwd);
         else if (key.equals("weblogic.home")) webLogicHome = path(value, cwd);
         else if (key.equals("wls.home")) wlsHome = path(value, cwd);
         else if (key.equals("catalina.base") || key.equals("jboss.server.base.dir") || key.equals("weblogic.RootDirectory")) { serverBase = path(value, cwd); serverBaseExplicit = serverBase != null; }
@@ -67,7 +74,7 @@ final class ProcessLaunch {
         merged.add(args[0]);
         String vmArgs = perf.get("java.rt.vmArgs");
         // shortcut: vmArgs is space-joined, so a -D value containing spaces is cut; acceptable for allowlisted path/name keys.
-        if (vmArgs != null) for (String token : vmArgs.split(" ")) if (token.startsWith("-D") && (launch.opaqueArguments || !original.contains(token)) && merged.size() < 256) merged.add(token);
+        if (vmArgs != null) for (String token : vmArgs.split(" ")) if ((token.startsWith("-D") || token.startsWith("-Xbootclasspath")) && (launch.opaqueArguments || !original.contains(token)) && merged.size() < 256) merged.add(token);
         String command = perf.get("sun.rt.javaCommand"), first = command == null ? null : command.trim().split(" ")[0];
         boolean jar = first != null && first.endsWith(".jar");
         String classpath = perf.get("java.property.java.class.path");
@@ -75,24 +82,43 @@ final class ProcessLaunch {
         if (launch.opaqueArguments) {
             if (first != null && first.length() > 0) { if (jar) merged.add("-jar"); merged.add(first); }
         } else merged.addAll(original.subList(1, args.length));
-        if (merged.equals(original)) return launch;
+        if (jar && launch.jarPath != null && !first.startsWith("-")) {
+            String confirmed = path(first, cwd);
+            if (confirmed != null && !confirmed.equals(launch.jarPath)) { launch.jarPath = confirmed; launch.perfDataCompleted = true; }
+        }
+        if (merged.equals(original)) { runtimePaths(launch, perf); return launch; }
         ProcessLaunch completed = parse(merged.toArray(new String[merged.size()]), cwd);
-        completed.opaqueArguments = launch.opaqueArguments; completed.perfDataCompleted = true;
+        if (jar && launch.jarPath != null && first != null) completed.jarPath = path(first, cwd);
+        completed.opaqueArguments = launch.opaqueArguments; completed.perfDataCompleted = true; runtimePaths(completed, perf);
         return completed;
+    }
+    static void runtimePaths(ProcessLaunch launch, Map<String,String> perf) {
+        String boot = perf.get("sun.property.sun.boot.class.path");
+        if (boot == null) boot = perf.get("java.property.sun.boot.class.path");
+        if (boot != null) { launch.bootClasspath.clear(); launch.bootPrepend.clear(); launch.bootAppend.clear(); paths(launch.bootClasspath, boot, launch.cwd); }
+        String ext = perf.get("java.property.java.ext.dirs");
+        if (ext == null) ext = perf.get("sun.property.java.ext.dirs");
+        if (ext != null) { launch.extDirs.clear(); launch.explicitExtDirs = true; if (ext.length() > 0) paths(launch.extDirs, ext, launch.cwd); }
+        String cp = perf.get("java.property.java.class.path");
+        if (cp != null && launch.jarPath == null) { launch.classpath.clear(); paths(launch.classpath, cp, launch.cwd); launch.explicitClasspath = true; launch.perfDataCompleted = true; }
+        launch.runtimePathsIncomplete = "true".equals(perf.get("assessment.pathsIncomplete"));
     }
     static ProcessLaunch parse(String[] args, File cwd) {
         ProcessLaunch launch = new ProcessLaunch(); launch.cwd = cwd;
         if (args == null || args.length == 0) return launch;
         launch.javaCommand = javaExecutable(args[0]);
-        int after = args.length;
+        boolean daemon = new File(args[0]).getName().equals("jsvc");
+        int after = args.length; boolean jarMode = false;
         for (int i = 1; i < args.length; i++) {
             String arg = args[i];
+            if(daemon && Arrays.asList("-user","-pidfile","-outfile","-errfile","-home","-procname","-wait","-umask").contains(arg)){if(i+1<args.length){String v=args[++i];if(arg.equals("-home"))launch.nativeJavaHome=path(v,cwd);}continue;}
+            if(daemon && arg.equals("-jvm")){if(i+1<args.length&&(args[i+1].equals("server")||args[i+1].equals("client")))i++;continue;}
             if (arg.startsWith("@")) { launch.opaqueArguments = true; break; }
             if (arg.equals("-cp") || arg.equals("-classpath") || arg.equals("--class-path")) {
                 launch.explicitClasspath = true; if (i + 1 < args.length) paths(launch.classpath, args[++i], cwd); continue;
             }
             if (arg.startsWith("--class-path=")) { launch.explicitClasspath = true; paths(launch.classpath, arg.substring(13), cwd); continue; }
-            if (arg.equals("-jar")) { if (i + 1 < args.length) launch.jarPath = path(args[++i], cwd); after = i + 1; break; }
+            if (arg.equals("-jar")) { jarMode = true; continue; }
             if (arg.equals("-m") || arg.equals("--module") || arg.startsWith("--module=")) {
                 String module = arg.startsWith("--module=") ? arg.substring(9) : i + 1 < args.length ? args[++i] : null;
                 if (module != null) { int slash = module.indexOf('/'); launch.moduleName = identifier(slash < 0 ? module : module.substring(0, slash)); if (slash >= 0) launch.mainClass = identifier(module.substring(slash + 1)); }
@@ -101,12 +127,13 @@ final class ProcessLaunch {
             if (arg.equals("--")) { if (i + 1 < args.length) launch.mainClass = identifier(args[++i]); after = i + 1; break; }
             if (takesValue(arg)) { if (i + 1 < args.length) i++; continue; }
             if (arg.startsWith("-")) { launch.property(arg, cwd); continue; }
-            launch.mainClass = identifier(arg); after = i + 1; break;
+            if (jarMode) launch.jarPath = path(arg, cwd); else launch.mainClass = identifier(arg); after = i + 1; break;
         }
         if ("weblogic.Server".equals(launch.mainClass)) launch.serverType = "WebLogic";
-        else if ("org.apache.catalina.startup.Bootstrap".equals(launch.mainClass)) launch.serverType = "Tomcat";
+        else if ("org.apache.catalina.startup.Bootstrap".equals(launch.mainClass) || "org.apache.commons.daemon.support.DaemonLoader".equals(launch.mainClass) && launch.serverBase != null) launch.serverType = "Tomcat";
         else if ("org.jboss.Main".equals(launch.mainClass)) launch.serverType = "JBoss";
         else if ("org.eclipse.jetty.start.Main".equals(launch.mainClass) || "org.eclipse.jetty.xml.XmlConfiguration".equals(launch.mainClass)) launch.serverType = "Jetty";
+        if(daemon&&"Tomcat".equals(launch.serverType)){launch.nativeTomcat=true;launch.javaCommand=true;}
         if (springLauncher(launch.mainClass)) launch.applicationType = "Spring Boot";
         boolean modules = "org.jboss.modules.Main".equals(launch.mainClass) || launch.jarPath != null && new File(launch.jarPath).getName().equals("jboss-modules.jar");
         if (modules) {
@@ -142,6 +169,7 @@ final class ProcessLaunch {
         }
         for (int i = after; i < args.length; i++) {
             String arg = args[i]; int equals = arg.indexOf('=');
+            if (!modules && launch.jarPath != null && (arg.startsWith("-X") || arg.startsWith("-D"))) launch.jvmOptionsAfterJar = true;
             if (arg.startsWith("--") && equals > 2) SpringConfiguration.input(launch.springArguments, arg.substring(2, equals), arg.substring(equals + 1));
         }
         return launch;

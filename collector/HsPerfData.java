@@ -14,10 +14,10 @@ final class HsPerfData {
     static final int STRING_CAP = 1024;
     static final List<String> KEYS = Arrays.asList("java.property.java.version", "java.property.java.vendor",
         "java.property.java.vm.version", "java.property.java.vm.vendor", "java.property.java.home",
-        "java.property.java.class.path", "java.rt.vmArgs", "sun.rt.javaCommand");
+        "java.property.java.class.path", "java.property.java.ext.dirs", "sun.property.java.ext.dirs", "java.property.sun.boot.class.path", "sun.property.sun.boot.class.path", "java.rt.vmArgs", "sun.rt.javaCommand");
 
     /** Executable and perf-data paths a live process has mapped, as seen inside its own mount namespace. */
-    static final class Mapping { String executable, perfData; boolean replaced; }
+    static final class Mapping { String executable, perfData, javaHome; boolean replaced; final Set<String> jars = new HashSet<String>(), deletedJars = new HashSet<String>(); }
 
     static Mapping mapping(String maps) {
         if (maps == null) return null;
@@ -28,7 +28,8 @@ final class HsPerfData {
             String path = columns[5]; boolean deleted = path.endsWith(" (deleted)");
             if (deleted) path = path.substring(0, path.length() - 10);
             if (path.endsWith("/bin/java")) { if (result.executable == null) result.executable = path; result.replaced |= deleted; }
-            else if (path.endsWith("/libjvm.so")) result.replaced |= deleted;
+            else if (path.toLowerCase(Locale.ENGLISH).endsWith(".jar") && result.jars.size() < 4096) { result.jars.add(path); if (deleted) result.deletedJars.add(path); }
+            else if (path.endsWith("/libjvm.so")) { result.replaced |= deleted;int lib=path.lastIndexOf("/lib/");if(lib>0)result.javaHome=path.substring(0,lib); }
             else if (result.perfData == null && !deleted && path.matches(".*/hsperfdata_[^/]+/[0-9]+")) result.perfData = path;
         }
         return result;
@@ -130,7 +131,7 @@ final class HsPerfData {
                     if (KEYS.contains(key) && !result.containsKey(key)) {
                         int stop = terminator(data, value, value + vector);
                         String text = new String(data, value, stop - value, "UTF-8");
-                        if (stop - value >= STRING_CAP && stop - value == vector - 1) text = capped(key, text);
+                        if (stop - value >= STRING_CAP && stop - value == vector - 1) { text = capped(key, text); if (key.endsWith(".path") || key.endsWith(".dirs") || key.equals("java.rt.vmArgs")) result.put("assessment.pathsIncomplete", "true"); }
                         if (text != null && text.length() > 0) result.put(key, text);
                     }
                 }
@@ -141,7 +142,7 @@ final class HsPerfData {
     }
     /** A value at the HotSpot cap may be cut mid-element: keep only whole classpath entries or arguments. */
     static String capped(String key, String value) {
-        int separator = key.equals("java.property.java.class.path") ? value.lastIndexOf(':') : key.equals("java.rt.vmArgs") || key.equals("sun.rt.javaCommand") ? value.lastIndexOf(' ') : -1;
+        int separator = (key.endsWith(".path") || key.endsWith(".dirs")) ? value.lastIndexOf(':') : key.equals("java.rt.vmArgs") || key.equals("sun.rt.javaCommand") ? value.lastIndexOf(' ') : -1;
         return separator > 0 ? value.substring(0, separator) : null;
     }
 }

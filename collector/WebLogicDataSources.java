@@ -109,7 +109,7 @@ final class WebLogicDataSources {
             for (Map fields : load(descriptor, exploded ? null : module, false, context)) {
                 Map row = new LinkedHashMap(fields);
                 row.put("configurationContext", "WebLogic application " + application.get("name"));
-                row.put("configurationScope", "application-module"); row.put("applicationDeployment", application.get("name"));
+                row.put("configurationScope", "application-module"); row.put("applicationDeployment", application.get("name")); row.put("applicationSource", source.getPath());
                 row.put("configuredTargets", application.get("configuredTargets"));
                 row.put("domainName", base.getName()); row.put("domainPath", base.getPath());
                 owner.add(exploded ? descriptor.getPath() : descriptor.getPath() + "!/" + module, row, context);

@@ -79,7 +79,7 @@ public final class ArchiveMetadata {
 
     public static boolean isKnownCandidate(String filename) {
         String name = base(filename).toLowerCase(Locale.ENGLISH);
-        return name.matches("spring-boot-[0-9][A-Za-z0-9._+\\-]*\\.jar") || isJdbc(name) || isPool(name) || genericJdbc(name) || isDerby(name) || isTomcat(name) || name.equals("weblogic.jar")
+        return name.matches("spring-(?:boot|core)-[0-9][A-Za-z0-9._+\\-]*\\.jar") || isJdbc(name) || isPool(name) || genericJdbc(name) || isDerby(name) || isTomcat(name) || name.equals("weblogic.jar")
             || name.equals("jboss-modules.jar") || name.startsWith("jboss-as-server") || name.startsWith("jboss-as-version")
             || name.startsWith("jboss-as-product") || name.startsWith("wildfly-server") || name.startsWith("wildfly-version")
             || name.startsWith("wildfly-product") || name.startsWith("jetty-server-") || name.startsWith("undertow-core-");
@@ -563,7 +563,7 @@ public final class ArchiveMetadata {
         List result = new ArrayList(); String lower = doc.filename.toLowerCase(Locale.ENGLISH);
         boolean pool = !doc.driverProvider && (doc.jdbcPomTitle != null ? doc.pomPool : isPool(lower));
         boolean jdbc = !pool && (isJdbc(lower) || doc.driverProvider || doc.jdbcPomTitle != null);
-        if (!(jdbc || pool || isDerby(lower) || (lower.startsWith("tomcat-embed-core") || lower.startsWith("jetty-server-") || lower.startsWith("undertow-core-")) && lower.endsWith(".jar"))) return result;
+        if (!(jdbc || pool || isDerby(lower) || (lower.startsWith("spring-core-") || lower.startsWith("tomcat-embed-core") || lower.startsWith("jetty-server-") || lower.startsWith("undertow-core-")) && lower.endsWith(".jar"))) return result;
         if (libraryRows >= 1000) { scan.warn("Library metadata row limit reached"); return result; }
         String title = first(doc.title, first(doc.jdbcPomTitle, doc.filename));
         String version = first(doc.version, doc.jdbcPomVersion), source = doc.version != null ? "manifest version" : doc.jdbcPomVersion != null ? "Maven pom.properties version" : null;

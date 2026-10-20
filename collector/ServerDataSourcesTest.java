@@ -215,15 +215,21 @@ public final class ServerDataSourcesTest {
         strict(scan);
     }
     static String subsystem(String body) { return "<subsystem xmlns='urn:jboss:domain:datasources:7.1'><datasources>" + body + "</datasources></subsystem>"; }
+    static Map<String,byte[]> driverEntries(String name) throws Exception {
+        Map<String,byte[]> entries = ProcessLaunchTest.entries();
+        entries.put(name.replace('.', '/') + ".class", "fixture".getBytes("UTF-8"));
+        entries.put("META-INF/services/java.sql.Driver", (name + "\n").getBytes("UTF-8"));
+        return entries;
+    }
     static void module(File modules, String name, String jar, String version) throws Exception {
         File directory = new File(modules, "system/layers/base/" + name.replace('.', '/') + "/main");
         text(new File(directory, "module.xml"), "<module xmlns='urn:jboss:module:1.9' name='" + name + "'><resources><resource-root path='" + jar + "'/></resources></module>");
-        ProcessLaunchTest.write(new File(directory, jar), ProcessLaunchTest.jar(ProcessLaunchTest.attrs("Implementation-Title", "JDBC driver", "Implementation-Version", version), ProcessLaunchTest.entries()));
+        ProcessLaunchTest.write(new File(directory, jar), ProcessLaunchTest.jar(ProcessLaunchTest.attrs("Implementation-Title", "JDBC driver", "Implementation-Version", version), driverEntries("oracle.jdbc.xa.client.OracleXADataSource")));
     }
     static void wildflyExpressions(File root) throws Exception {
         File home = new File(root, "wf-expr"), base = new File(home, "standalone"), proc = new File(root, "wf-expr-proc");
         module(new File(home, "modules"), "com.oracle", "ojdbc8.jar", "19.3.0.0");
-        ProcessLaunchTest.write(new File(base, "deployments/postgresql-42.7.4.jar"), ProcessLaunchTest.jar(ProcessLaunchTest.attrs("Implementation-Title", "PostgreSQL JDBC Driver", "Implementation-Version", "42.7.4"), ProcessLaunchTest.entries()));
+        ProcessLaunchTest.write(new File(base, "deployments/postgresql-42.7.4.jar"), ProcessLaunchTest.jar(ProcessLaunchTest.attrs("Implementation-Title", "PostgreSQL JDBC Driver", "Implementation-Version", "42.7.4"), driverEntries("org.postgresql.Driver")));
         text(new File(base, "configuration/standalone.xml"), "<server xmlns='urn:jboss:domain:20.0'><profile>" + subsystem(
             "<datasource jndi-name='java:/EnvDS' pool-name='EnvDS'><connection-url>${env.DB_URL:jdbc:oracle:thin:@fallback.example:1521/FALLBACK}</connection-url><driver>oracle</driver><security><password>PRIVATE_PASSWORD_CANARY</password></security></datasource>" +
             "<datasource jndi-name='java:/EmbeddedDS' pool-name='EmbeddedDS'><connection-url>jdbc:postgresql://${db.host:localhost}:${db.port:5432}/${env.DB_NAME}</connection-url><driver>postgresql-42.7.4.jar_org.postgresql.Driver_42_7</driver></datasource>" +

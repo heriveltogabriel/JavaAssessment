@@ -116,7 +116,7 @@ public final class SpringConfigurationTest {
         check(!Json.stringify(ds).contains("SECRET_CANARY"), "Classpath endpoint excludes password");
         File negative = new File(root, "negative"); negative.mkdirs();
         scan = scan(negative, new Properties(), new String[]{"java", "-cp", classes.getPath(), "example.Main"});
-        check(scan.datasources.isEmpty() && ((Map)scan.applications.get(0)).get("applicationType") == null, "Datasource settings alone never classify a generic process as Boot");
+        check(scan.datasources.size() == 1 && "generic-scan".equals(((Map)scan.datasources.get(0)).get("discoveryMethod")) && "db.example".equals(((Map)scan.datasources.get(0)).get("databaseHost")) && ((Map)scan.applications.get(0)).get("applicationType") == null, "Generic JDBC discovery never classifies a plain process as Boot");
         File serverRoot = new File(root, "container"); serverRoot.mkdirs();
         scan = scan(serverRoot, new Properties(), new String[]{"java", "-cp", classes.getPath() + File.pathSeparator + lib.getPath() + "/*", "org.apache.catalina.startup.Bootstrap"});
         check(scan.datasources.isEmpty() && !"Spring Boot".equals(((Map)scan.applications.get(0)).get("applicationType")) && "Tomcat".equals(((Map)scan.processes.get(0)).get("serverType")), "Boot dependency on container classpath does not relabel Tomcat or attach application config to container");

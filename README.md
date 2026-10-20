@@ -1,15 +1,17 @@
 # Java Assessment
 
-Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versão **2.1.8**, preparada para teste pela console, reúne dashboard, agente Linux e banco SQLite local, com organização por ambiente e máquina.
+Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versão **2.1.10**, preparada para teste pela console, reúne dashboard, agente Linux e banco SQLite local, com organização por ambiente e máquina.
 
 ![Overview do Java Assessment com indicadores de agentes, instalações Java, servidores e datasources JDBC](imagens/overview.png)
+
+Esta entrega reúne [configurações Spring/JDBC](docs/SPRING_DISCOVERY.md), [driver WebLogic por processo](docs/JDBC_DRIVER_RESOLUTION.md) e [Tomcat/JBoss](docs/TOMCAT_JBOSS_DISCOVERY.md). Veja as [notas da 2.1.10](docs/RELEASE_2.1.10.md).
 
 ## Recursos
 
 - Visão geral com quatro distribuições compactas: Java, sistemas operacionais, servidores por produto/versão e datasources por nome/versão do driver; máquinas em lista com busca e dez itens por página.
 - Instalações Java, incluindo runtimes sem compilador quando há evidência de uso por aplicação.
 - Aplicações, processos, servidores Java, bibliotecas e datasources JDBC por configuração suportada.
-- Versão do driver JDBC por datasource WebLogic, com classe exata, caminho do JAR e indicação de candidatos ou inspeção incompleta.
+- JAR e versão do driver JDBC por datasource WebLogic, Tomcat e JBoss/WildFly, com classe exata, precedência, origem e indicação de candidatos ou inspeção incompleta.
 - Contas individuais com email e senha, perfis Administrador e Leitura e troca de senha no primeiro acesso.
 - Relatórios de máquinas, Java, servidores, JDBC e ambientes, com filtros combinados, seleção de colunas e exportação PDF/CSV.
 - JDBC em todos os relatórios, com datasource, driver, versão e destino configurado do banco (host/IP, porta e banco/serviço), também nas exportações PDF/CSV.
@@ -67,16 +69,24 @@ Na raiz deste repositório, com Python 3 e OpenSSL disponíveis:
 
 ```sh
 # Recupera somente os artefatos públicos assinados do instalador publicado.
-unzip -o install/v2.1.0/assessment-dashboard-installer-2.1.0.zip 'dist/*' -d .
+unzip -o install/v2.1.10/assessment-dashboard-installer-2.1.10.zip 'dist/*' -d .
 python3 -B ops/prepare-beta-dependencies.py --check
 python3 -B dashboard-installer/build.py --with-source
 ```
 
-Os resultados ficam em `dist/assessment-dashboard-installer-2.1.0.zip` e `dist/assessment-dashboard-source-2.1.0.zip`, com arquivos SHA-256. O build usa as bibliotecas fixadas, o agente genérico e o catálogo público assinado incluídos no repositório. Não exige arquivos da máquina de desenvolvimento nem a chave privada de assinatura.
+Os resultados ficam em `dist/assessment-dashboard-installer-2.1.10.zip` e `dist/assessment-dashboard-source-2.1.10.zip`, com arquivos SHA-256. O build usa as bibliotecas fixadas, o agente genérico e o catálogo público assinado incluídos no repositório. Não exige arquivos da máquina de desenvolvimento nem a chave privada de assinatura.
 
 O pacote do agente versionado em `dist/assessment-collector.zip` é genérico e não contém identidade cadastrada. O catálogo extraído em `dist/` inclui os pacotes completos e as rotas de migração. O build verifica assinaturas, chave pública e integridade antes de empacotar. Alterações nos arquivos executáveis exigem uma nova entrega assinada; o build não assina nem substitui a confiança instalada.
 
-## Entrega para teste pela console — 2.1.8
+## Entrega para teste pela console — 2.1.10
+
+A [2.1.10](install/v2.1.10/README.md) consolida configuração externa Spring, resolução JDBC por processo no WebLogic, classloaders/propriedades/contextos Tomcat e módulos/deployments/JNDI do JBoss. Envie o **assessment-dashboard-web-update-2.1.10.zip** em Administração → Atualização do dashboard. [Notas](docs/RELEASE_2.1.10.md) · [Validação](docs/validation/console-release-2.1.10.md).
+
+Novos padrões incluem `/etc/config` e `/prd1`, e excluem `/opt`, inclusive para arquivos ligados a processos ativos. Listas salvas não mudam. Remova `/opt` das exclusões para inventariar configurações e drivers nessa pasta.
+
+**Atualize também os agentes**, separadamente, e solicite nova coleta. A 2.1.9 é ponte interna, sem instalação manual intermediária. Confira a elegibilidade pelo painel.
+
+## Entrega anterior — 2.1.8
 
 A [2.1.8](install/v2.1.8/README.md) deixa o agente mais rápido e preciso: versão real das JVMs em execução (inclusive Java atualizado em disco com a aplicação rodando), JARs internos do Spring Boot sem descompactar, mais drivers e pools, placeholders `${...}`, JBoss domain/XA/módulos, pools do Tomcat e alias TNS. No dashboard, status de suporte de Java e servidores, painel de riscos e visão "quem acessa cada banco". Envie o **pacote web-update** em Administração → Atualização do dashboard. [Notas](docs/RELEASE_2.1.8.md).
 
@@ -183,7 +193,7 @@ Os testes de navegador usam Playwright e Chrome. Configure `NODE`, `NODE_PATH`, 
 - [Validações e gates antes de publicar](docs/validation/full-agent-update.md)
 - [Migração e backup](dashboard-installer/BETA_MIGRATION.md)
 
-Os nomes de alguns scripts e documentos mantêm `beta` por compatibilidade com a estrutura anterior. A entrega preparada atual é 2.1.8; a 2.1.0 permanece preservada. Relatórios históricos descrevem somente o cenário e a versão em que foram produzidos.
+Os nomes de alguns scripts e documentos mantêm `beta` por compatibilidade com a estrutura anterior. A entrega preparada atual é 2.1.10; a 2.1.0 permanece preservada. Relatórios históricos descrevem somente o cenário e a versão em que foram produzidos.
 
 Configurações privadas, chaves, inventário, logs, pacotes de ambientes e ferramentas específicas do laboratório ficam fora do Git. Publicar código neste repositório não instala nem atualiza servidores ou agentes.
 

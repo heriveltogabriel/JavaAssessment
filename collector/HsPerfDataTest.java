@@ -79,7 +79,7 @@ public final class HsPerfDataTest {
         ProcessLaunch tomcat = ProcessLaunch.parse(new String[]{"java", "org.apache.catalina.startup.Bootstrap", "start"}, null, environment);
         check("/opt/tomcat".equals(tomcat.serverHome) && tomcat.classpath.size() == 1 && !tomcat.opaqueArguments, "CLASSPATH from the environment completes the launcher");
         ProcessLaunch explicit = ProcessLaunch.parse(new String[]{"java", "-cp", "/a.jar", "Main"}, null, environment);
-        check(explicit.classpath.equals(Arrays.asList("/a.jar")) && !explicit.perfDataCompleted, "An explicit command-line classpath is left as parsed");
+        check(explicit.classpath.equals(Arrays.asList("/opt/tomcat/bin/bootstrap.jar")) && explicit.perfDataCompleted, "Effective perfdata classpath supersedes launcher text");
     }
 
     static long uid() throws Exception {

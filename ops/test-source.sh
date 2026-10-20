@@ -9,14 +9,14 @@ JTMP="$(pwd)/tmp/java-tmp"
 "$JAVA_HOME/bin/javac" --release 17 -encoding UTF-8 -cp 'lib/*' \
   -d tmp/source-classes shared/*.java server/*.java collector/*.java tests/*.java
 CP='tmp/source-classes:lib/*'
-for suite in VisitedPathsTest LifecycleTest ProductHomesTest JdbcDriverResolverTest JdbcEndpointTest ArchiveMetadataTest WebLogicVersionTest SpringDataSourceTest SpringConfigurationTest SpringIntegrationTest RuntimeInventoryTest \
+for suite in VisitedPathsTest LifecycleTest ProductHomesTest JdbcDriverResolverTest WebLogicPrecedenceTest TomcatDiscoveryTest JbossDiscoveryTest NativeTomcatTest JdbcEndpointTest ArchiveMetadataTest WebLogicVersionTest SpringDataSourceTest ApplicationConfigFilesTest AgentConfigAcceptanceTest ApplicationJdbcTest JndiLinksTest SpringExtendedTest SpringConfigurationTest SpringIntegrationTest RuntimeInventoryTest \
   ProcessLaunchTest HsPerfDataTest JdkInventoryTest BoundedDirectoryTest CollectorSweepTest \
   CollectorTest AgentToolTest LegacyDiscoveryTest AgentBundleManifestTest AgentBootstrapHandoffTest AgentRecoveryServiceTest; do
   "$JAVA_HOME/bin/java" -Djava.io.tmpdir="$JTMP" -Xmx96m -cp "$CP" "assessment.$suite"
 done
 "$JAVA_HOME/bin/java" -Djava.io.tmpdir="$JTMP" -Xmx96m -cp "$CP" assessment.ServerDataSourcesTest \
   --export tmp/source-evidence/jdbc-fixtures.json
-for suite in JdbcEndpointReportsTest DatabaseGroupsHttpTest EnvironmentPresenceTest ArchiveDefaultsHttpTest PortugueseTest InventoryStoreTest UserAuthTest UserAccessHttpTest DashboardMaintenanceHttpTest EnvironmentInstallAccessTest EnvironmentInstallHttpTest InstallCommandTest \
+for suite in JdbcEndpointReportsTest DatabaseGroupsHttpTest EnvironmentPresenceTest ArchiveDefaultsHttpTest SettingsPathsHttpTest PortugueseTest InventoryStoreTest UserAuthTest UserAccessHttpTest DashboardMaintenanceHttpTest EnvironmentInstallAccessTest EnvironmentInstallHttpTest InstallCommandTest \
   MachineActionsHttpTest MachineCleanupHttpTest AgentUpdateWorkerTest AgentUpdateStartTimeoutTest AgentUpdateHttpTest \
   WorkRequestsHttpTest RuntimeInventoryHttpTest CsvExportTest \
   VersionedCsvHttpTest DashboardVersionHttpTest CompactOverviewTest LifecycleHttpTest PostUpdateAssessmentsTest PostUpdateAssessmentHttpTest; do

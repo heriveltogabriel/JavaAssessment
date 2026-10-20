@@ -140,7 +140,7 @@ text('Uma solução de descoberta e inventário instalada na infraestrutura do c
 text('Este manual explica a arquitetura, o fluxo da coleta e o uso das informações para planejar atualizações, padronização e modernização.',M,H-367,440,size=11,leading=17,max_h=60)
 box(M,86,440,51,fill=PALE,stroke=LINE)
 text('Guia de referência',M+14,121,150,size=11,leading=15,font='TextBold',fill=GREEN)
-text('19 de outubro de 2026',M+14,103,240,size=9,leading=13,fill=MUTED)
+text('20 de outubro de 2026',M+14,103,240,size=9,leading=13,fill=MUTED)
 rx=M+469;rw=CW-469
 box(rx,86,rw,428,fill=GREEN,radius=13)
 text('Explore o manual',rx+20,491,rw-40,size=18,leading=23,font='DisplayBold',fill='#FFFFFF')
@@ -223,7 +223,7 @@ for idx,row in enumerate(rows):
     for j,(w,txt) in enumerate(zip(widths,row)):
         text(txt,x+11,y-9,w-22,size=9.4,leading=13.2,font='TextBold' if j==0 else 'Text',fill=GREEN if j==0 else INK,max_h=rh-14);x+=w
     rule(M,y-rh);y-=rh
-note('Cobertura JDBC','Há descoberta por configuração em Spring Boot, Tomcat, JBoss/WildFly standalone e WebLogic, dentro dos formatos suportados. Arquivos externos, perfis e sobreposições podem ficar fora da cobertura.',61,h=64)
+note('Cobertura JDBC','Spring Boot, Tomcat, JBoss/WildFly e WebLogic têm descoberta passiva por configuração. JAR, versão e destino do banco usam evidências do processo e dos arquivos; não comprovam conexão ativa.',61,h=64)
 
 # 08 / Security visual.
 figure('04  /  Segurança e acesso','security','Segurança e acesso','04-seguranca-controle.png','Figura 4. Comunicação HTTPS, identidade individual e execução com escopo definido formam a base dos controles da solução.')
@@ -243,8 +243,8 @@ text('<b>Alcance dos perfis:</b> ambos consultam todos os ambientes. O filtro po
 y=433
 y=sub('Primeiro acesso e administração','Cada pessoa entra com email e senha. A senha temporária deve ser trocada no primeiro acesso. O administrador cria contas, define o perfil e pode desativar acessos.',right,y)
 y=sub('Comunicação e identidade','Os agentes iniciam conexões HTTPS e validam o servidor. Após o cadastro, usam uma credencial própria, revogável. A autorização temporária do pacote serve para novos registros.',right,y)
-y=sub('Coleta dentro do escopo','Caminhos autorizados, exclusões e limites de tempo e leitura delimitam a coleta. A descoberta de JDBC não abre conexão com o banco nem executa classes encontradas.',right,y)
-note('Responsabilidade operacional','A equipe do cliente administra o servidor, os certificados, os acessos e os backups. Os dados ficam na infraestrutura em que a solução foi instalada.',62,h=61)
+y=sub('Coleta dentro do escopo','Novos ambientes: incluir /usr/java, /usr/lib/jvm, /u01, /etc/config e /prd1; excluir /proc, /sys, /dev, /tmp e /opt. Pastas de configuração das aplicações: /etc/config. Listas já salvas não mudam.',right,y)
+note('Revisar o escopo antes de coletar','/opt fica excluído inclusive para aplicações em execução. Para inventariá-las, remova a exclusão e inclua o caminho desejado. O padrão legado também mantém /home/opc/oracle. A equipe local administra acessos e backups.',62,h=76)
 
 # 10 / Full update flow, drawn as selectable PDF content.
 page('05  /  Atualização de agentes','updates','Atualização de agentes')
@@ -321,7 +321,7 @@ for i,(title,body) in enumerate(rows):
     text(title,M+13,y-13,126,size=11.5,leading=16,font='TextBold',fill=GREEN)
     text(body,M+154,y-12,CW-169,size=10.6,leading=15,max_h=32)
     y-=60
-note('Mais detalhes quando necessários','Em Colunas, adicione caminho, PID, Java home ou JDBC da máquina no modelo de servidores. Em JDBC, adicione JAR e versão do driver. A versão do banco exige evidência própria; um JAR não a comprova.',61,h=65)
+note('Mais detalhes quando necessários','Em Colunas, adicione caminho, PID, Java home ou JDBC da máquina. Em JDBC, confira Arquivo JAR, Versão, Suporte, origem da versão e motivo da resolução. A versão do driver não é a versão do banco.',61,h=65)
 
 page('Relatórios / Filtros, vínculos e exportação')
 heading('07  /  JDBC E EXPORTAÇÕES','Filtrar com contexto. Compartilhar com clareza.','As sugestões vêm do inventário e também permitem digitação. Recarregar atualiza os dados disponíveis.')
@@ -333,8 +333,8 @@ y=sub('Critérios no mesmo datasource','Ao combinar banco, driver e aplicação,
 y=431
 y=sub('Vínculos que o inventário comprova','JDBC do servidor usa associações registradas; estar na mesma máquina não basta. JDBC da máquina mostra o contexto do host. A versão Java do servidor vem do Java home correspondente.',right,y)
 y=sub('PDF e CSV','As exportações usam as colunas e os filtros escolhidos, com todas as páginas. Limites: 10.000 registros e 8.192 caracteres por célula. Refine o escopo quando necessário.',right,y)
-y=sub('O que não aparece no relatório','Não são incluídos data da coleta, cobertura, URLs JDBC, senhas ou tokens. O PDF informa a data de geração. Campos sem evidência permanecem sem informação.',right,y)
-note('Datasource, driver e versão permanecem juntos','A configuração encontrada não confirma conexão ativa com o banco. Um driver presente na máquina não prova que ele seja usado por todos os datasources.',61,h=65)
+y=sub('Confiança do driver','A ordem de carregamento indica o candidato selecionado. Provável usa evidência de arquivo aberto; múltiplos candidatos ou variação por instância exigem conferir os detalhes por PID. Ausência de evidência mantém o estado desconhecido.',right,y)
+note('Datasource, driver e versão permanecem juntos','A coleta é passiva: não conecta ao banco nem carrega classes. PDF/CSV não incluem URLs JDBC completas, senhas ou tokens. O destino mostra somente tipo, host, porta e serviço disponíveis.',61,h=65)
 
 # 13 / Adoption boundaries and sizing.
 page('Adoção / Compatibilidade e implantação','adoption','Planejar a adoção')
