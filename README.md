@@ -1,6 +1,6 @@
 # Java Assessment
 
-Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versão **2.1.6**, preparada para teste pela console, reúne dashboard, agente Linux e banco SQLite local, com organização por ambiente e máquina.
+Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versão **2.1.8**, preparada para teste pela console, reúne dashboard, agente Linux e banco SQLite local, com organização por ambiente e máquina.
 
 ![Overview do Java Assessment com indicadores de agentes, instalações Java, servidores e datasources JDBC](imagens/overview.png)
 
@@ -76,7 +76,13 @@ Os resultados ficam em `dist/assessment-dashboard-installer-2.1.0.zip` e `dist/a
 
 O pacote do agente versionado em `dist/assessment-collector.zip` é genérico e não contém identidade cadastrada. O catálogo extraído em `dist/` inclui os pacotes completos e as rotas de migração. O build verifica assinaturas, chave pública e integridade antes de empacotar. Alterações nos arquivos executáveis exigem uma nova entrega assinada; o build não assina nem substitui a confiança instalada.
 
-## Entrega para teste pela console — 2.1.6
+## Entrega para teste pela console — 2.1.8
+
+A [2.1.8](install/v2.1.8/README.md) deixa o agente mais rápido e preciso: versão real das JVMs em execução (inclusive Java atualizado em disco com a aplicação rodando), JARs internos do Spring Boot sem descompactar, mais drivers e pools, placeholders `${...}`, JBoss domain/XA/módulos, pools do Tomcat e alias TNS. No dashboard, status de suporte de Java e servidores, painel de riscos e visão "quem acessa cada banco". Envie o **pacote web-update** em Administração → Atualização do dashboard. [Notas](docs/RELEASE_2.1.8.md).
+
+**Atualize os agentes separadamente e faça nova coleta** para obter os novos campos.
+
+## Entrega anterior — 2.1.6
 
 A [2.1.6](install/v2.1.6/README.md) associa o JAR ao datasource Spring e libera o lote quando uma máquina não inicia em cinco minutos na sua vez. Envie o **pacote web-update** em Administração → Atualização do dashboard; revise e confirme Atualizar e reiniciar. [Notas e teste](docs/RELEASE_2.1.6.md).
 
@@ -177,7 +183,7 @@ Os testes de navegador usam Playwright e Chrome. Configure `NODE`, `NODE_PATH`, 
 - [Validações e gates antes de publicar](docs/validation/full-agent-update.md)
 - [Migração e backup](dashboard-installer/BETA_MIGRATION.md)
 
-Os nomes de alguns scripts e documentos mantêm `beta` por compatibilidade com a estrutura anterior. A entrega preparada atual é 2.1.6; a 2.1.0 permanece preservada. Relatórios históricos descrevem somente o cenário e a versão em que foram produzidos.
+Os nomes de alguns scripts e documentos mantêm `beta` por compatibilidade com a estrutura anterior. A entrega preparada atual é 2.1.8; a 2.1.0 permanece preservada. Relatórios históricos descrevem somente o cenário e a versão em que foram produzidos.
 
 Configurações privadas, chaves, inventário, logs, pacotes de ambientes e ferramentas específicas do laboratório ficam fora do Git. Publicar código neste repositório não instala nem atualiza servidores ou agentes.
 

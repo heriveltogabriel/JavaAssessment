@@ -19,7 +19,13 @@ O playbook usa wget, instala com sudo em lotes de duas máquinas e ignora agente
 - [Manual ilustrado da solução](Manual.pdf): arquitetura, inventário, atualização de agentes, relatórios e filtros JDBC.
 - [Guia de instalação](Guia-instalacao.pdf): requisitos, comandos, configuração do dashboard e instalação dos agentes.
 
-## Entrega para teste pela console — 2.1.6
+## Entrega para teste pela console — 2.1.8
+
+[Pacotes da 2.1.8](v2.1.8/README.md): agente mais rápido e preciso (JVMs em execução, JARs internos, drivers e datasources) e dashboard com status de suporte, painel de riscos e visão por banco de dados. Para atualizar pela tela, envie [assessment-dashboard-web-update-2.1.8.zip](v2.1.8/assessment-dashboard-web-update-2.1.8.zip) em Administração → Atualização do dashboard.
+
+[Notas](../docs/RELEASE_2.1.8.md). **Atualize os agentes separadamente** e solicite nova coleta. O deploy pela console será feito pelo operador.
+
+## Entrega anterior preservada — 2.1.6
 
 [Pacotes da 2.1.6](v2.1.6/README.md): JAR do datasource Spring e timeout de início por máquina no lote. Para atualizar pela tela, envie [assessment-dashboard-web-update-2.1.6.zip](v2.1.6/assessment-dashboard-web-update-2.1.6.zip) em Administração → Atualização do dashboard. O instalador de servidor novo não serve para upload.
 

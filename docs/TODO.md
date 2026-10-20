@@ -1,5 +1,14 @@
 # Melhorias planejadas
 
+## Entrega 2.1.8 — agente e dashboard
+
+- [x] Agente: pausa adaptativa, find único no Java 6, poda de homes de produto, orçamentos separados, hsperfdata, Java substituído em disco, JARs internos sem descompactar, catálogo de drivers/pools, placeholders, JBoss domain/XA/módulos/legado, Tomcat pools/ResourceLink, TNS, módulos JDBC de aplicação no WebLogic. Revisão independente e correções.
+- [x] Dashboard: status de suporte (catálogo com fontes), painel de riscos, abas Datasources JDBC e Bancos de dados, coluna JDBC resumida nos relatórios, textos.
+- [ ] Gerar pacotes assinados no Mac e testar upload pela console, atualização de agentes e nova coleta.
+- [ ] Conferir no catálogo as datas marcadas como fonte secundária (JBoss EAP 7.4/8, WebLogic 12.2.1.4/14.1.2, Oracle JDBC 11–18).
+- [ ] Validar o modo find do Java 6 e o hsperfdata em RHEL 5 real; patches do registry.xml com Oracle Home real.
+- [ ] Próximos: cache incremental entre coletas; servidores parados com datasources; comparação entre coletas.
+
 ## Entrega 2.1.6 — teste pela console
 
 - [x] Datasources Spring: associar driverArtifact à biblioteca única da aplicação; preservar ambiguidades e separar versão do driver/banco. Fixtures de JAR aninhado, associação de processo, integração opcional e relatórios/exportações validadas.
