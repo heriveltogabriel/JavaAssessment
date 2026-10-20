@@ -75,12 +75,14 @@ public final class BoundedDirectoryTest {
                 AssessmentScan scan = new AssessmentScan(new Properties(), "test", "test", AssessmentScan.map("maxFiles", 1000, "pauseMillis", 0));
                 scan.excluded.clear(); scan.excluded.add(new File(root, "excluded").getPath()); scan.excluded.add(new File(root, "with[glob]*").getPath());
                 scan.walk(root, 0);
+                // The per-directory sweep notes a symlink only if its target was not visited yet, which depends on directory order.
+                for (Iterator i = scan.warnings.iterator(); i.hasNext();) if (String.valueOf(i.next()).startsWith("Symlink path skipped")) i.remove();
                 results[mode] = scan.filesVisited + " " + new TreeSet(scan.applicationsByPath.keySet()) + " " + scan.runtimes.keySet() + " " + new TreeSet(scan.servers.keySet())
                     + " " + scan.deferredArchives.size() + " " + new TreeSet(scan.warnings) + " " + scan.partial;
             }
             check(results[0].equals(results[1]), "tree and per-directory sweeps differ:\n" + results[0] + "\n" + results[1]);
             check(results[0].contains("orders.war") && results[0].contains("kept.war") && results[0].contains("shop.war") && !results[0].contains("y.war") && !results[0].contains("/w.war")
-                && !results[0].contains("deep.war") && results[0].contains("Directory depth limit reached") && results[0].contains("Symlink path skipped") && results[0].contains("tomcat/lib/catalina.jar]"),
+                && !results[0].contains("deep.war") && results[0].contains("Directory depth limit reached") && !results[0].contains("apps-link") && results[0].contains("tomcat/lib/catalina.jar]"),
                 "sweep rules hold: " + results[0]);
         } finally { BoundedDirectory.NIO = BoundedDirectory.nioAvailable(); CollectorTest.remove(root); }
     }
