@@ -37,7 +37,7 @@ final class InventoryQueries {
             +"WHEN julianday(h.last_seen)>julianday(?) THEN 'recent' "
             +"WHEN julianday(h.last_seen)>julianday(?) THEN 'delayed' ELSE 'silent' END";
     }
-    private String conditions(Scope f,String kind,List<Object> a){
+    String conditions(Scope f,String kind,List<Object> a){
         String w=f.where();a.addAll(f.args);
         if(!f.q.isEmpty()){
             String col=kind.equals("hosts")?"(h.hostname || ' ' || coalesce(json_extract(h.payload,'$.distribution'),'') || ' ' || coalesce(json_extract(h.payload,'$.ipAddresses'),''))":kind.equals("jobs")?"(j.status || ' ' || CASE j.status WHEN 'SUCCEEDED' THEN 'Completed' WHEN 'PARTIAL' THEN 'Completed with notes' ELSE '' END || ' ' || j.id || ' ' || h.hostname || ' ' || coalesce(json_extract(j.payload,'$.summary'),''))":"(i.search_text || ' ' || h.hostname || ' ' || coalesce(json_extract(h.payload,'$.fqdn'),''))";
@@ -48,6 +48,7 @@ final class InventoryQueries {
         if(!f.to.isEmpty()){w+=" AND (coalesce("+stamp+",'')='' OR julianday("+stamp+") < julianday(?))";a.add(f.to);}
         if(kind.equals("runtimes")&&!f.version.isEmpty()){w+=" AND i."+(f.mode.equals("exact")?"version":"major")+"=?";a.add((f.version.equals("Version unknown")||f.version.equals("Versão desconhecida"))?"":f.mode.equals("exact")?f.version:f.version.replaceFirst("^Java ",""));}
         if(kind.equals("servers")&&f.subset.equals("runtime"))w+=" AND coalesce(json_extract(i.payload,'$.state'),'') <> ''";
+        if(kind.equals("datasources")&&f.subset.startsWith(DatabaseGroups.PREFIX))w+=" AND "+DatabaseGroups.condition(f.subset,a);
         if(kind.equals("libraries")&&f.subset.equals("jdbc"))w+=" AND lower(coalesce(json_extract(i.payload,'$.category'),''))='jdbc'";
         if(kind.equals("hosts")&&PRESENCE_STATES.contains(f.subset)){
             w+=" AND ("+presenceCase(f,a)+")=?";a.add(f.subset);
@@ -144,6 +145,8 @@ final class InventoryQueries {
                 if(kind.equals("hosts"))hosts=(List<Map<String,Object>>)page.get("items");
                 else {Set<String> ids=new LinkedHashSet<>();for(Map<String,Object> row:(List<Map<String,Object>>)page.get("items"))ids.add(s(row.get("hostId")));for(String id:ids){Map<String,Object> h=db.get("hosts",id);if(h!=null)hosts.add(h);}}
             }
+        }else if(f.view.equals("databases")){
+            Map<String,Object> page=DatabaseGroups.page(this,f);result.put("databaseGroups",page.get("groups"));result.put("pagination",page.get("pagination"));
         }else if(f.view.equals("overview")||f.view.equals("machine")){
             Scope preview=new Scope();preview.environment=f.environment;preview.host=f.host;preview.size=6;
             result.put("jobs",page(preview,"jobs").get("items"));

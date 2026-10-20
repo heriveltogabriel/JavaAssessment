@@ -1,0 +1,42 @@
+/* Datasources JDBC tab, "Bancos de dados" groups and the expandable JDBC report cell. */
+.ds-relations span{display:block}
+.ds-relations .cell-sub{margin-top:2px}
+.ds-destination{display:block;min-width:180px;max-width:280px;overflow-wrap:anywhere}
+
+.db-intro{margin:0 0 16px;font-size:12px;color:var(--dash-muted)}
+.db-groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:16px}
+.db-group{display:flex;flex-direction:column;min-width:0;background:var(--dash-card);border:1px solid var(--dash-border);border-radius:9px;box-shadow:0 2px 5px #313e2203}
+.db-group.unidentified{border-style:dashed;background:#fbfaf6}
+.db-group header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:20px 20px 0}
+.db-group header>div:first-child{min-width:0}
+.db-group h3{margin:6px 0 0;font-size:16px;font-weight:600;letter-spacing:-.3px;line-height:1.35;overflow-wrap:anywhere}
+.db-group header p{margin:6px 0 0;font-size:11px;color:var(--dash-muted)}
+.db-group .dash-kicker{font-size:9px;letter-spacing:1.5px}
+.db-types{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end}
+.db-metrics{display:flex;flex-wrap:wrap;gap:6px 16px;padding:14px 20px;margin-top:14px;border-top:1px solid var(--dash-border);border-bottom:1px solid var(--dash-border);background:var(--dash-light);font-size:12px;color:#4d5a43}
+.db-metrics strong{font-size:15px;color:var(--dash-green)}
+.db-lists{margin:0;padding:12px 20px;flex:1}
+.db-lists div{display:grid;grid-template-columns:92px 1fr;gap:10px;padding:6px 0}
+.db-lists dt{font-size:11px;color:var(--dash-muted)}
+.db-lists dd{margin:0;display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12px;min-width:0;overflow-wrap:anywhere}
+.db-lists dd .link{font-size:12px;border:0;background:none;padding:0;min-height:0;color:var(--link);font-weight:600;cursor:pointer;text-align:left}
+.db-more{color:var(--dash-muted)}
+.db-group footer{padding:0 20px 18px}
+.db-group footer .button{margin-top:4px;font-size:12px;min-height:34px}
+#special-view .db-groups+.table-footer{margin-top:16px}
+
+.reports-workspace td.reports-jdbc-cell .report-jdbc summary{cursor:pointer;font-weight:600;color:#3c5a2f;white-space:normal}
+.report-jdbc ul{margin:8px 0 0;padding:0;list-style:none;white-space:normal}
+.report-jdbc li{padding:7px 0;border-top:1px solid #e8ebdf;line-height:1.5}
+.report-jdbc li strong{display:block;color:#33402a}
+.report-jdbc li span{display:block;font-size:11px;color:#5d6852}
+
+@media(max-width:700px){
+  .db-groups{grid-template-columns:1fr}
+  .db-group header{flex-direction:column;padding:16px 16px 0}
+  .db-types{justify-content:flex-start}
+  .db-metrics,.db-lists{padding-left:16px;padding-right:16px}
+  .db-lists div{grid-template-columns:1fr;gap:2px}
+  .db-group footer{padding:0 16px 16px}
+  .db-group footer .button{width:100%;white-space:normal}
+}

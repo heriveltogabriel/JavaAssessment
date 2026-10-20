@@ -79,27 +79,37 @@ final class Reports {
         private static int integer(String value,int min,int max){try{int n=Integer.parseInt(value);if(n>=min&&n<=max)return n;}catch(NumberFormatException ignored){}throw new Failure(400,"Paginação inválida.");}
     }
     static String field(String alias,String key){return "CASE WHEN json_type("+alias+".payload,'$."+key+"') IN ('text','integer','real') THEN json_extract("+alias+".payload,'$."+key+"') ELSE '' END";}
-    private static String associationArray(String alias){return "CASE WHEN json_type("+alias+".payload,'$.associations')='array' THEN json_extract("+alias+".payload,'$.associations') ELSE '[]' END";}
-    private static String associationField(String alias,String key){String value="CASE WHEN "+alias+".type='object' THEN "+alias+".value ELSE '{}' END";return "CASE WHEN json_type("+value+",'$."+key+"') IN ('text','integer','real') THEN json_extract("+value+",'$."+key+"') ELSE '' END";}
+    static String associationArray(String alias){return "CASE WHEN json_type("+alias+".payload,'$.associations')='array' THEN json_extract("+alias+".payload,'$.associations') ELSE '[]' END";}
+    static String associationField(String alias,String key){String value="CASE WHEN "+alias+".type='object' THEN "+alias+".value ELSE '{}' END";return "CASE WHEN json_type("+value+",'$."+key+"') IN ('text','integer','real') THEN json_extract("+value+",'$."+key+"') ELSE '' END";}
     private static String associatedText(String alias,String key){String scalar=field(alias,key),nested=associationField("assoc",key);return "(SELECT group_concat(value, char(10)) FROM (SELECT DISTINCT value FROM (SELECT "+scalar+" AS value UNION ALL SELECT "+nested+" FROM json_each("+associationArray(alias)+") assoc) WHERE value<>'' ORDER BY value))";}
     private static String driverClass(String alias){String name=field(alias,"driverName");return "coalesce(nullif("+field(alias,"driverClass")+",''),CASE WHEN "+name+" LIKE '%.%' AND "+name+" NOT LIKE '% %' THEN "+name+" ELSE '' END)";}
     /** Structured destinations only: never read or reconstruct a raw JDBC URL. */
-    private static String endpointArray(String alias){return "CASE WHEN json_type("+alias+".payload,'$.databaseEndpoints')='array' THEN json_extract("+alias+".payload,'$.databaseEndpoints') ELSE '[]' END";}
+    static String endpointArray(String alias){return "CASE WHEN json_type("+alias+".payload,'$.databaseEndpoints')='array' THEN json_extract("+alias+".payload,'$.databaseEndpoints') ELSE '[]' END";}
     private static String endpointText(String alias,String key){
         String scalar=field(alias,key),member=key.equals("databaseHost")?"host":"port";
         return "coalesce((SELECT group_concat(value, ', ') FROM (SELECT DISTINCT "+associationField("ep",member)+" AS value FROM json_each("+endpointArray(alias)+") ep WHERE "+associationField("ep","host")+"<>'' AND "+associationField("ep",member)+"<>'')),nullif("+scalar+",''),'')";
     }
-    private static String address(String host,String port){return "(CASE WHEN instr("+host+",':')>0 AND substr("+host+",1,1)<>'[' THEN '[' || "+host+" || ']' ELSE "+host+" END || CASE WHEN "+port+"<>'' THEN ':' || "+port+" ELSE '' END)";}
-    private static String destination(String alias){
-        String host=field(alias,"databaseHost"),port=field(alias,"databasePort"),name=field(alias,"databaseName");
-        String endpoints="coalesce((SELECT group_concat(value, ', ') FROM (SELECT DISTINCT "+address(associationField("ep","host"),associationField("ep","port"))+" AS value FROM json_each("+endpointArray(alias)+") ep WHERE "+associationField("ep","host")+"<>'')),CASE WHEN "+host+"<>'' THEN "+address(host,port)+" ELSE '' END)";
-        return "("+endpoints+" || CASE WHEN "+name+"<>'' THEN ' / ' || "+name+" ELSE '' END)";
+    static String address(String host,String port){return "(CASE WHEN instr("+host+",':')>0 AND substr("+host+",1,1)<>'[' THEN '[' || "+host+" || ']' ELSE "+host+" END || CASE WHEN "+port+"<>'' THEN ':' || "+port+" ELSE '' END)";}
+    private static String endpoints(String alias){
+        String host=field(alias,"databaseHost"),port=field(alias,"databasePort");
+        return "coalesce((SELECT group_concat(value, ', ') FROM (SELECT DISTINCT "+address(associationField("ep","host"),associationField("ep","port"))+" AS value FROM json_each("+endpointArray(alias)+") ep WHERE "+associationField("ep","host")+"<>'')),CASE WHEN "+host+"<>'' THEN "+address(host,port)+" ELSE '' END)";
+    }
+    static String destination(String alias){
+        String name=field(alias,"databaseName");
+        return "("+endpoints(alias)+" || CASE WHEN "+name+"<>'' THEN CASE WHEN "+endpoints(alias)+"<>'' THEN ' / ' ELSE '' END || "+name+" ELSE '' END)";
+    }
+    /** Destination for the JDBC tuple: without a resolved host it is not a database, only the configured service is kept as a hint. */
+    private static String tupleDestination(String alias){
+        String name=field(alias,"databaseName");
+        return "CASE WHEN "+endpoints(alias)+"<>'' THEN "+destination(alias)+" ELSE 'Não identificado' || CASE WHEN "+name+"<>'' THEN ' (serviço ' || "+name+" || ')' ELSE '' END END";
     }
     private static String destinationValue(String alias,String key){return key.equals("databaseDestination")?destination(alias):key.equals("databaseName")?field(alias,key):endpointText(alias,key);}
-    private static String tuple(String alias){return identified(field(alias,"name"))+" || ' — ' || "+identified("coalesce(nullif("+field(alias,"driverName")+",''),nullif("+driverClass(alias)+",''),'')")+" || ' · ' || "+identified(field(alias,"driverVersion"))+" || CASE WHEN "+field(alias,"databaseVersion")+"<>'' THEN ' · Banco: ' || "+identified(field(alias,"databaseType"))+" || ' ' || "+field(alias,"databaseVersion")+" || ' (' || "+databaseEvidence(alias)+" || ')' ELSE '' END"+" || ' · Destino configurado: ' || "+identified(destination(alias))+" || "+driverDetails(alias);}
-    private static String driverResolution(String a){return "CASE "+field(a,"driverResolution")+" WHEN 'IDENTIFIED' THEN 'Identificado em arquivo' WHEN 'AMBIGUOUS' THEN 'Múltiplos candidatos' WHEN 'INCOMPLETE' THEN 'Inspeção incompleta' WHEN 'NOT_FOUND' THEN 'Driver não localizado' WHEN 'VERSION_UNAVAILABLE' THEN 'Versão indisponível' ELSE '' END";}
+    private static String tuple(String alias){return identified(field(alias,"name"))+" || ' — ' || "+identified("coalesce(nullif("+field(alias,"driverName")+",''),nullif("+driverClass(alias)+",''),'')")+" || ' · ' || "+identified(field(alias,"driverVersion"))+" || CASE WHEN "+field(alias,"databaseVersion")+"<>'' THEN ' · Banco: ' || "+identified(field(alias,"databaseType"))+" || ' ' || "+field(alias,"databaseVersion")+" || ' (' || "+databaseEvidence(alias)+" || ')' ELSE '' END"+" || ' · Destino configurado: ' || "+tupleDestination(alias)+" || "+driverDetails(alias);}
+    private static String driverResolution(String a){return "CASE "+field(a,"driverResolution")+" WHEN 'IDENTIFIED' THEN 'Identificado em arquivo' WHEN 'AMBIGUOUS' THEN 'Múltiplos candidatos' WHEN 'INCOMPLETE' THEN 'Inspeção incompleta' WHEN 'NOT_FOUND' THEN 'Driver não localizado' WHEN 'VERSION_UNAVAILABLE' THEN 'Versão indisponível' ELSE "+field(a,"driverResolution")+" END";}
     private static String driverCandidates(String a){return "coalesce((SELECT group_concat("+associationField("dc","path")+" || ' — ' || coalesce(nullif("+associationField("dc","version")+",''),'Versão indisponível'), ' | ') FROM json_each(CASE WHEN json_type("+a+".payload,'$.driverCandidates')='array' THEN json_extract("+a+".payload,'$.driverCandidates') ELSE '[]' END) dc WHERE dc.type='object'), '')";}
-    private static String driverDetails(String a){return "CASE WHEN "+field(a,"driverResolution")+"<>'' THEN ' · Driver: ' || "+driverResolution(a)+" || ' · ' || "+field(a,"driverVersionEvidence")+" || ' · Arquivos: ' || "+driverCandidates(a)+" ELSE '' END";}
+    // Optional segments are appended only when present, so a line never shows " ·  · " or a dangling label.
+    private static String driverDetails(String a){return "CASE WHEN "+field(a,"driverResolution")+"<>'' THEN ' · Driver: ' || "+driverResolution(a)+" || "+segment(field(a,"driverVersionEvidence"),"")+" || "+segment(driverCandidates(a),"Arquivos: ")+" ELSE '' END";}
+    private static String segment(String expr,String label){return "CASE WHEN "+expr+"<>'' THEN ' · "+label+"' || "+expr+" ELSE '' END";}
     private static String databaseEvidence(String alias){return "CASE WHEN lower("+field(alias,"databaseVersionEvidence")+")='application-reported' THEN 'Informado pela aplicação' WHEN "+field(alias,"databaseVersionEvidence")+"='' THEN 'Origem não identificada' ELSE "+field(alias,"databaseVersionEvidence")+" END";}
     private static String serverAssociation(String ds,String server){
         String id=field(server,"id"),otherId=field(ds,"serverId"),nestedId=associationField("assoc","serverId");
