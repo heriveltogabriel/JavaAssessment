@@ -6,6 +6,6 @@ A aba administrativa oferece JSON ou CSV. O ZIP contém exatamente um arquivo: i
 
 Escopo: todo o inventário técnico atual armazenado no SQLite, mantendo exclusão de dados de acesso, usuários, senhas, tokens, chaves, configurações operacionais e comandos brutos. Não é dump integral/backup do banco. A seleção explícita de campos, limpeza de textos, leitura consistente, limites e autorização administrativa continuam. CSV deve escapar aspas, quebras de linha e fórmulas.
 
-A atualização web normal continua exigindo versão maior. Para a 2.1.16 original instalada, entregar script local que verifica estado terminal do executor, pausa o executor para evitar concorrência e usa o atualizador de script existente com baseline original reconhecida. Preservar configurações, SQLite, identidade e agentes. Não instalar remotamente sem solicitação.
+O operador confirmou depois que restaurou a console para 2.1.14. A entrega revisada será aplicada normalmente via web-update 2.1.14 → 2.1.16. Não é necessário script para mesma versão, nem alterar o bloqueio do executor. Não instalar remotamente sem solicitação.
 
 Validar formatos, vínculos, exclusão de credenciais, conteúdo aninhado, CSV com fórmulas/Unicode, seleção na interface, HTTP e downloads reais. Reconstruir instaladores na mesma versão somente após validação, guardar os artefatos originais localmente, conferir hashes internos, assinaturas e agentes inalterados; atualizar documentação e publicar na main.

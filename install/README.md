@@ -21,7 +21,7 @@ O playbook usa wget, instala com sudo em lotes de duas máquinas e ignora agente
 
 ## Entrega para teste pela console — 2.1.16
 
-[Pacotes da 2.1.16](v2.1.16/README.md): exportação técnica em ZIP pela Administração. Use o [web-update](v2.1.16/assessment-dashboard-web-update-2.1.16.zip) para atualizar pela console. [Notas](../docs/RELEASE_2.1.16.md) · [Validação](../docs/validation/console-release-2.1.16.md).
+[Pacotes da 2.1.16](v2.1.16/README.md): exportação técnica em JSON ou CSV único dentro do ZIP pela Administração. Use o [web-update](v2.1.16/assessment-dashboard-web-update-2.1.16.zip) para atualizar pela console. [Notas](../docs/RELEASE_2.1.16.md) · [Validação](../docs/validation/console-release-2.1.16.md).
 
 **Atualize também os agentes separadamente pelo painel.** A exportação já aproveita os dados existentes. Agentes 2.1.14 com atualizador V3 usam atualização direta; instalações sem capacidade/rota elegível precisam do instalador configurado para seu ambiente.
 

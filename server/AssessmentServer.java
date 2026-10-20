@@ -491,13 +491,13 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
 
     private void exportInventoryArchive(HttpExchange x,Session session)throws Exception{
         method(x,"GET");authorize(x,session);
-        String label=InventoryArchive.label(query(x,"label"));
+        String label=InventoryArchive.label(query(x,"label")),format=InventoryArchive.format(query(x,"format"));
         if(!exportSlot.tryAcquire())throw new ApiError(429,"Outra exportação ou relatório está em andamento. Tente novamente em instantes.");
         java.nio.file.Path temporary=null;
         try{
             temporary=java.nio.file.Files.createTempFile(data.toPath(),"inventory-archive-",".zip");
             try{java.nio.file.Files.setPosixFilePermissions(temporary,java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"));}catch(UnsupportedOperationException ignored){}
-            try(OutputStream out=java.nio.file.Files.newOutputStream(temporary)){InventoryArchive.write(out,store,label);}
+            try(OutputStream out=java.nio.file.Files.newOutputStream(temporary)){InventoryArchive.write(out,store,label,format);}
             authorize(x,session);
             x.getResponseHeaders().set("Content-Disposition","attachment; filename=\"java-assessment-inventario-"+java.time.LocalDate.now(java.time.ZoneOffset.UTC)+".zip\"");
             file(x,temporary.toFile(),"application/zip");

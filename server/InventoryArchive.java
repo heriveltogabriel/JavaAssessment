@@ -70,28 +70,52 @@ final class InventoryArchive {
         }
         return null;
     }
-    static void write(OutputStream output,InventoryStore store,String label)throws Exception {write(output,store,label,MAX_BYTES,MAX_RECORDS);}
-    static void write(OutputStream output,InventoryStore store,String label,long byteLimit,long recordLimit)throws Exception {
-        String title=label(label);String exportedAt=Instant.now().toString();
+    static String format(String value){
+        if(value==null||value.isEmpty())return "json";
+        if(!Set.of("json","csv").contains(value))throw new Failure("Escolha JSON ou CSV para exportar.");
+        return value;
+    }
+    static List<String> fields(){TreeSet<String> fields=new TreeSet<>(RECORD);fields.addAll(ENV);fields.addAll(HOST);return List.copyOf(fields);}
+    static void write(OutputStream output,InventoryStore store,String label)throws Exception {write(output,store,label,"json");}
+    static void write(OutputStream output,InventoryStore store,String label,String format)throws Exception {write(output,store,label,format,MAX_BYTES,MAX_RECORDS);}
+    static void write(OutputStream output,InventoryStore store,String label,long byteLimit,long recordLimit)throws Exception {write(output,store,label,"json",byteLimit,recordLimit);}
+    static void write(OutputStream output,InventoryStore store,String label,String requested,long byteLimit,long recordLimit)throws Exception {
+        String title=label(label),format=format(requested),exportedAt=Instant.now().toString();
         try(ZipOutputStream zip=new ZipOutputStream(output,StandardCharsets.UTF_8)){
-            Budget budget=new Budget(zip,byteLimit);Map<String,Object> counts=new LinkedHashMap<>();long[] total={0};
+            Budget budget=new Budget(zip,byteLimit);long[] total={0};
+            zip.putNextEntry(new ZipEntry("inventario."+format));
             store.readSnapshot(()->{
+                Map<String,Object> counts=new LinkedHashMap<>();
                 for(String collection:COLLECTIONS){
-                    zip.putNextEntry(new ZipEntry(collection+".json"));budget.text("[");long[] count={0};
+                    boolean direct=collection.equals("hosts")||collection.equals("environments");
+                    String sql=direct?"SELECT COUNT(*) AS n FROM "+collection:"SELECT COUNT(*) AS n FROM inventory WHERE kind=?";
+                    long count=((Number)store.rows(sql,direct?new Object[0]:new Object[]{collection}).get(0).get("n")).longValue();
+                    counts.put(collection,count);
+                }
+                Map<String,Object> metadata=map("format","java-assessment-inventory","formatVersion",2,"dashboardVersion",DashboardVersion.VERSION,"exportedAt",exportedAt,"label",title,"scope","all-current-inventory","counts",counts,"collections",COLLECTIONS,"containsCredentials",false);
+                InventoryArchiveCsv csv=format.equals("csv")?new InventoryArchiveCsv(budget::text,store,fields()):null;
+                if(csv==null)budget.text("{\"metadata\":"+Json.stringify(metadata)+",\"data\":{");else csv.start(metadata);
+                boolean first=true;
+                for(String collection:COLLECTIONS){
+                    if(csv==null){if(!first)budget.text(",");budget.text(Json.stringify(collection)+":[");}first=false;
+                    long[] count={0};
                     String sql=collection.equals("hosts")||collection.equals("environments")?"SELECT payload FROM "+collection+" ORDER BY id":"SELECT payload FROM inventory WHERE kind=? ORDER BY host_id,id";
                     Object[] args=collection.equals("hosts")||collection.equals("environments")?new Object[0]:new Object[]{collection};
                     store.forEachRow(sql,row->{
                         if(++total[0]>recordLimit)throw new Failure("O inventário excedeu o limite de registros para este pacote.");
                         @SuppressWarnings("unchecked") Map<String,Object> record=(Map<String,Object>)Json.parse(String.valueOf(row.get("payload")),32*1024*1024);
                         Lifecycle.decorate(collection,List.of(record),Instant.parse(exportedAt));
-                        if(count[0]++>0)budget.text(",");budget.text(Json.stringify(document(collection,record)));
+                        Map<String,Object> clean=document(collection,record);
+                        if(csv==null){if(count[0]>0)budget.text(",");budget.text(Json.stringify(clean));}else csv.record(collection,clean);
+                        count[0]++;
                     },args);
-                    budget.text("]\n");zip.closeEntry();counts.put(collection,count[0]);
+                    if(csv==null)budget.text("]");
+                    if(count[0]!=((Number)counts.get(collection)).longValue())throw new Failure("O inventário mudou durante a exportação.");
                 }
+                if(csv==null)budget.text("}}\n");
                 return null;
             });
-            zip.putNextEntry(new ZipEntry("manifest.json"));budget.text(Json.stringify(map("format","java-assessment-inventory","formatVersion",1,"dashboardVersion",DashboardVersion.VERSION,"exportedAt",exportedAt,"label",title,"scope","all-current-inventory","counts",counts,"collections",COLLECTIONS,"containsCredentials",false)));zip.closeEntry();
-            zip.putNextEntry(new ZipEntry("LEIA-ME.txt"));budget.text("Java Assessment — inventário para análise\n\nFormato 1. O manifesto identifica a versão, a data UTC e as contagens.\nCada coleção JSON contém uma lista. hostId vincula registros a hosts.id; environmentId vincula máquinas a environments.id. IDs de registros são locais à máquina e à coleção. As associações preservam os vínculos entre aplicações, servidores e JDBC.\n\nÉ uma cópia do inventário atual, não um backup do dashboard. Não inclui usuários, credenciais, tokens, certificados, configurações operacionais, comandos de processos ou histórico de solicitações. Campos desconhecidos ou fora do escopo são omitidos. Valores ausentes não significam ausência do recurso.\nPode conter nomes de máquinas, IPs, caminhos e destinos de banco. Compartilhe com quem estiver autorizado a analisar a infraestrutura.\n\nVersão do driver JDBC e versão do banco são informações distintas. Destinos configurados e candidatos a driver não comprovam conexão ativa ou carregamento efetivo. Preserve driverResolution e suas evidências nas análises.\n");zip.closeEntry();
+            zip.closeEntry();
         }
     }
     private static final class Budget {

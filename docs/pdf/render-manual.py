@@ -372,14 +372,14 @@ left=M;right=M+COL+GAP
 y=431
 for n,t,b in [
  (1,'Identificar o levantamento','Entre como administrador. Informe, se desejar, o nome do cliente ou levantamento. Não inclua credenciais ou informações pessoais nesse campo.'),
- (2,'Exportar o inventário','Clique em Exportar inventário em ZIP. A exportação inclui todas as máquinas e ambientes, independentemente dos filtros das outras telas.'),
+ (2,'Exportar o inventário','Escolha JSON ou CSV e clique em Exportar inventário em ZIP. O ZIP contém um único arquivo com todas as máquinas e ambientes, independentemente dos filtros.'),
  (3,'Guardar e analisar','Aguarde a geração e confira o download. Guarde o arquivo com a identificação do cliente e a data. O dashboard não importa esse pacote.'),
 ]:
     y=numbered(n,t,b,left,y)
 y=431
 y=sub('Dados técnicos preservados','Java, sistemas operacionais, hardware, aplicações, servidores, bibliotecas, JDBC, JARs, versões, destinos configurados, vínculos, evidências por PID e observações da coleta.',right,y)
 y=sub('Dados de acesso excluídos','Não inclui cadastros de usuários, senhas, tokens, chaves, certificados, comandos completos ou configurações operacionais. Nomes, IPs e caminhos continuam identificáveis: compartilhe apenas com pessoas autorizadas.',right,y)
-y=sub('Como interpretar','O ZIP contém manifesto, listas estruturadas e instruções. Versão do driver não é versão do banco. Candidatos a driver e destinos configurados não confirmam conexão ativa. Ausência de um campo não comprova ausência do recurso.',right,y)
+y=sub('Como interpretar','JSON reúne metadados e coleções em um documento. CSV tem uma linha por recurso; listas e evidências ficam nas células. A primeira linha de dados traz metadados. Versão do driver não é versão do banco; candidatos não confirmam carregamento.',right,y)
 note('Não é um backup','O pacote não restaura o dashboard nem seus acessos. Limites: um milhão de registros e 512 MiB descompactados; exceder um limite retorna erro, sem entregar inventário truncado. Relatórios PDF/CSV continuam disponíveis.',61,h=65)
 
 assert PAGE==TOTAL, PAGE

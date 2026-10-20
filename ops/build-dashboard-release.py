@@ -93,6 +93,9 @@ def known_artifacts(support):
     hotfix = ROOT / "release/dashboard-baseline-2.0.53-hotfix.json"
     if hotfix.is_file():
         candidates.append(json.loads(hotfix.read_text()))
+    original_216 = ROOT / 'release/dashboard-baseline-2.1.16-original.json'
+    if original_216.is_file():
+        candidates.append(json.loads(original_216.read_text()))
     agent = LEGACY_RUNTIME / 'packages/assessment-collector-1.5.1.zip'
     require(digest(agent.read_bytes()) == artifacts['packages/assessment-collector-1.5.1.zip'], 'Approved agent 1.5.1 changed')
     require(json.loads(support.read_zip(agent)['DEPENDENCIES.json'])['version'] == '1.5.1', 'Agent version mismatch')
@@ -152,7 +155,7 @@ def reviewed_agent_origins(support, helper_only=False):
     return origins
 
 
-def package(release, out, support, previous, baselines, agent):
+def package(release, out, support, previous, baselines, agent, preserved_agent_runtime=None):
     version = release['version']
     support.OUT = out
     builder = support.load_builder()
@@ -171,10 +174,24 @@ def package(release, out, support, previous, baselines, agent):
     libraries = {name: data for name, data in previous.items() if name.startswith('lib/')}
     runtime.update(web); runtime.update(libraries)
     require(release.get('bridgeVersion'), 'Full update requires a separately reserved internal bridge')
-    update_assets, complete_installer = build_assets(ROOT, ROOT, out / 'build/full-agent', agent,
-                                                    version, release['bridgeVersion'],
-                                                    reviewed_agent_origins(support), JDK / 'bin/java',
-                                                    reviewed_agent_origins(support, helper_only=True))
+    if preserved_agent_runtime is None:
+        update_assets, complete_installer = build_assets(ROOT, ROOT, out / 'build/full-agent', agent,
+                                                        version, release['bridgeVersion'],
+                                                        reviewed_agent_origins(support), JDK / 'bin/java',
+                                                        reviewed_agent_origins(support, helper_only=True))
+    else:
+        # Explicit, user-authorized dashboard-only revision: never re-sign agent assets.
+        require(preserved_agent_runtime['VERSION'].decode().strip() == version, 'Preserved agent release differs')
+        complete_installer = preserved_agent_runtime['dist/assessment-collector.zip']
+        require(complete_installer == agent.read_bytes(), 'Preserved agent installer differs')
+        def preserved_read(name, maximum):
+            data = preserved_agent_runtime[name]
+            require(len(data) <= maximum, 'Preserved agent asset exceeds verifier limit')
+            return data
+        builder.agent_updates.collect_full(version, preserved_read)
+        builder.agent_updates.classic_assets(version, preserved_read, complete_installer)
+        update_assets = {name: data for name, data in preserved_agent_runtime.items()
+                         if name.startswith('dist/') and name != 'dist/assessment-collector.zip'}
     complete_path = out / 'build' / ('assessment-collector-complete-' + version + '.zip')
     with complete_path.open('xb') as stream:
         stream.write(complete_installer)

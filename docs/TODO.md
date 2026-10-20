@@ -2,7 +2,7 @@
 
 ## Entrega 2.1.16 — exportação técnica em ZIP
 
-- [x] Aba administrativa, inventário completo por campos permitidos e exclusão de credenciais; formato documentado para análise externa.
+- [x] Aba administrativa revisada: escolha JSON/CSV e ZIP com um único arquivo; CSV com uma linha por recurso e detalhes múltiplos nas células. Campos permitidos e exclusão de credenciais preservados.
 - [x] Regressão em fontes, navegador desktop/mobile e testes da exportação nas classes finais do runtime.
 - [x] Pacotes, assinaturas, verificadores originais, atualização/restauração do dashboard e atualização direta do agente 2.1.14 → 2.1.16 em fixtures. [Evidências](validation/console-release-2.1.16.md).
 - [x] Catálogo de migração com 32 perfis preservados: origens V3 2.1.14+ assinadas seguem diretamente, mantendo baselines dos helpers.

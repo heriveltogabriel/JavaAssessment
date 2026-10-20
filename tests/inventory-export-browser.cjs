@@ -17,9 +17,12 @@ const {spawn}=require('node:child_process'),{once}=require('node:events'),{chrom
     await page.locator('#side-nav [data-tab="administration"]').click();await page.locator('#access-tab-export').click();
     await page.locator('#inventory-export-submit').waitFor();assert.match(await page.locator('#inventory-export-panel').textContent(),/senhas, tokens, chaves privadas/);
     await page.locator('#inventory-export-label').fill('Cliente de teste');
+    for(const format of ['json','csv']){
+    await page.locator('#inventory-export-format').selectOption(format);
     const downloadWait=page.waitForEvent('download');await page.locator('#inventory-export-submit').click();const download=await downloadWait;
-    assert.match(download.suggestedFilename(),/^java-assessment-inventario-[0-9-]+\.zip$/);await download.saveAs(path.join(out,'inventario.zip'));assert.equal(await download.failure(),null);
+    assert.match(download.suggestedFilename(),/^java-assessment-inventario-[0-9-]+\.zip$/);await download.saveAs(path.join(out,'inventario-'+format+'.zip'));assert.equal(await download.failure(),null);
     await page.getByText('Pacote gerado. O download foi iniciado;', {exact:false}).waitFor();assert.equal(await page.locator('#inventory-export-submit').isEnabled(),true);
+    }
     await page.screenshot({path:path.join(out,'desktop.png'),fullPage:true});
     await page.locator('#access-tab-export').focus();await page.keyboard.press('ArrowRight');assert.equal(await page.locator('#access-tab-update').getAttribute('aria-selected'),'true');
     await page.keyboard.press('ArrowLeft');await page.locator('#inventory-export-submit').waitFor();assert.equal(await page.locator('#access-tab-export').getAttribute('aria-selected'),'true');

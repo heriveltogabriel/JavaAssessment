@@ -1,6 +1,6 @@
 # Java Assessment 2.1.16
 
-Exportação do inventário técnico em ZIP pela Administração. [Notas](../../docs/RELEASE_2.1.16.md) · [Validação](../../docs/validation/console-release-2.1.16.md) · [Conteúdo exportado](../../docs/INVENTORY_EXPORT.md).
+Exportação do inventário técnico em JSON ou CSV único dentro do ZIP pela Administração. [Notas](../../docs/RELEASE_2.1.16.md) · [Validação](../../docs/validation/console-release-2.1.16.md) · [Conteúdo exportado](../../docs/INVENTORY_EXPORT.md).
 
 ## Atualizar pela console
 
@@ -18,3 +18,7 @@ A atualização e a restauração **2.1.14 → 2.1.16 → 2.1.14** foram verific
 Cada ZIP acompanha seu `.sha256`. As versões anteriores foram preservadas. O [Manual](../Manual.pdf) inclui a nova aba e mantém o nome genérico; o [Guia de instalação](../Guia-instalacao.pdf) continua aplicável.
 
 O ZIP do inventário exportado é destinado à análise em outra aplicação. Não é o pacote de atualização e não substitui backup. Exclui dados de acesso; nomes, IPs e caminhos técnicos continuam identificáveis.
+
+## Revisão dos pacotes na mesma versão
+
+Por solicitação explícita, estes arquivos substituem a primeira entrega 2.1.16. A console de teste foi restaurada para 2.1.14 antes do novo upload. O atualizador continua bloqueando upload sobre a mesma versão: não use este web-update sobre uma 2.1.16 instalada. As assinaturas e os bytes dos agentes foram preservados. Agentes já na 2.1.16 não precisam reinstalação. Os novos hashes identificam os pacotes revisados; descarte o ZIP de dashboard baixado anteriormente e baixe novamente.

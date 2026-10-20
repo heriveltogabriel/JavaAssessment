@@ -20,7 +20,7 @@ public final class InventoryArchiveHttpTest {
             check(response.statusCode()==200,"admin download");check(response.headers().firstValue("Content-Type").orElse("").equals("application/zip"),"ZIP response");
             check(response.headers().firstValue("Content-Disposition").orElse("").matches("attachment; filename=\"java-assessment-inventario-[0-9-]+\\.zip\""),"safe filename");
             check(response.headers().firstValue("Cache-Control").orElse("").contains("no-store"),"no cache");
-            var entries=InventoryArchiveTest.entries(response.body());check(entries.get("hosts.json").contains("ol07"),"whole inventory, not current filters");check(!String.join("",entries.values()).contains("HOST_TOKEN"),"no agent credentials");cleanTemps();
+            var entries=InventoryArchiveTest.entries(response.body());check(entries.get("inventario.json").contains("ol07"),"whole inventory, not current filters");check(!String.join("",entries.values()).contains("HOST_TOKEN"),"no agent credentials");cleanTemps();
             check(raw("GET",ENDPOINT+"?label="+"x".repeat(121),null,true,null).statusCode()==400,"bounded label");cleanTemps();
             var field=AssessmentServer.class.getDeclaredField("exportSlot");field.setAccessible(true);var slot=(java.util.concurrent.Semaphore)field.get(app);slot.acquire();
             try{check(raw("GET",ENDPOINT,null,true,null).statusCode()==429,"shared export concurrency bound");}finally{slot.release();}
@@ -28,11 +28,13 @@ public final class InventoryArchiveHttpTest {
             Map<String,Object> invalid=map("id","invalid","hostId","host-a","associations",List.of(nested));app.store.putInventory("datasources","host-a",new ArrayList<>(List.of(invalid)));
             check(raw("GET",ENDPOINT,null,true,null).statusCode()==400,"failed generation does not download partial ZIP");cleanTemps();
             InventoryArchiveTest.seed(app.store);check(raw("GET",ENDPOINT,null,true,null).statusCode()==200,"slot released after generation failure");cleanTemps();
+            check(raw("GET",ENDPOINT+"?format=xml",null,true,null).statusCode()==400,"invalid format blocked");cleanTemps();
+            var csv=raw("GET",ENDPOINT+"?format=csv",null,true,null);check(csv.statusCode()==200,"CSV archive download");check(InventoryArchiveTest.entries(csv.body()).keySet().equals(Set.of("inventario.csv")),"single CSV entry");cleanTemps();
             String adminCookie=cookie,adminCsrf=csrf;
             var reader=ok("POST","/api/admin/users",map("name","Reader Fixture","email","reader@example.com","role","READER","adminPassword",TestAccounts.PASSWORD),true,null,201);
             var user=obj(reader.get("user"));app.auth.changePassword((String)user.get("id"),app.auth.find((String)user.get("id")).revision(),(String)reader.get("temporaryPassword"),"reader-personal-password-1234");
             var login=raw("POST","/api/login",map("email","reader@example.com","password","reader-personal-password-1234"),false,null);check(login.statusCode()==200,"reader login");cookie=login.headers().firstValue("set-cookie").orElseThrow().split(";")[0];
-            check(raw("GET",ENDPOINT,null,true,null).statusCode()==403,"reader blocked");cleanTemps();cookie=adminCookie;csrf=adminCsrf;
+            check(raw("GET",ENDPOINT,null,true,null).statusCode()==403,"reader blocked");check(raw("GET",ENDPOINT+"?format=csv",null,true,null).statusCode()==403,"reader CSV blocked");cleanTemps();cookie=adminCookie;csrf=adminCsrf;
         }finally{stop();try(var files=Files.walk(root)){for(Path p:files.sorted(Comparator.reverseOrder()).toList())Files.deleteIfExists(p);}}
         System.out.println("InventoryArchiveHttpTest passed");
     }

@@ -8,7 +8,7 @@ Esta entrega reúne [configurações Spring/JDBC](docs/SPRING_DISCOVERY.md), [dr
 
 ## Nova entrega — 2.1.16
 
-**Administração → Exportar inventário** gera um ZIP com dados técnicos, vínculos e evidências da coleta para análise em outra aplicação. Não inclui cadastros de usuários, credenciais ou chaves; nomes, IPs e caminhos continuam identificáveis. [Formato do pacote](docs/INVENTORY_EXPORT.md) · [Notas](docs/RELEASE_2.1.16.md) · [Instaladores](install/v2.1.16/README.md).
+**Administração → Exportar inventário** permite escolher JSON ou CSV e gera um ZIP com um único arquivo de dados técnicos, vínculos e evidências da coleta para análise em outra aplicação. Não inclui cadastros de usuários, credenciais ou chaves; nomes, IPs e caminhos continuam identificáveis. [Formato do pacote](docs/INVENTORY_EXPORT.md) · [Notas](docs/RELEASE_2.1.16.md) · [Instaladores](install/v2.1.16/README.md).
 
 Envie o [web-update 2.1.16](install/v2.1.16/assessment-dashboard-web-update-2.1.16.zip) pela console. **Atualize também os agentes separadamente pelo painel.** A exportação pode aproveitar os dados já coletados, sem exigir nova coleta. [Validação da atualização](docs/validation/console-release-2.1.16.md).
 

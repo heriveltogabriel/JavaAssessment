@@ -24,26 +24,31 @@ public final class InventoryArchiveTest {
         var candidate=map("path","/domain/lib/ojdbc6.jar","version","11.2.0.3.0","versionSource","Manifesto","family","Oracle","open",true,"onClasspath",true,"loaded",false,"password","CANDIDATE_PASSWORD");
         var decision=map("driverResolution","INCOMPLETE","driverCandidates",List.of(candidate),"driverResolutionReason","Classpath truncado","token","DECISION_TOKEN");
         for(String kind:InventoryArchive.COLLECTIONS.subList(2,8)){
-            var row=map("id",kind+"-a","hostId","host-a","name","JDBC de Produção","version","17.0.1","path","/opt/java","driverName","oracle.jdbc.OracleDriver","driverCandidates",List.of(candidate),"driverResolution","INCOMPLETE","databaseHost","db.internal","databaseEndpoints",List.of(map("host","db.internal","port",1521,"service","sales","password","DB_PASSWORD")),"associations",List.of(map("applicationId","applications-a","serverId","servers-a","pid",42,"driverResult",decision,"secret","ASSOC_SECRET")),"commandLine","COMMAND_SECRET","environment",map("PASSWORD","ENV_SECRET"),"jdbcUrl","jdbc:oracle:thin:user/URL_SECRET@db:1521/sales","evidence","configuration; password=TEXT_SECRET; token=TEXT_TOKEN; https://user:URL_AUTH@db/path", "unknownFutureSecret","FUTURE_SECRET");
+            var row=map("id",kind+"-a","hostId","host-a","name","=JDBC de \"Produção\"\nSegunda linha","version","17.0.1","path","/opt/java","driverName","oracle.jdbc.OracleDriver","driverCandidates",List.of(candidate),"driverResolution","INCOMPLETE","databaseHost","db.internal","databaseEndpoints",List.of(map("host","db.internal","port",1521,"service","sales","password","DB_PASSWORD")),"associations",List.of(map("applicationId","applications-a","serverId","servers-a","pid",42,"driverResult",decision,"secret","ASSOC_SECRET")),"commandLine","COMMAND_SECRET","environment",map("PASSWORD","ENV_SECRET"),"jdbcUrl","jdbc:oracle:thin:user/URL_SECRET@db:1521/sales","evidence","configuration; password=TEXT_SECRET; token=TEXT_TOKEN; https://user:URL_AUTH@db/path", "unknownFutureSecret","FUTURE_SECRET");
             store.putInventory(kind,"host-a",new ArrayList<>(List.of(row)));
         }return null;
     });}
-    static byte[] archive(InventoryStore store)throws Exception{var out=new ByteArrayOutputStream();InventoryArchive.write(out,store,"Cliente A");return out.toByteArray();}
+    static byte[] archive(InventoryStore store)throws Exception{return archive(store,"json");}
+    static byte[] archive(InventoryStore store,String format)throws Exception{var out=new ByteArrayOutputStream();InventoryArchive.write(out,store,"Cliente A",format);return out.toByteArray();}
     public static void main(String[] args)throws Exception{
         Path root=Files.createTempDirectory("inventory-archive-");
         try(InventoryStore store=new InventoryStore(root.toFile(),map(),"","")){
-            var empty=entries(archive(store));check(empty.size()==10,"eight collections plus manifest and guide");check(empty.get("hosts.json").trim().equals("[]"),"empty fleet supported");
+            var empty=entries(archive(store));check(empty.keySet().equals(Set.of("inventario.json")),"one JSON document");check(((List<?>)obj(obj(Json.parse(empty.get("inventario.json"))).get("data")).get("hosts")).isEmpty(),"empty fleet supported");
             seed(store);var files=entries(archive(store));String all=String.join("\n",files.values());
             for(String secret:List.of("ENV_DESCRIPTION_SECRET","ENV_PASSWORD","HOST_TOKEN","HOST_SETTING_SECRET","IDENTITY_SECRET","JOB_SECRET","CANDIDATE_PASSWORD","DECISION_TOKEN","DB_PASSWORD","ASSOC_SECRET","COMMAND_SECRET","ENV_SECRET","URL_SECRET","TEXT_SECRET","TEXT_TOKEN","URL_AUTH","FUTURE_SECRET","NOTE_SECRET","STATS_SECRET","DISK_SECRET"))check(!all.contains(secret),"omitted "+secret);
-            var manifest=obj(Json.parse(files.get("manifest.json")));check(manifest.get("formatVersion").equals(1L),"format is versioned");check(manifest.get("label").equals("Cliente A"),"source label");
+            var document=obj(Json.parse(files.get("inventario.json")));var manifest=obj(document.get("metadata"));check(manifest.get("formatVersion").equals(2L),"format is versioned");check(manifest.get("label").equals("Cliente A"),"source label");
             var counts=obj(manifest.get("counts"));for(String kind:InventoryArchive.COLLECTIONS)check(counts.get(kind).equals(1L),"complete count "+kind);
-            var ds=obj(((List<?>)Json.parse(files.get("datasources.json"))).get(0));
+            var ds=obj(((List<?>)obj(document.get("data")).get("datasources")).get(0));
             check(ds.get("hostId").equals("host-a"),"host relationship");var association=obj(((List<?>)ds.get("associations")).get(0));check(association.get("applicationId").equals("applications-a"),"app relationship");
             var decision=obj(association.get("driverResult"));check(decision.get("driverResolution").equals("INCOMPLETE"),"per-PID uncertainty retained");var candidate=obj(((List<?>)decision.get("driverCandidates")).get(0));check(candidate.get("version").equals("11.2.0.3.0")&&candidate.get("path").equals("/domain/lib/ojdbc6.jar"),"driver jar and version retained");check(candidate.get("onClasspath").equals(true),"candidate evidence retained");
             check(all.contains("filesVisited")&&all.contains("50000")&&all.contains("Metadados limitados")&&all.contains("totalBytes"),"coverage and hardware retained");
             check(all.contains("db.internal")&&all.contains("Oracle Linux 7"),"technical infrastructure retained");
+            var csv=entries(archive(store,"csv"));check(csv.keySet().equals(Set.of("inventario.csv")),"one CSV file");
+            check(csv.get("inventario.csv").contains("\"'=JDBC"),"CSV formula protected");
+            for(String invalid:List.of("xml","JSON","../csv")){try{InventoryArchive.format(invalid);throw new AssertionError("invalid format accepted");}catch(InventoryArchive.Failure expected){}}
+            if(args.length==2&&args[0].equals("--export")){Path dir=Path.of(args[1]);Files.createDirectories(dir);Files.write(dir.resolve("json.zip"),archive(store));Files.write(dir.resolve("csv.zip"),archive(store,"csv"));}
             for(long[] limits:List.of(new long[]{50,100},new long[]{999999,2})){
-                try{InventoryArchive.write(new ByteArrayOutputStream(),store,"",limits[0],limits[1]);throw new AssertionError("limit accepted");}catch(InventoryArchive.Failure expected){}
+                for(String format:List.of("json","csv")){try{InventoryArchive.write(new ByteArrayOutputStream(),store,"",format,limits[0],limits[1]);throw new AssertionError("limit accepted");}catch(InventoryArchive.Failure expected){}}
             }
             for(String label:List.of("x".repeat(121),"line\nbreak")){try{InventoryArchive.label(label);throw new AssertionError("invalid label");}catch(InventoryArchive.Failure expected){}}
             for(String secretText:List.of("{\"password\":\"QUOTED_SECRET\"}","Authorization: Basic QUOTED_SECRET","-----BEGIN PRIVATE KEY-----\nQUOTED_SECRET\n-----END PRIVATE KEY-----","username=QUOTED_SECRET"))check(!InventoryArchive.scrub(secretText).contains("QUOTED_SECRET"),"credential text redacted");

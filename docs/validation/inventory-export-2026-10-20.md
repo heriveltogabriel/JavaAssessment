@@ -1,5 +1,7 @@
 # Validação da exportação ZIP — 20/10/2026
 
+Registro da primeira implementação, substituída pelo formato de arquivo único JSON/CSV. Veja a revisão em [validação da 2.1.16](console-release-2.1.16.md).
+
 Alteração de dashboard em desenvolvimento sobre 2.1.14, sem incremento de versão, build de instalador ou publicação remota.
 
 ## Resultados
