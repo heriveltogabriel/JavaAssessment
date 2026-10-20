@@ -74,16 +74,35 @@ public final class BoundedDirectoryTest {
                 BoundedDirectory.NIO = mode == 0;
                 AssessmentScan scan = new AssessmentScan(new Properties(), "test", "test", AssessmentScan.map("maxFiles", 1000, "pauseMillis", 0));
                 scan.excluded.clear(); scan.excluded.add(new File(root, "excluded").getPath()); scan.excluded.add(new File(root, "with[glob]*").getPath());
-                scan.walk(root, 0);
+                scan.walk(root, 0); scan.flushSweepNotes();
                 // The per-directory sweep notes a symlink only if its target was not visited yet, which depends on directory order.
-                for (Iterator i = scan.warnings.iterator(); i.hasNext();) if (String.valueOf(i.next()).startsWith("Symlink path skipped")) i.remove();
+                for (Iterator i = scan.warnings.iterator(); i.hasNext();) if (String.valueOf(i.next()).contains("simbólico(s) ignorado(s)")) i.remove();
                 results[mode] = scan.filesVisited + " " + new TreeSet(scan.applicationsByPath.keySet()) + " " + scan.runtimes.keySet() + " " + new TreeSet(scan.servers.keySet())
                     + " " + scan.deferredArchives.size() + " " + new TreeSet(scan.warnings) + " " + scan.partial;
             }
             check(results[0].equals(results[1]), "tree and per-directory sweeps differ:\n" + results[0] + "\n" + results[1]);
             check(results[0].contains("orders.war") && results[0].contains("kept.war") && results[0].contains("shop.war") && !results[0].contains("y.war") && !results[0].contains("/w.war")
-                && !results[0].contains("deep.war") && results[0].contains("Directory depth limit reached") && !results[0].contains("apps-link") && results[0].contains("tomcat/lib/catalina.jar]"),
+                && !results[0].contains("deep.war") && results[0].contains("Limite de profundidade de diretórios atingido em 1 caminho(s)") && !results[0].endsWith(" true") && !results[0].contains("apps-link") && results[0].contains("tomcat/lib/catalina.jar]"),
                 "sweep rules hold: " + results[0]);
+            File pkg = new File(root, "pkgroot/assessment-agent-1.5.9.ClZDXfW4/package");
+            ProcessLaunchTest.text(new File(pkg, "collector.jar"), "agent"); ProcessLaunchTest.text(new File(pkg, "DEPENDENCIES.json"), "{\n  \"version\": \"1.5.9\"\n}\n");
+            ProcessLaunchTest.write(new File(pkg, "lib/bcprov-jdk15to18-1.86.jar"), ProcessLaunchTest.jar(ProcessLaunchTest.attrs("Implementation-Version", "1.86"), ProcessLaunchTest.entries()));
+            ProcessLaunchTest.text(new File(root, "pkgroot/other/app.war"), "war");
+            for (int mode = 0; mode < 2; mode++) {
+                BoundedDirectory.NIO = mode == 0;
+                AssessmentScan agent = new AssessmentScan(new Properties(), "test", "test", AssessmentScan.map("maxFiles", 1000, "pauseMillis", 0, "inspectArchives", true));
+                agent.excluded.clear(); agent.walk(new File(root, "pkgroot"), 0);
+                String libs = Json.stringify(agent.libraries) + Json.stringify(agent.deferredArchives.toString());
+                check(!libs.contains("bcprov") && agent.applicationsByPath.toString().contains("app.war"), "agent package copy not inventoried, siblings still swept: " + libs);
+                boolean noted = false; for (Object w : agent.warnings) noted |= String.valueOf(w).startsWith("Cópia de pacote do agente encontrada em " + new File(root, "pkgroot/assessment-agent-1.5.9.ClZDXfW4").getPath() + " (versão 1.5.9)");
+                check(noted, "agent package copy reported: " + agent.warnings);
+            }
+            AssessmentScan noisy = new AssessmentScan(new Properties(), "test", "test", AssessmentScan.map("pauseMillis", 0));
+            for (int i = 0; i < 60; i++) noisy.symlinkSkipped("/opt/monitor/embedded/lib/libz.so." + i);
+            noisy.note("Observação JDBC importante"); for (int i = 0; i < 5; i++) noisy.symlinkSkipped("/opt/app/lib/x" + i + ".jar");
+            noisy.flushSweepNotes();
+            check(noisy.warnings.contains("Observação JDBC importante") && noisy.warnings.size() == 2 && String.valueOf(noisy.warnings.get(1)).startsWith("5 link(s)") && !noisy.partial,
+                "symlink noise aggregated, .so links silent, other observations kept: " + noisy.warnings);
         } finally { BoundedDirectory.NIO = BoundedDirectory.nioAvailable(); CollectorTest.remove(root); }
     }
     public static void main(String[] args) throws Exception {

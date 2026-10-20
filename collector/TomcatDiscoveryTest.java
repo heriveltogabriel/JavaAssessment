@@ -59,6 +59,29 @@ public final class TomcatDiscoveryTest {
             File many=base(root,"many-contexts");for(int n=0;n<70;n++)text(new File(many,"conf/Catalina/localhost/app"+n+".xml"),"<Context>"+resource("jdbc:oracle:thin:@//db.example:1521/APP")+"</Context>");scan=ProcessLaunchTest.scanner();scan.serverDataSources.discover(context(many,home,315));check(scan.datasources.size()<=65,"at most 64 explicit context descriptors plus global resource");
             File e2e=base(root,"process-tomcat55"),catalina=new File(e2e,"server/lib/catalina.jar");catalina.getParentFile().mkdirs();zip=new ZipOutputStream(new FileOutputStream(catalina));JdbcDriverResolverTest.entry(zip,"org/apache/catalina/util/ServerInfo.properties","server.info=Apache Tomcat/5.5.36\nserver.number=5.5.36.0\n");zip.close();jar(new File(e2e,"common/lib/ojdbc14.jar"),"10.2.0.5");
             File realProc=new File(root,"process-fixture");ProcessLaunchTest.process(realProc,"98668211","java","-Dcatalina.base="+e2e.getCanonicalPath(),"-Dcatalina.home="+e2e.getCanonicalPath(),"org.apache.catalina.startup.Bootstrap","start");text(new File(realProc,"98668211/environ"),"PATH=/usr/bin\u0000");scan=ProcessLaunchTest.scanner();scan.discoverProcesses(realProc);row=(Map)scan.datasources.get(0);check("IDENTIFIED".equals(row.get("driverResolution"))&&"10.2.0.5".equals(row.get("driverVersion")),"end-to-end process discovery uses real legacy product version before driver strategy");
+            // $CATALINA_HOME/conf/catalina.properties is not a Tomcat fallback; -Dcatalina.config is.
+            File noProps=base(root,"no-props"),propsHome=new File(root,"props-home"),homeExtra=new File(root,"home-extra/ojdbc11.jar");jar(new File(noProps,"lib/ojdbc8.jar"),"19.3.0");jar(homeExtra,"21.1.0");
+            text(new File(propsHome,"conf/catalina.properties"),"common.loader=\""+homeExtra.getParent()+"/*.jar\"\n");
+            row=resolve(ProcessLaunchTest.scanner(),context(noProps,propsHome,309),new File(root,"proc/309"));check("19.3.0".equals(row.get("driverVersion")),"home catalina.properties ignored: "+Json.stringify(row));
+            String[] cfgArgs={"java","-Dcatalina.config=file:"+new File(propsHome,"conf/catalina.properties").getCanonicalPath(),"-Dcatalina.base="+noProps.getCanonicalPath(),"-Dcatalina.home="+propsHome.getCanonicalPath(),"org.apache.catalina.startup.Bootstrap"};
+            File cfgProc=new File(root,"cfg-proc");ProcessLaunchTest.process(cfgProc,"310",cfgArgs);ProcessLaunch withConfig=ProcessLaunch.parse(cfgArgs,noProps);
+            AssessmentScan.ProcessContext cfg=new AssessmentScan.ProcessContext(withConfig,310,null,AssessmentScan.map("javaVersion","17"),null);cfg.server=AssessmentScan.map("name","Tomcat 310","version","9.0.100");
+            AssessmentScan cfgScan=ProcessLaunchTest.scanner();cfgScan.serverDataSources.procRoot=cfgProc;row=resolve(cfgScan,cfg,new File(cfgProc,"310"));check("21.1.0".equals(row.get("driverVersion")),"-Dcatalina.config file: honored: "+Json.stringify(row));
+            // Java 8 home in an excluded path: its own boot/ext entries must not block the decision.
+            File jdk=new File(root,"opt/jdk1.8"),excludedBase=base(root,"java8-excluded");jar(new File(excludedBase,"lib/ojdbc8.jar"),"19.3.0");
+            JdbcDriverResolverTest.jar(new File(jdk,"jre/lib/rt.jar"),"java.lang.Object","1.8.0",null,null);new File(jdk,"jre/lib/ext").mkdirs();
+            for(boolean exclude:new boolean[]{true,false}){
+                AssessmentScan s8=ProcessLaunchTest.scanner();if(exclude)s8.excluded.add(new File(root,"opt").getCanonicalPath());
+                AssessmentScan.ProcessContext base8=context(excludedBase,excludedBase,exclude?307:308);
+                AssessmentScan.ProcessContext c8=new AssessmentScan.ProcessContext(base8.launch,base8.pid,jdk.getCanonicalPath(),AssessmentScan.map("javaVersion","1.8.0_202"),null);c8.server=base8.server;
+                c8.launch.bootClasspath.add(new File(jdk,"jre/lib/rt.jar").getCanonicalPath());
+                TomcatDataSources helper=s8.serverDataSources.tomcat;helper.configureResolver(c8,s8.serverDataSources.resolver(c8));helper.discover(c8);
+                Map r8=(Map)s8.datasources.get(0);Set<String>wanted=Collections.singleton(DRIVER.replace('.','/')+".class");
+                JdbcDriverResolver.Search search=s8.jdbcDrivers.new Search(c8,wanted,DRIVER.replace('.','/')+".class",s8.jdbcDrivers.new OpenFiles(c8,new File(root,"proc/"+c8.pid)));
+                s8.jdbcDrivers.runtimeOrigins(search);helper.resolve(search,r8);Map d8=search.result();
+                check("IDENTIFIED".equals(d8.get("driverResolution"))&&"19.3.0".equals(d8.get("driverVersion")),"Java 8 boot/ext "+(exclude?"excluded":"readable")+" does not block decision: "+Json.stringify(d8));
+                check(exclude==(d8.get("driverResolutionCaveat")!=null),"excluded JVM origins reported as caveat only when excluded");
+            }
             System.out.println("TomcatDiscoveryTest: "+checks+" checks passed");
         }finally{CollectorTest.remove(root);}
     }

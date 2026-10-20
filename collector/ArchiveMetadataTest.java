@@ -225,9 +225,22 @@ public final class ArchiveMetadataTest {
         AssessmentScan config=scan(true);check(config.serverDataSources.entry(file,"META-INF/context.xml",ServerDataSources.CONFIG_LIMIT)!=null,"Archive entry read");
         check(config.bytesRead>=central && config.bytesRead<central*3/2,"Datasource archive entry charges the central directory once: central="+central+" read="+config.bytesRead);
     }
+    /** Signed JARs keep a digest per class after the main section; the version must still be read. */
+    static void signedManifest(File root) throws Exception {
+        StringBuilder mf=new StringBuilder("Manifest-Version: 1.0\r\nImplementation-Title: Oracle JDBC Driver\r\nImplementation-Version: 19.3.0.0.0\r\n\r\n");
+        for(int i=0;mf.length()<300*1024;i++)mf.append("Name: oracle/jdbc/driver/Class"+i+".class\r\nSHA-256-Digest: 0123456789abcdefghijklmnopqrstuvwxyzABCDEFGH=\r\n\r\n");
+        ByteArrayOutputStream bytes=new ByteArrayOutputStream();java.util.zip.ZipOutputStream zip=new java.util.zip.ZipOutputStream(bytes);
+        zip.putNextEntry(new java.util.zip.ZipEntry("META-INF/MANIFEST.MF"));zip.write(mf.toString().getBytes("UTF-8"));zip.closeEntry();
+        zip.putNextEntry(new java.util.zip.ZipEntry("oracle/jdbc/OracleDriver.class"));zip.write("fixture".getBytes("UTF-8"));zip.closeEntry();zip.close();
+        File signed=write(root,"signed/ojdbc8.jar",bytes.toByteArray());
+        AssessmentScan scan=scan(true);Map result=new ArchiveMetadata(scan).inspect(signed);
+        check("19.3.0.0.0".equals(library(result,"ojdbc8.jar").get("version")),"Signed JAR manifest larger than 64 KiB keeps its version: "+Json.stringify(result));
+        for(Object w:scan.warnings)check(!String.valueOf(w).contains("exceeds 64 KiB"),"No oversize warning for a signed manifest");
+        check(scan.bytesRead<64*1024,"Only the main manifest section is read: "+scan.bytesRead);
+    }
     public static void main(String[] args) throws Exception {
         File root=File.createTempFile("archive-metadata", "-fixtures");if(!root.delete() || !root.mkdir())throw new IOException("Cannot create fixture directory");
-        try { bootAndLibraries(root);productsAndFallback(root);boundedArchives(root);nestedArchives(root);catalog(root);centralCharge(root); }
+        try { bootAndLibraries(root);productsAndFallback(root);boundedArchives(root);nestedArchives(root);catalog(root);centralCharge(root);signedManifest(root); }
         finally { remove(root); }
         System.out.println("ARCHIVE_METADATA_TESTS=PASS Boot nestedJDBC storedNested deflatedNested largeArchives driverCatalog pools embeddedTomcat productVersions cache bounds privacy");
     }

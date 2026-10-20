@@ -62,9 +62,10 @@ public final class ArchiveMetadata {
             });
             for (ZipEntry entry : candidates) {
                 if (result.duplicates.contains(entry.getName())) continue;
-                if (result.entries.size() >= 32 || entry.getSize() < 0 || entry.getSize() > METADATA_LIMIT || entry.getSize() > 262144 - result.bytes) { result.partial = true; continue; }
+                boolean mf = isManifest(entry.getName());
+                if (result.entries.size() >= 32 || entry.getSize() < 0 || !mf && (entry.getSize() > METADATA_LIMIT || entry.getSize() > 262144 - result.bytes)) { result.partial = true; continue; }
                 InputStream input = archive.getInputStream(entry); byte[] content;
-                try { content = read(input, Math.min(METADATA_LIMIT, 262144 - result.bytes)); } finally { input.close(); }
+                try { content = mf ? JdbcDriverResolver.manifestHead(this, input) : read(input, Math.min(METADATA_LIMIT, 262144 - result.bytes)); } finally { input.close(); }
                 result.bytes += content.length; result.entries.put(entry.getName(), content);
                 if (entry.getName().equals("META-INF/MANIFEST.MF") && new Manifest(new ByteArrayInputStream(content)).getMainAttributes().getValue("Class-Path") != null) result.partial = true;
             }
@@ -246,13 +247,16 @@ public final class ArchiveMetadata {
 
     void readOuterMetadata(Document doc, ZipFile archive, ZipEntry entry) {
         try {
-            if (entry.getSize() > METADATA_LIMIT) throw new Limit("Archive metadata entry exceeds 64 KiB");
+            boolean mf = isManifest(entry.getName());
+            // Signed JARs carry one digest per class after the main section; only the main section is needed.
+            if (!mf && entry.getSize() > METADATA_LIMIT) throw new Limit("Archive metadata entry exceeds 64 KiB");
             InputStream input = archive.getInputStream(entry);
-            try { accept(doc, entry.getName(), read(input, METADATA_LIMIT)); }
+            try { accept(doc, entry.getName(), mf ? JdbcDriverResolver.manifestHead(this, input) : read(input, METADATA_LIMIT)); }
             finally { input.close(); }
         } catch (Exception e) { report(e, doc.path + "!/" + entry.getName()); }
     }
 
+    static boolean isManifest(String name) { return name.equalsIgnoreCase("META-INF/MANIFEST.MF"); }
     /** Streams a compressed nested JAR: nothing is buffered whole, and reading stops once its identity is known. */
     void readNested(Document doc, InputStream packed) throws IOException {
         ZipInputStream input = new ZipInputStream(packed);
@@ -264,8 +268,10 @@ public final class ArchiveMetadata {
                 if (++count > ENTRY_LIMIT) throw new Limit("Nested archive entry count limit reached");
                 String name = entry.getName();
                 if (!entry.isDirectory() && safeName(name) && metadata(name)) {
-                    if (entry.getSize() > METADATA_LIMIT) throw new Limit("Nested archive metadata entry exceeds 64 KiB");
-                    accept(doc, name, read(input, METADATA_LIMIT));
+                    boolean mf = isManifest(name);
+                    if (!mf && entry.getSize() > METADATA_LIMIT) throw new Limit("Nested archive metadata entry exceeds 64 KiB");
+                    accept(doc, name, mf ? JdbcDriverResolver.manifestHead(this, input) : read(input, METADATA_LIMIT));
+                    if (mf) drain(input, limit);
                     if (identified(doc)) return;
                 } else {
                     // Fully consume with the same budget. getNextEntry/closeEntry must never drain unchecked data.

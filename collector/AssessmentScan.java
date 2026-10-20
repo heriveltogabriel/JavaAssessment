@@ -64,7 +64,6 @@ public final class AssessmentScan {
         pauseMillis = number(settings.get("pauseMillis"), 30, 0, 2000);
         excluded.addAll(Arrays.asList("/proc", "/sys", "/dev", "/tmp"));
         Object exclusions = settings.get("excludePaths");
-        if (!(exclusions instanceof List)) excluded.add("/opt");
         // A trailing slash would keep the excluded directory itself in scope and defeat the find -path prune.
         if (exclusions instanceof List) for (Object path : (List) exclusions) if (path instanceof String) excluded.add(((String) path).replaceAll("(.)/+$", "$1"));
     }
@@ -163,6 +162,20 @@ public final class AssessmentScan {
         try { output.write(text.getBytes("UTF-8")); } finally { output.close(); }
         if (!temporary.renameTo(target)) throw new IOException("Cannot publish atomic file");
     }
+    // Sweep noise is aggregated so it never displaces process, JDBC or configuration observations.
+    int symlinksSkipped, depthLimited; final List<String> symlinkExamples = new ArrayList<String>(), depthExamples = new ArrayList<String>();
+    void symlinkSkipped(String path) {
+        String name = new File(path).getName().toLowerCase(Locale.ENGLISH);
+        // Links the sweep would never inspect (shared libraries, binaries) are not worth an observation.
+        if (name.indexOf('.') >= 0 && !name.matches(".*\\.(jar|war|ear|zip|properties|ya?ml|xml|conf|cfg|env|ini|json)")) return;
+        symlinksSkipped++; if (symlinkExamples.size() < 3) symlinkExamples.add(path);
+    }
+    void flushSweepNotes() {
+        if (symlinksSkipped > 0) note(symlinksSkipped + " link(s) simbólico(s) ignorado(s) na varredura (ex.: " + join(symlinkExamples) + ")");
+        if (depthLimited > 0) note("Limite de profundidade de diretórios atingido em " + depthLimited + " caminho(s), não examinados (ex.: " + join(depthExamples) + ")");
+        symlinksSkipped = 0; depthLimited = 0; symlinkExamples.clear(); depthExamples.clear();
+    }
+    static String join(List<String> values) { StringBuilder out = new StringBuilder(); for (String v : values) { if (out.length() > 0) out.append(", "); out.append(v); } return out.toString(); }
     void note(String warning) { if (warnings.size() < 40 && !warnings.contains(warning)) warnings.add(warning); }
     void warn(String warning) {
         partial = true; criticalWarnings.add(warning);
@@ -223,7 +236,7 @@ public final class AssessmentScan {
         addRuntime(new File(System.getProperty("java.home")), false, "Collector runtime properties; collector alone is excluded from application usage", timestamp,
             System.getProperty("java.version"), System.getProperty("java.vendor"), System.getProperty("os.arch"));
         Object includes = settings.get("includePaths");
-        if (!(includes instanceof List)) includes = Arrays.asList("/usr/java", "/usr/lib/jvm", "/u01", "/etc/config", "/prd1");
+        if (!(includes instanceof List)) includes = Arrays.asList("/usr/java", "/usr/lib/jvm", "/opt", "/u01", "/etc/config", "/prd1");
         for (Object item : (List) includes) {
             if (!available()) break;
             if (!(item instanceof String)) continue;
@@ -241,6 +254,7 @@ public final class AssessmentScan {
             "peakHeapBytes", peakHeap, "collectorPeakRssBytes", procKilobytes(new File("/proc/self/status"), "VmHWM:"),
             "archivesInspected", archivesInspected, "scanRoots", includes, "processScanRoots", processScanRoots,
             "maxFiles", maxFiles, "sweepFilesVisited", sweepFiles, "processLinkedFilesVisited", filesVisited - sweepFiles);
+        flushSweepNotes();
         Map coverage = map("status", partial ? "partial" : "complete", "warnings", warnings, "stats", stats);
         return map("schemaVersion", "1.0", "eventId", UUID.randomUUID().toString(), "jobId", jobId,
             "host", host, "runtimes", new ArrayList(runtimes.values()), "processes", processes,
@@ -354,7 +368,7 @@ public final class AssessmentScan {
             if (skipped(path)) return;
             key = visitedKey(path);
             if (visited.contains(key)) return;
-            if (!file.getAbsolutePath().equals(path)) { note("Symlink path skipped: " + file.getPath()); return; }
+            if (!file.getAbsolutePath().equals(path)) { symlinkSkipped(file.getPath()); return; }
         } catch (IOException e) { warn("Cannot resolve path: " + file.getPath()); return; }
         if (!visit(file, path, key, depth, file.isDirectory())) return;
         if (!BoundedDirectory.NIO) {
@@ -383,7 +397,7 @@ public final class AssessmentScan {
                 char type = tree.type();
                 long key = visitedKey(path);
                 if (skipped(path) || visited.contains(key)) { skip = path + "/"; continue; }
-                if (type == 'l') { note("Symlink path skipped: " + path); continue; }
+                if (type == 'l') { symlinkSkipped(path); continue; }
                 int level = depth + 1;
                 for (int i = rootPath.length() + 1; i < path.length(); i++) if (path.charAt(i) == '/') level++;
                 if (!visit(child, path, key, level, type == 'd') && type == 'd') skip = path + "/";
@@ -391,18 +405,34 @@ public final class AssessmentScan {
         } catch (IOException e) { warn("Directory enumeration incomplete (read or resource limit): " + rootPath); }
         finally { tree.close(); }
     }
+    /** A copy of a Java Assessment agent package (collector.jar with its package metadata) is not machine inventory. */
+    boolean agentPackage(File dir) {
+        if (!new File(dir, "collector.jar").isFile()) return false;
+        File deps = new File(dir, "DEPENDENCIES.json");
+        if (!deps.isFile() && !new File(dir, "update-public.der").isFile() && !new File(dir, "conf/collector.properties.example").isFile()) return false;
+        String version = null;
+        if (deps.isFile() && deps.length() <= 65536) {
+            String text = metadataText(deps, 65536, false);
+            java.util.regex.Matcher m = text == null ? null : java.util.regex.Pattern.compile("\"version\"\\s*:\\s*\"([0-9][A-Za-z0-9._-]{0,40})\"").matcher(text);
+            if (m != null && m.find()) version = m.group(1);
+        }
+        File shown = dir.getName().equals("package") && dir.getParentFile() != null ? dir.getParentFile() : dir;
+        note("Cópia de pacote do agente encontrada em " + shown.getPath() + (version == null ? "" : " (versão " + version + ")") + "; conteúdo não inventariado; pode ser removida se não estiver em uso");
+        return true;
+    }
     /** Counts one sweep entry; true only for a directory whose children must be walked. */
     boolean visit(File file, String path, long key, int depth, boolean directory) {
         // Ignored directories, like exclusions, are skipped before budgets in both enumeration modes.
         if (directory && IGNORED_DIRECTORIES.contains(file.getName())) return false;
         if (!available()) return false;
         if (sweepFiles >= maxFiles) { fileLimitReached = true; warn("File count limit reached; remaining paths were not examined"); return false; }
-        if (depth > 12) { warn("Directory depth limit reached"); return false; }
+        if (depth > 12) { depthLimited++; if (depthExamples.size() < 3) depthExamples.add(path); return false; }
         visited.add(key);
         filesVisited++; sweepFiles++;
         if (!pace(sweepFiles)) return false;
         if (directory) {
             if (runtimes.containsKey(path)) return false;
+            if (agentPackage(file)) return false;
             if (new File(file, "bin/java").isFile()) {
                 addRuntime(file, false, "Java home found; runtime metadata inventoried without traversing JDK internals", timestamp, null, null, null); return false;
             }
@@ -551,10 +581,13 @@ public final class AssessmentScan {
             if (!available()) break;
             String pid = directory.getName();
             File exe = null, cwd = null;
-            try { File candidate = new File(directory, "exe"), resolved = candidate.getCanonicalFile(); if (!resolved.equals(candidate.getAbsoluteFile()) && ProcessLaunch.javaExecutable(resolved.getPath())) exe = resolved; }
+            String exeName = null;
+            try { File candidate = new File(directory, "exe"), resolved = candidate.getCanonicalFile(); if (!resolved.equals(candidate.getAbsoluteFile())) { exeName = resolved.getName(); if (ProcessLaunch.javaExecutable(resolved.getPath())) exe = resolved; } }
             catch (IOException e) { }
             String comm = metadataText(new File(directory, "comm"), 256, false);
             // RHEL 5 may not expose comm. A readable cmdline remains useful when proc/exe is protected.
+            // jsvc -procname renames comm, so a readable jsvc executable also qualifies; other readable non-Java processes are skipped.
+            if (exe == null && exeName != null && !exeName.equals("jsvc") && comm != null && !"java".equals(comm.trim()) && !"jsvc".equals(comm.trim())) continue;
 
             String text = metadataText(new File(directory, "cmdline"), 65536, false);
             if (text == null || text.length() == 0) { if ("java".equals(comm == null ? null : comm.trim())) restrictedProcesses++; continue; }
@@ -663,11 +696,14 @@ public final class AssessmentScan {
         if (restrictedArtifacts > 0) warn("The collector user could not access " + restrictedArtifacts + " process-linked artifact location(s); versions and JDBC inventory may be incomplete");
     }
 
+    boolean isExcluded(String path){if(path==null)return false;if(excluded(path))return true;try{return excluded(new File(path).getCanonicalPath());}catch(IOException e){return false;}}
     void excludedProcess(ProcessContext context) {
         Set<String> paths=new LinkedHashSet<String>();
-        for(String path:new String[]{context.launch.serverBase,context.launch.serverHome,context.launch.jarPath,context.javaHome})if(path!=null){boolean omit=excluded(path);try{omit|=excluded(new File(path).getCanonicalPath());}catch(IOException e){}if(omit)paths.add(path);}
-        if(paths.isEmpty())return;
-        String observation="Processo em execução em caminho excluído ("+paths.iterator().next()+"): configuração, datasources e drivers não foram lidos. Remova o caminho de 'Caminhos excluídos' para inventariá-lo.";
+        for(String path:new String[]{context.launch.serverBase,context.launch.serverHome,context.launch.jarPath})if(isExcluded(path))paths.add(path);
+        String observation;
+        if(!paths.isEmpty())observation="Processo em execução em caminho excluído ("+paths.iterator().next()+"): configuração, datasources e drivers não foram lidos. Remova o caminho de 'Caminhos excluídos' para inventariá-lo.";
+        else if(isExcluded(context.javaHome))observation="Java da JVM em caminho excluído ("+context.javaHome+"): instalação Java não inventariada; versão em execução obtida do processo.";
+        else return;
         context.process.put("excludedPathObservation",observation);if(context.application!=null)context.application.put("excludedPathObservation",observation);if(context.server!=null)context.server.put("excludedPathObservation",observation);note(observation);
     }
 

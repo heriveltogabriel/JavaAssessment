@@ -82,7 +82,7 @@ O pacote do agente versionado em `dist/assessment-collector.zip` é genérico e 
 
 A [2.1.10](install/v2.1.10/README.md) consolida configuração externa Spring, resolução JDBC por processo no WebLogic, classloaders/propriedades/contextos Tomcat e módulos/deployments/JNDI do JBoss. Envie o **assessment-dashboard-web-update-2.1.10.zip** em Administração → Atualização do dashboard. [Notas](docs/RELEASE_2.1.10.md) · [Validação](docs/validation/console-release-2.1.10.md).
 
-Novos padrões incluem `/etc/config` e `/prd1`, e excluem `/opt`, inclusive para arquivos ligados a processos ativos. Listas salvas não mudam. Remova `/opt` das exclusões para inventariar configurações e drivers nessa pasta.
+Padrões de coleta (a partir das correções pendentes da 2.1.10): incluídos `/usr/java`, `/usr/lib/jvm`, `/opt`, `/u01`, `/etc/config`, `/prd1`; excluídos `/proc`, `/sys`, `/dev`, `/tmp`. Listas salvas não mudam. Veja [correções pendentes](docs/CORRECTIONS_2.1.10_PENDING.md).
 
 **Atualize também os agentes**, separadamente, e solicite nova coleta. A 2.1.9 é ponte interna, sem instalação manual intermediária. Confira a elegibilidade pelo painel.
 

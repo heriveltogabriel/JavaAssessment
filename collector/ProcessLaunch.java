@@ -15,6 +15,8 @@ final class ProcessLaunch {
     final List<String> classpath = new ArrayList<String>(), modulePaths = new ArrayList<String>();
     boolean javaCommand, opaqueArguments, serverBaseExplicit, explicitClasspath, perfDataCompleted, jvmOptionsAfterJar;
 
+    static final Set<String> JSVC_VALUE=new HashSet<String>(Arrays.asList("-user","-pidfile","-outfile","-errfile","-home","-java-home","-procname","-wait","-umask","-cwd","-jvm"));
+    static final Set<String> JSVC_FLAGS=new HashSet<String>(Arrays.asList("-check","-nodetach","-keepstdin","-stop","-debug","-verbose","-showversion","-version","-help","-?","-server","-client"));
     static boolean javaExecutable(String value) {
         if (value == null) return false;
         return new File(value).getName().equals("java");
@@ -111,8 +113,9 @@ final class ProcessLaunch {
         int after = args.length; boolean jarMode = false;
         for (int i = 1; i < args.length; i++) {
             String arg = args[i];
-            if(daemon && Arrays.asList("-user","-pidfile","-outfile","-errfile","-home","-procname","-wait","-umask").contains(arg)){if(i+1<args.length){String v=args[++i];if(arg.equals("-home"))launch.nativeJavaHome=path(v,cwd);}continue;}
-            if(daemon && arg.equals("-jvm")){if(i+1<args.length&&(args[i+1].equals("server")||args[i+1].equals("client")))i++;continue;}
+            // jsvc options with a value; -java-home is the spelling used by Tomcat's bin/daemon.sh.
+            if(daemon && JSVC_VALUE.contains(arg)){if(i+1<args.length){String v=args[++i];if(arg.equals("-home")||arg.equals("-java-home"))launch.nativeJavaHome=path(v,cwd);}continue;}
+            if(daemon && JSVC_FLAGS.contains(arg))continue;
             if (arg.startsWith("@")) { launch.opaqueArguments = true; break; }
             if (arg.equals("-cp") || arg.equals("-classpath") || arg.equals("--class-path")) {
                 launch.explicitClasspath = true; if (i + 1 < args.length) paths(launch.classpath, args[++i], cwd); continue;

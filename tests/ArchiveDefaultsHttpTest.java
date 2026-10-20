@@ -20,10 +20,10 @@ public final class ArchiveDefaultsHttpTest {
         try {
             start();
             check(Boolean.TRUE.equals(obj(app.store.metadata("settings")).get("inspectArchives")),"new installation inspects archives by default");
-            check(List.of("/usr/java","/usr/lib/jvm","/u01","/etc/config","/prd1").equals(obj(app.store.metadata("settings")).get("includePaths")),"fresh scan defaults");
-            check(List.of("/proc","/sys","/dev","/tmp","/opt").equals(obj(app.store.metadata("settings")).get("excludePaths")),"fresh exclusions");
+            check(List.of("/usr/java","/usr/lib/jvm","/opt","/u01","/etc/config","/prd1").equals(obj(app.store.metadata("settings")).get("includePaths")),"fresh scan defaults");
+            check(List.of("/proc","/sys","/dev","/tmp").equals(obj(app.store.metadata("settings")).get("excludePaths")),"fresh exclusions");
             ok("PUT","/api/settings",map("includePaths",List.of("/u01","/u01/")),true,null,400);
-            ok("PUT","/api/settings",map("includePaths",List.of("/opt")),true,null,400);
+            ok("PUT","/api/settings",map("includePaths",List.of("/tmp")),true,null,400);
             check(List.of("/etc/config").equals(obj(app.store.metadata("settings")).get("appConfigPaths")),"new app config default");
             ok("PUT","/api/settings",map("appConfigPaths",List.of("/")),true,null,400);
             String env=(String)ok("POST","/api/environments",map("name","Inherited"),true,null,201).get("id");

@@ -56,20 +56,32 @@ final class JdbcDriverResolver {
     }
     void runtimeOrigins(Search search){
         AssessmentScan.ProcessContext context=search.context;
-        for(String path:context.launch.bootPrepend)search.walk(new File(path),"bootclasspath",0,null,false);
-        for(String path:context.launch.bootClasspath)search.walk(new File(path),"bootclasspath",0,null,false);
-        for(String path:context.launch.bootAppend)search.walk(new File(path),"bootclasspath",0,null,false);
+        for(String path:context.launch.bootPrepend)runtimeEntry(search,path);
+        for(String path:context.launch.bootClasspath)runtimeEntry(search,path);
+        for(String path:context.launch.bootAppend)runtimeEntry(search,path);
         List<String> ext=new ArrayList<String>(context.launch.extDirs);
         String javaVersion=AssessmentScan.clean(context.process.get("javaVersion"));
         if(javaVersion==null&&context.javaHome!=null&&!Boolean.TRUE.equals(context.process.get("runtimeReplacedOnDisk")))for(Map runtime:scan.runtimes.values())if(context.javaHome.equals(runtime.get("javaHome")))javaVersion=AssessmentScan.clean(runtime.get("version"));
         if(ext.isEmpty()&&!context.launch.explicitExtDirs&&context.javaHome!=null&&javaVersion!=null&&javaVersion.matches("1\\.[0-8].*")){File home=new File(context.javaHome);ext.add(new File(home,home.getName().equals("jre")?"lib/ext":"jre/lib/ext").getPath());}
-        if(javaVersion==null&&!context.launch.explicitExtDirs&&context.javaHome!=null&&new File(context.javaHome,"jre/lib/ext").isDirectory())search.fail("Versão da JVM não confirmada; precedência do diretório de extensões incerta");
-        List<File> extensions=new ArrayList<File>();for(String path:ext)extensions.addAll(search.directory(new File(path),"ext"));search.group(extensions,"ext");
+        if(javaVersion==null&&!context.launch.explicitExtDirs&&context.javaHome!=null&&!jvmExcluded(context,context.javaHome)&&new File(context.javaHome,"jre/lib/ext").isDirectory())search.fail("Versão da JVM não confirmada; precedência do diretório de extensões incerta");
+        List<File> extensions=new ArrayList<File>();for(String path:ext){if(jvmExcluded(context,path)){search.caveat=JVM_EXCLUDED;continue;}extensions.addAll(search.directory(new File(path),"ext"));}search.group(extensions,"ext");
+    }
+    static final String JVM_EXCLUDED="Extensões/boot da JVM em caminho excluído não verificados";
+    /** The JVM's own boot/ext entries under an excluded Java home are skipped: a user exclusion must not block every datasource of that JVM. */
+    boolean jvmExcluded(AssessmentScan.ProcessContext context,String path){
+        String home=context.javaHome;if(home==null||path==null)return false;
+        File jre=new File(home).getName().equals("jre")?new File(home).getParentFile():null;
+        boolean owned=AssessmentScan.under(path,home)||jre!=null&&AssessmentScan.under(path,jre.getPath());
+        return owned&&(scan.excluded(path)||scan.excluded(home));
+    }
+    void runtimeEntry(Search search,String path){
+        if(jvmExcluded(search.context,path)){search.caveat=JVM_EXCLUDED;return;}
+        search.walk(new File(path),"bootclasspath",0,null,false);
     }
     final class Search {
         final AssessmentScan.ProcessContext context;final Set<String>wanted;final String driver;final OpenFiles open;
         final Set<String>seen=new HashSet<String>();final List<Map>candidates=new ArrayList<Map>();
-        String reason,notFoundReason,winnerReason;Map winner;boolean terminal,probable,declared,followManifest=true;int order;
+        String reason,notFoundReason,winnerReason,caveat;Map winner;boolean terminal,probable,declared,followManifest=true;int order;
         Search(AssessmentScan.ProcessContext c,Set<String>w,String d,OpenFiles o){context=c;wanted=w;driver=d;open=o;}
         void fail(String why){if(winner==null&&!terminal&&reason==null)reason=why;}
         List<File> directory(File raw,String source){
@@ -122,6 +134,7 @@ final class JdbcDriverResolver {
             String why=winnerReason!=null&&winner!=null?winnerReason:winner!=null?(probable?"Único JAR candidato aberto pela JVM; carregamento da classe não comprovado":"Classe exata selecionada pela ordem de carregamento; leitura passiva") :reason!=null?reason:notFoundReason!=null?notFoundReason:"Classe do driver não encontrada nas origens examinadas";
             Map out=AssessmentScan.map("driverResolution",status,"driverResolutionReason",why,"driverCandidates",candidates);
             if(winner!=null){winner.put("loaded",Boolean.valueOf(!probable&&!declared));out.put("driverArtifact",winner.get("path"));if(winner.get("version")!=null)out.put("driverVersion",winner.get("version"));out.put("driverVersionSource",winner.get("versionSource"));out.put("driverFamily",winner.get("family"));if(probable||declared)out.put("driverConfidence","PROBABLE");if(Boolean.TRUE.equals(winner.get("replacedOnDisk"))){out.put("driverReplacedOnDisk",Boolean.TRUE);out.put("driverResolutionReason",why+"; JAR do driver substituído em disco; reinício pendente. Versão refere-se ao arquivo atual em disco");}}
+            if(caveat!=null){out.put("driverResolutionCaveat",caveat);out.put("driverResolutionReason",out.get("driverResolutionReason")+"; "+caveat);}
             out.put("driverVersionEvidence",out.get("driverResolutionReason"));return out;
         }
     }

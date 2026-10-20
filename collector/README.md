@@ -133,6 +133,6 @@ A entrega amplia parsing de launchers, pastas externas `appConfigPaths` (padrão
 
 O motor compartilhado resolve JAR e versão por PID no WebLogic, Tomcat e JBoss/WildFly, com precedência, candidatos e motivos. Veja [WebLogic](../docs/JDBC_DRIVER_RESOLUTION.md) e [Tomcat/JBoss](../docs/TOMCAT_JBOSS_DISCOVERY.md).
 
-As inclusões novas são `/usr/java`, `/usr/lib/jvm`, `/u01`, `/etc/config`, `/prd1`; o perfil legado conserva `/home/opc/oracle`. As exclusões novas são `/proc`, `/sys`, `/dev`, `/tmp`, `/opt`. Listas salvas não são migradas. A exclusão de `/opt` impede ler configurações e drivers mesmo de processos ativos; esses processos e suas JVMs continuam visíveis com observação. Remova a exclusão para inventariar os arquivos.
+As inclusões padrão são `/usr/java`, `/usr/lib/jvm`, `/opt`, `/u01`, `/etc/config`, `/prd1`; o perfil legado conserva `/home/opc/oracle`. As exclusões padrão são `/proc`, `/sys`, `/dev`, `/tmp`. Listas salvas não são migradas. Um caminho excluído impede ler configurações e drivers mesmo de processos ativos; esses processos continuam visíveis com observação. Boot/ext da própria JVM em caminho excluído não bloqueiam a resolução do driver: ficam como ressalva.
 
 Atualize o agente e solicite nova coleta. A atualização somente do dashboard não recalcula inventários anteriores. As validações locais e a compatibilidade dos pacotes estão nas [evidências da entrega](../docs/validation/console-release-2.1.10.md); ambientes reais precisam de validação operacional.

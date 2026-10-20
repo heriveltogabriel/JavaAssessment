@@ -21,8 +21,13 @@ final class TomcatDataSources {
         if(!"Tomcat".equals(c.launch.serverType))return;
         State s=state(c);
         if(!s.configured){s.configured=true;
-            for(String root:new String[]{c.launch.serverBase,c.launch.serverHome}){
-                if(root==null)continue;File raw=new File(root,"conf/catalina.properties"),f=scan.linkedPath(raw);
+            // Tomcat order: -Dcatalina.config, then $CATALINA_BASE/conf; otherwise the defaults inside catalina.jar (never $CATALINA_HOME/conf).
+            List<File> sources=new ArrayList<File>();String config=r.property("catalina.config");
+            if(config!=null){String local=config.startsWith("file://")?config.substring(7):config.startsWith("file:")?config.substring(5):config.indexOf(':')>0?null:config;
+                String resolved=local==null?null:ProcessLaunch.path(local,c.launch.cwd);if(resolved!=null)sources.add(new File(resolved));else s.propertyFailure="catalina.config remoto ou não local não foi lido";}
+            if(c.launch.serverBase!=null)sources.add(new File(c.launch.serverBase,"conf/catalina.properties"));
+            if(s.propertyFailure==null)for(File raw:sources){
+                File f=scan.linkedPath(raw);
                 if(f==null){s.propertyFailure="catalina.properties em caminho excluído ou não acessível";break;}
                 if(!f.exists())continue;
                 if(!f.isFile()||!scan.visitLinked(f)){s.propertyFailure="catalina.properties indisponível";break;}

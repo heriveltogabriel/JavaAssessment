@@ -20,7 +20,7 @@ public final class SettingsPathsHttpTest {
         try {
             start();
             Map<String,Object> fresh=new LinkedHashMap<>(obj(app.store.metadata("settings")));
-            check(List.of("/usr/java","/usr/lib/jvm","/u01","/etc/config","/prd1").equals(fresh.get("includePaths")),"fresh include paths");
+            check(List.of("/usr/java","/usr/lib/jvm","/opt","/u01","/etc/config","/prd1").equals(fresh.get("includePaths")),"fresh include paths");
             String env=(String)ok("POST","/api/environments",map("name","Paths"),true,null,201).get("id");
             Map<String,Object> agent=ArchiveDefaultsHttpTest.register(env,"paths-fixture-001");
             String host=(String)agent.get("hostId"),token=(String)agent.get("agentToken");
@@ -36,9 +36,9 @@ public final class SettingsPathsHttpTest {
             check(before.equals(Json.stringify(app.store.metadata("settings"))),"GET never rewrites saved paths");
             app.store.metadata("settings",fresh);
             ok("PUT","/api/settings",map("includePaths",List.of("/u01","/u01/")),true,null,400);
-            ok("PUT","/api/settings",map("includePaths",List.of("/opt")),true,null,400);
+            ok("PUT","/api/settings",map("includePaths",List.of("/tmp")),true,null,400);
             ok("POST","/api/environments",map("name","Invalid duplicate","settings",map("includePaths",List.of("/u01","/u01/"))),true,null,400);
-            ok("PUT","/api/hosts/settings",map("hostId",host,"settings",map("includePaths",List.of("/opt"))),true,null,400);
+            ok("PUT","/api/hosts/settings",map("hostId",host,"settings",map("includePaths",List.of("/tmp"))),true,null,400);
             ok("PUT","/api/hosts/settings",map("hostId",host,"settings",map("includePaths",List.of("/srv/apps"),"excludePaths",List.of("/proc","/tmp"))),true,null,200);
             check(List.of("/srv/apps").equals(obj(ok("GET","/api/agent/settings?hostId="+host,null,false,token,200).get("settings")).get("includePaths")),"valid host override wins");
             System.out.println("SETTINGS_PATHS_HTTP=PASS fresh legacy-read no-migration duplicate conflict host-effective");

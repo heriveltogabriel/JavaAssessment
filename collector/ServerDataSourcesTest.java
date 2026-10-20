@@ -108,7 +108,7 @@ public final class ServerDataSourcesTest {
     }
     static void budgets(File root) throws Exception {
         File base = new File(root, "budgets"); text(new File(base, "conf/server.xml"), "<Server><GlobalNamingResources>" + tomcatResource("jdbc/bounded") + "</GlobalNamingResources></Server>");
-        AssessmentScan.ProcessContext context = context("Tomcat", base, base, 1);
+        AssessmentScan.ProcessContext context = context("Tomcat", base, base, 2147483000L); // no real /proc entry on Linux
         AssessmentScan bytes = scanner(); bytes.bytesRead = ArchiveMetadata.READ_LIMIT; bytes.serverDataSources.discover(context);
         check(bytes.datasources.isEmpty() && bytes.partial && bytes.bytesRead == ArchiveMetadata.READ_LIMIT, "Global byte budget enforced before config read");
         AssessmentScan files = scanner(); files.filesVisited = files.maxFiles; files.serverDataSources.discover(context);
@@ -144,7 +144,7 @@ public final class ServerDataSourcesTest {
         }
     }
     static void boundedCache(File root) throws Exception {
-        File base = new File(root, "cache-budget"); AssessmentScan.ProcessContext context = context("Tomcat", base, base, 1);
+        File base = new File(root, "cache-budget"); AssessmentScan.ProcessContext context = context("Tomcat", base, base, 2147483000L); // no real /proc entry on Linux
         AssessmentScan scan = scanner();
         StringBuilder config = new StringBuilder("<Context>");
         for (int i = 0; i < 256; i++) config.append("<Resource type='javax.sql.DataSource' name='jdbc/cache" + i + "'/>");

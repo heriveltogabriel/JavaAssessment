@@ -15,9 +15,13 @@ public final class NativeTomcatTest {
             ProcessLaunchTest.text(new File(home,"conf/server.xml"),"<Server><Service><Engine name=\"Catalina\"><Host name=\"localhost\" appBase=\"webapps\"/></Engine></Service></Server>");
             ProcessLaunchTest.text(new File(home,"conf/context.xml"),"<Context><Resource name=\"jdbc/App\" type=\"javax.sql.DataSource\" driverClassName=\"oracle.jdbc.OracleDriver\" url=\"jdbc:oracle:thin:@db.example:1521/APP\"/></Context>");
             String base=home.getCanonicalPath(),java=jdk.getCanonicalPath();
-            String[] command={"/usr/bin/jsvc","-user","tomcat","-pidfile","/run/tomcat.pid","-outfile","/var/log/tomcat.out","-errfile","/var/log/tomcat.err","-home",java,"-procname","tomcat","-wait","10","-umask","0027","-jvm","server","-cwd","-nodetach","-keepstdin","-debug","-verbose","-Dcatalina.base="+base,"-Dcatalina.home="+base,"-Dpassword=DO_NOT_RETAIN","-cp",base+"/bin/bootstrap.jar","org.apache.catalina.startup.Bootstrap","start"};
+            String[] command={"/usr/bin/jsvc","-user","tomcat","-pidfile","/run/tomcat.pid","-outfile","/var/log/tomcat.out","-errfile","/var/log/tomcat.err","-home",java,"-procname","tomcat","-wait","10","-umask","0027","-jvm","server","-cwd","/","-nodetach","-keepstdin","-debug","-verbose","-Dcatalina.base="+base,"-Dcatalina.home="+base,"-Dpassword=DO_NOT_RETAIN","-cp",base+"/bin/bootstrap.jar","org.apache.catalina.startup.Bootstrap","start"};
             ProcessLaunch parsed=ProcessLaunch.parse(command,null);
             check("Tomcat".equals(parsed.serverType)&&parsed.nativeTomcat&&java.equals(parsed.nativeJavaHome)&&base.equals(parsed.serverBase),"native flags preserve Tomcat main and Java home");
+            // Tomcat bin/daemon.sh spelling: -java-home, -cwd with a value and -jvm with any name.
+            String[] daemon={"/usr/bin/jsvc","-java-home",java,"-user","tomcat","-pidfile","/x.pid","-wait","10","-outfile","/x.out","-errfile","&1","-cwd",base,"-jvm","jamvm","-classpath",base+"/bin/bootstrap.jar:"+base+"/bin/commons-daemon.jar","-Dcatalina.base="+base,"-Dcatalina.home="+base,"org.apache.catalina.startup.Bootstrap"};
+            ProcessLaunch official=ProcessLaunch.parse(daemon,null);
+            check("Tomcat".equals(official.serverType)&&official.nativeTomcat&&java.equals(official.nativeJavaHome)&&base.equals(official.serverBase)&&"org.apache.catalina.startup.Bootstrap".equals(official.mainClass),"daemon.sh -java-home/-cwd/-jvm values consumed");
             ProcessLaunchTest.process(proc,"98776001",command);
             ProcessLaunchTest.text(new File(proc,"98776001/comm"),"jsvc\n");
             String maps="00400000-00410000 r-xp 00000000 08:01 123 "+java+"/lib/server/libjvm.so\n";
@@ -25,13 +29,22 @@ public final class NativeTomcatTest {
             ProcessLaunchTest.text(new File(proc,"98776002/maps"),maps);
             ProcessLaunchTest.process(proc,"98776003","/usr/bin/unrelated-wrapper","example.Other");
             ProcessLaunchTest.text(new File(proc,"98776003/maps"),maps);
+            // Readable executables: jsvc renamed by -procname is kept; an unrelated daemon is skipped before reading cmdline.
+            File bin=new File(root,"bin");ProcessLaunchTest.text(new File(bin,"jsvc"),"fixture");ProcessLaunchTest.text(new File(bin,"other-daemon"),"fixture");
+            ProcessLaunchTest.process(proc,"98776004",command);ProcessLaunchTest.text(new File(proc,"98776004/comm"),"Tomcat\n");
+            check(new ProcessBuilder("ln","-s",new File(bin,"jsvc").getCanonicalPath(),new File(proc,"98776004/exe").getPath()).start().waitFor()==0,"jsvc exe fixture");
+            ProcessLaunchTest.process(proc,"98776005",command);ProcessLaunchTest.text(new File(proc,"98776005/comm"),"other\n");
+            check(new ProcessBuilder("ln","-s",new File(bin,"other-daemon").getCanonicalPath(),new File(proc,"98776005/exe").getPath()).start().waitFor()==0,"other exe fixture");
             AssessmentScan scan=ProcessLaunchTest.scanner();scan.discoverProcesses(proc);
-            check(scan.processes.size()==2,"jsvc and mapped Tomcat accepted; unrelated libjvm wrapper rejected");
+            check(scan.processes.size()==3,"jsvc, renamed jsvc and mapped Tomcat accepted; unrelated libjvm wrapper and non-Java daemon rejected: "+scan.processes.size());
             for(Object value:scan.processes){Map process=(Map)value;check(java.equals(process.get("javaHome"))&&"Tomcat iniciado via jsvc".equals(process.get("launcherObservation")),"native process home and observation");}
             check(!scan.datasources.isEmpty(),"native launcher datasource inspected");
             AssessmentScan excluded=ProcessLaunchTest.scanner();excluded.excluded.add(base);excluded.discoverProcesses(proc);
-            check(excluded.processes.size()==2&&excluded.datasources.isEmpty(),"excluded Tomcat remains visible without datasource inspection");
+            check(excluded.processes.size()==3&&excluded.datasources.isEmpty(),"excluded Tomcat remains visible without datasource inspection");
             for(Object value:excluded.processes)check(((Map)value).get("excludedPathObservation")!=null,"excluded process observation");
+            AssessmentScan javaOnly=ProcessLaunchTest.scanner();javaOnly.excluded.add(java);
+            AssessmentScan.ProcessContext jc=new AssessmentScan.ProcessContext(ProcessLaunch.parse(command,null),1,java,AssessmentScan.map(),null);javaOnly.excludedProcess(jc);
+            check(String.valueOf(jc.process.get("excludedPathObservation")).startsWith("Java da JVM em caminho excluído"),"excluded Java home alone has its own observation");
             String serialized=Json.stringify(AssessmentScan.map("processes",scan.processes,"apps",scan.applications,"datasources",scan.datasources,"warnings",scan.warnings));
             check(!serialized.contains("DO_NOT_RETAIN")&&!serialized.contains("-Dpassword")&&!serialized.contains("jdbc:oracle"),"no raw commands URL or credentials retained");
             System.out.println("NATIVE_TOMCAT=PASS jsvc flags libjvm negative excluded-process privacy");

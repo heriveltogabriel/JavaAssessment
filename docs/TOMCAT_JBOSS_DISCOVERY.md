@@ -24,8 +24,8 @@ Limites específicos: 8 raízes de módulos, 16 camadas, 32 add-ons, 32 overlays
 
 ## Novos padrões de coleta
 
-- Incluídos: `/usr/java`, `/usr/lib/jvm`, `/u01`, `/etc/config`, `/prd1`.
-- Excluídos: `/proc`, `/sys`, `/dev`, `/tmp`, `/opt`.
+- Incluídos: `/usr/java`, `/usr/lib/jvm`, `/opt`, `/u01`, `/etc/config`, `/prd1`.
+- Excluídos: `/proc`, `/sys`, `/dev`, `/tmp`.
 - Pastas de configuração: `/etc/config`.
 - O perfil legado conserva também `/home/opc/oracle`.
 

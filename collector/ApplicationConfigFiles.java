@@ -48,18 +48,34 @@ final class ApplicationConfigFiles {
         Collections.sort(files);
     }
     boolean boot(AssessmentScan.ProcessContext c) { return c.application != null && "Spring Boot".equals(c.application.get("applicationType")); }
+    /** Lower case, with _ - . and spaces as one separator; extension and trailing version removed. */
+    static String normalize(String value, boolean artifact) {
+        if (value == null) return "";
+        String v = value.trim().toLowerCase(Locale.ENGLISH);
+        if (artifact) v = v.replaceFirst("\\.(jar|war|ear)$", "");
+        v = v.replaceAll("[\\s._-]+", "-").replaceAll("^-+|-+$", "");
+        if (artifact) v = v.replaceFirst("-v?[0-9]+(-[0-9]+)*(-(snapshot|release|final|[a-z]*[0-9]*))?$", "");
+        return v;
+    }
     List<String> names(AssessmentScan.ProcessContext context) {
         List<String> names = new ArrayList<String>();
-        if (context.launch.jarPath != null) { String name = new File(context.launch.jarPath).getName(); names.add(name.replaceFirst("(?i)\\.(jar|war)$", "").toLowerCase(Locale.ENGLISH)); }
-        if (context.application != null && context.application.get("name") instanceof String) names.add(((String)context.application.get("name")).toLowerCase(Locale.ENGLISH));
+        if (context.launch.jarPath != null) add(names, normalize(new File(context.launch.jarPath).getName(), true));
+        if (context.application != null && context.application.get("name") instanceof String) add(names, normalize((String)context.application.get("name"), true));
         String explicit = context.launch.springArguments.get("spring.application.name");
         if (explicit == null) explicit = context.launch.springSystem.get("spring.application.name");
-        if (ProcessLaunch.label(explicit) != null) names.add(explicit.toLowerCase(Locale.ENGLISH));
+        if (ProcessLaunch.label(explicit) != null) add(names, normalize(explicit, false));
         return names;
     }
+    static void add(List<String> names, String name) { if (name.length() >= 3 && !names.contains(name)) names.add(name); }
+    /** Token match: <app>.ext, <app>-<suffix>.ext or a folder named <app>; application/bootstrap files only by folder. */
     boolean matches(File file, AssessmentScan.ProcessContext context) {
-        String name = file.getName().toLowerCase(Locale.ENGLISH);
-        for (String app : names(context)) if (app.length() >= 3 && (name.contains(app) || file.getParentFile().getName().equalsIgnoreCase(app))) return true;
+        String base = normalize(file.getName().replaceFirst("\\.[^.]+$", ""), false);
+        String parent = file.getParentFile() == null ? "" : normalize(file.getParentFile().getName(), false);
+        boolean generic = base.matches("(application|bootstrap)(-.*)?");
+        for (String app : names(context)) {
+            if (parent.equals(app)) return true;
+            if (!generic && (base.equals(app) || base.startsWith(app + "-"))) return true;
+        }
         return false;
     }
     void claim(File file, AssessmentScan.ProcessContext context) {

@@ -34,6 +34,14 @@ public final class ApplicationConfigFilesTest {
             File target=new File(root,"target.properties");ProcessLaunchTest.text(target,"spring.datasource.url=jdbc:h2:mem:secret");
             Process symlink=new ProcessBuilder("ln","-s",target.getCanonicalPath(),new File(conf,"link.properties").getAbsolutePath()).start();check(symlink.waitFor()==0,"symlink fixture");
             check(ApplicationConfigFiles.safe(one,new File(conf,"link.properties"))==null,"links rejected");
+            AssessmentScan names=ProcessLaunchTest.scanner();ApplicationConfigFiles files=names.applicationConfigFiles;
+            AssessmentScan.ProcessContext formacao=new AssessmentScan.ProcessContext(ProcessLaunch.parse(new String[]{"java","-jar","/u01/app/FORMACAO_PERIODOS_SE.jar"},new File("/")),1,null,AssessmentScan.map(),AssessmentScan.map("name","FORMACAO_PERIODOS_SE.jar"));
+            AssessmentScan.ProcessContext app=new AssessmentScan.ProcessContext(ProcessLaunch.parse(new String[]{"java","-jar","/srv/app.jar"},new File("/")),2,null,AssessmentScan.map(),AssessmentScan.map("name","app.jar"));
+            AssessmentScan.ProcessContext api=new AssessmentScan.ProcessContext(ProcessLaunch.parse(new String[]{"java","-jar","/srv/api-2.4.1-SNAPSHOT.jar"},new File("/")),3,null,AssessmentScan.map(),AssessmentScan.map("name","api-2.4.1-SNAPSHOT.jar"));
+            check(files.matches(new File("/etc/config/formacao-periodos-se/application.yml"),formacao),"folder name matches across _ and -");
+            check(files.matches(new File("/etc/config/formacao-periodos-se.properties"),formacao)&&files.matches(new File("/etc/config/FORMACAO_PERIODOS_SE-prod.yml"),formacao),"file name matches by token");
+            check(!files.matches(new File("/etc/config/application.yml"),app)&&!files.matches(new File("/etc/config/application-prod.properties"),app),"app.jar never claims generic application files");
+            check(!files.matches(new File("/etc/config/apigateway.yml"),api)&&files.matches(new File("/etc/config/api.properties"),api),"no substring match; version suffix removed");
             System.out.println("APPLICATION_CONFIG_FILES=PASS unique ambiguous explicit named defaults privacy symlink");
         } finally { CollectorTest.remove(root); }
     }
