@@ -16,7 +16,7 @@ for suite in VisitedPathsTest ProductHomesTest JdbcDriverResolverTest JdbcEndpoi
 done
 "$JAVA_HOME/bin/java" -Djava.io.tmpdir="$JTMP" -Xmx96m -cp "$CP" assessment.ServerDataSourcesTest \
   --export tmp/source-evidence/jdbc-fixtures.json
-for suite in JdbcEndpointReportsTest EnvironmentPresenceTest ArchiveDefaultsHttpTest PortugueseTest InventoryStoreTest UserAuthTest UserAccessHttpTest DashboardMaintenanceHttpTest EnvironmentInstallAccessTest EnvironmentInstallHttpTest InstallCommandTest \
+for suite in JdbcEndpointReportsTest DatabaseGroupsHttpTest EnvironmentPresenceTest ArchiveDefaultsHttpTest PortugueseTest InventoryStoreTest UserAuthTest UserAccessHttpTest DashboardMaintenanceHttpTest EnvironmentInstallAccessTest EnvironmentInstallHttpTest InstallCommandTest \
   MachineActionsHttpTest MachineCleanupHttpTest AgentUpdateWorkerTest AgentUpdateStartTimeoutTest AgentUpdateHttpTest \
   WorkRequestsHttpTest RuntimeInventoryHttpTest CsvExportTest \
   VersionedCsvHttpTest DashboardVersionHttpTest CompactOverviewTest PostUpdateAssessmentsTest PostUpdateAssessmentHttpTest; do
@@ -24,7 +24,7 @@ for suite in JdbcEndpointReportsTest EnvironmentPresenceTest ArchiveDefaultsHttp
 done
 "$JAVA_HOME/bin/java" -Djava.io.tmpdir="$JTMP" -Xmx384m -cp "$CP" assessment.JdbcOverviewHttpTest \
   tmp/source-evidence/jdbc-fixtures.json tmp/source-evidence/jdbc-http
-for suite in jdbc-driver-ui.test.cjs jdbc-endpoint-ui.test.cjs environment-presence.test.cjs locale.test.cjs dashboard.test.cjs interface-refresh.test.cjs version-js.test.cjs agent-release-notice.test.cjs; do
+for suite in jdbc-driver-ui.test.cjs jdbc-endpoint-ui.test.cjs datasources-ui.test.cjs environment-presence.test.cjs locale.test.cjs dashboard.test.cjs interface-refresh.test.cjs version-js.test.cjs agent-release-notice.test.cjs; do
   "${NODE:-node}" "tests/$suite"
 done
 "${NODE:-node}" tests/jdbc-overview.test.cjs tmp/source-evidence/jdbc-http/overview-fixtures.json

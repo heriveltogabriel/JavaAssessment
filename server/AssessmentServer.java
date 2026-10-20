@@ -238,8 +238,8 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
     }
     private InventoryQueries.Scope scope(HttpExchange x)throws Exception{
         InventoryQueries.Scope f=selectedScope(x);
-        String view=query(x,"view");if(!view.isEmpty())f.view=view;if(!Set.of("overview","machine","environments","versions","hosts","runtimes","applications","servers","libraries","datasources","processes","jobs","settings").contains(f.view))throw new ApiError(400,"Invalid view");
-        f.page=queryInteger(x,"page",1,1,1000000);f.size=queryInteger(x,"pageSize",20,1,100);f.q=query(x,"q");if(f.q.length()>200)throw new ApiError(400,"Search is too long");f.subset=query(x,"subset");f.version=query(x,"version");f.mode=query(x,"versionMode").equals("exact")?"exact":"family";
+        String view=query(x,"view");if(!view.isEmpty())f.view=view;if(!Set.of("overview","machine","environments","versions","hosts","runtimes","applications","servers","libraries","datasources","databases","processes","jobs","settings").contains(f.view))throw new ApiError(400,"Invalid view");
+        f.page=queryInteger(x,"page",1,1,1000000);f.size=queryInteger(x,"pageSize",20,1,100);f.q=query(x,"q");if(f.q.length()>200)throw new ApiError(400,"Search is too long");f.subset=query(x,"subset");if(f.subset.length()>1000)throw new ApiError(400,"Invalid subset");f.version=query(x,"version");f.mode=query(x,"versionMode").equals("exact")?"exact":"family";
         f.minimumSeconds=queryInteger(x,"minimumSeconds",300,300,2592000);MachineCleanup.period(f.minimumSeconds);
         f.from=InventoryQueries.time(query(x,"from"),false);f.to=InventoryQueries.time(query(x,"to"),true);String range=query(x,"range");if(f.from.isEmpty()&&!range.isEmpty()&&!range.equals("all")){long hours=switch(range){case "24h"->24;case "7d"->168;case "30d"->720;default->throw new ApiError(400,"Invalid range");};f.from=java.time.Instant.now().minusSeconds(hours*3600).toString();}
         if(!f.from.isEmpty()&&!f.to.isEmpty()&&!java.time.Instant.parse(f.from).isBefore(java.time.Instant.parse(f.to)))throw new ApiError(400,"Invalid date range");return f;
