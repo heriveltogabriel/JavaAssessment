@@ -72,7 +72,7 @@ final class InventoryArchive {
     }
     static String format(String value){
         if(value==null||value.isEmpty())return "json";
-        if(!Set.of("json","csv","mapa").contains(value))throw new Failure("Escolha JSON, CSV ou Mapa de bancos para exportar.");
+        if(!Set.of("json","csv","xlsx","mapa").contains(value))throw new Failure("Escolha JSON, CSV, Excel ou Mapa de bancos para exportar.");
         return value;
     }
     static List<String> fields(){TreeSet<String> fields=new TreeSet<>(RECORD);fields.addAll(ENV);fields.addAll(HOST);return List.copyOf(fields);}
@@ -83,6 +83,11 @@ final class InventoryArchive {
         String title=label(label),format=format(requested),exportedAt=Instant.now().toString();
         try(ZipOutputStream zip=new ZipOutputStream(output,StandardCharsets.UTF_8)){
             Budget budget=new Budget(zip,byteLimit);long[] total={0};
+            if(format.equals("xlsx")){
+                zip.putNextEntry(new ZipEntry("inventario.xlsx"));
+                store.readSnapshot(()->{writeWorkbook(zip,store,budget,title,exportedAt,recordLimit);return null;});
+                zip.closeEntry();return;
+            }
             if(format.equals("mapa")){
                 zip.putNextEntry(new ZipEntry("mapa-bancos.csv"));
                 store.readSnapshot(()->{writeMap(store,budget,title,exportedAt,recordLimit);return null;});
@@ -123,9 +128,60 @@ final class InventoryArchive {
             zip.closeEntry();
         }
     }
+    static final Map<String,String> SHEETS=Map.of("environments","Ambientes","hosts","Máquinas","runtimes","Java","processes","Processos","servers","Servidores","libraries","Bibliotecas","applications","Aplicações","datasources","Datasources");
+    private interface Row{void accept(Map<String,Object> clean)throws IOException;}
+    private static void each(InventoryStore store,String collection,String exportedAt,Row action){
+        boolean direct=collection.equals("hosts")||collection.equals("environments");
+        String sql=direct?"SELECT payload FROM "+collection+" ORDER BY id":"SELECT payload FROM inventory WHERE kind=? ORDER BY host_id,id";
+        store.forEachRow(sql,row->{
+            @SuppressWarnings("unchecked") Map<String,Object> record=(Map<String,Object>)Json.parse(String.valueOf(row.get("payload")),32*1024*1024);
+            Lifecycle.decorate(collection,List.of(record),Instant.parse(exportedAt));
+            try{action.accept(document(collection,record));}catch(IOException e){throw new UncheckedIOException(e);}
+        },direct?new Object[0]:new Object[]{collection});
+    }
+    /** One sheet per collection (columns present in that collection only) plus the database map; nested evidence summarized. */
+    private static void writeWorkbook(OutputStream target,InventoryStore store,Budget budget,String title,String exportedAt,long recordLimit)throws IOException{
+        InventoryArchiveXlsx book=new InventoryArchiveXlsx(target,budget::count);long[] total={0};
+        Map<String,Long> counts=new LinkedHashMap<>();Map<String,Set<String>> keys=new LinkedHashMap<>();
+        for(String collection:COLLECTIONS){
+            Set<String> present=new HashSet<>();long[] n={0};
+            each(store,collection,exportedAt,clean->{if(++total[0]>recordLimit)throw new Failure("O inventário excedeu o limite de registros para este pacote.");n[0]++;present.addAll(clean.keySet());});
+            counts.put(collection,n[0]);keys.put(collection,present);
+        }
+        try(InventoryArchiveXlsx.Sheet summary=book.sheet("Resumo",List.of("campo","valor"))){
+            summary.row(new ArrayList<>(List.of("formato","java-assessment-inventory (planilha)")));
+            summary.row(new ArrayList<>(List.of("versão do dashboard",DashboardVersion.VERSION)));
+            summary.row(new ArrayList<>(List.of("exportado em (UTC)",exportedAt)));
+            summary.row(new ArrayList<>(List.of("identificação",title)));
+            for(String collection:COLLECTIONS)summary.row(new ArrayList<>(List.of("registros: "+SHEETS.get(collection),counts.get(collection))));
+            summary.row(new ArrayList<>(List.of("observação","Listas e evidências aparecem resumidas; a exportação JSON tem o detalhe completo. Banco configurado não comprova conexão ativa.")));
+        }
+        InventoryArchiveMap map=null;Map<String,String> machine=new HashMap<>(),environment=new HashMap<>(),envNames=new HashMap<>();
+        for(String collection:COLLECTIONS){
+            boolean context=!collection.equals("hosts")&&!collection.equals("environments");
+            List<String> columns=InventoryArchiveXlsx.columns(keys.get(collection));
+            List<String> header=new ArrayList<>();if(context){header.add("maquina");header.add("ambiente");}header.addAll(columns);
+            try(InventoryArchiveXlsx.Sheet sheet=book.sheet(SHEETS.get(collection),header)){
+                each(store,collection,exportedAt,clean->{
+                    if(collection.equals("environments"))envNames.put(String.valueOf(clean.get("id")),InventoryArchiveMap.s(clean.get("name")));
+                    if(collection.equals("hosts")){machine.put(String.valueOf(clean.get("id")),InventoryArchiveMap.s(clean.get("hostname")));environment.put(String.valueOf(clean.get("id")),envNames.getOrDefault(InventoryArchiveMap.s(clean.get("environmentId")),""));}
+                    List<Object> values=new ArrayList<>();
+                    if(context){String host=InventoryArchiveMap.s(clean.get("hostId"));values.add(machine.getOrDefault(host,""));values.add(environment.getOrDefault(host,""));}
+                    for(String key:columns)values.add(InventoryArchiveXlsx.cell(key,clean.get(key)));
+                    sheet.row(values);
+                });
+            }
+        }
+        try(InventoryArchiveXlsx.Sheet sheet=book.sheet("Mapa de bancos",InventoryArchiveMap.COLUMNS)){
+            InventoryArchiveMap rows=new InventoryArchiveMap(values->{try{sheet.row(values);}catch(IOException e){throw new UncheckedIOException(e);}},title);
+            for(String collection:List.of("environments","hosts","servers","applications","processes","runtimes"))each(store,collection,exportedAt,clean->rows.index(collection,clean));
+            each(store,"datasources",exportedAt,rows::datasource);
+        }
+        book.finish();
+    }
     /** Join tables first, then one row per datasource x endpoint x process; same allowlist and scrubbing as JSON/CSV. */
     private static void writeMap(InventoryStore store,Budget budget,String title,String exportedAt,long recordLimit){
-        InventoryArchiveMap map=new InventoryArchiveMap(budget::text,title);map.start();long[] total={0};
+        InventoryArchiveMap map=InventoryArchiveMap.csv(budget::text,title);long[] total={0};
         for(String collection:List.of("environments","hosts","servers","applications","processes","runtimes","datasources")){
             boolean direct=collection.equals("hosts")||collection.equals("environments");
             String sql=direct?"SELECT payload FROM "+collection+" ORDER BY id":"SELECT payload FROM inventory WHERE kind=? ORDER BY host_id,id";
@@ -140,6 +196,7 @@ final class InventoryArchive {
     private static final class Budget {
         private final OutputStream out;private final long max;private long bytes;
         Budget(OutputStream out,long max){this.out=out;this.max=max;}
+        void count(String text){long size=text.getBytes(StandardCharsets.UTF_8).length;if(size>max-bytes)throw new Failure("O inventário excedeu o limite de 512 MiB descompactados para este pacote.");bytes+=size;}
         void text(String text){byte[] data=text.getBytes(StandardCharsets.UTF_8);if(data.length>max-bytes)throw new Failure("O inventário excedeu o limite de 512 MiB descompactados para este pacote.");bytes+=data.length;try{out.write(data);}catch(IOException e){throw new UncheckedIOException(e);}}
     }
 }

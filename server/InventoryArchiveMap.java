@@ -15,13 +15,13 @@ final class InventoryArchiveMap {
         "bancoTipo","bancoHost","bancoPorta","bancoServico","chaveServico","chaveHostPorta","hostCurto",
         "driverClasse","driverJar","driverVersao","driverStatus","driverSuporte",
         "evidenciaBanco","observacao","datasourceId","hostId");
-    private final Consumer<String> output;
+    private final Consumer<List<Object>> sink;
     private final String label;
     private final Map<String,Map<String,Object>> hosts=new HashMap<>(),environments=new HashMap<>(),servers=new HashMap<>(),applications=new HashMap<>(),processes=new HashMap<>();
     private final Map<String,String> runtimes=new HashMap<>();
-    InventoryArchiveMap(Consumer<String> output,String label){this.output=output;this.label=label;}
-
-    void start(){output.accept("﻿");row(new ArrayList<>(COLUMNS));}
+    /** Rows go to a sink: the ';' CSV writer or a spreadsheet sheet. */
+    InventoryArchiveMap(Consumer<List<Object>> sink,String label){this.sink=sink;this.label=label;}
+    static InventoryArchiveMap csv(Consumer<String> output,String label){output.accept("\uFEFF");InventoryArchiveMap map=new InventoryArchiveMap(values->output.accept(line(values)),label);map.sink.accept(new ArrayList<>(COLUMNS));return map;}
     /** Indexes are filled first, inside the same read snapshot as the datasources. */
     void index(String collection,Map<String,Object> clean){
         String id=s(clean.get("id")),host=s(clean.get("hostId"));
@@ -67,7 +67,7 @@ final class InventoryArchiveMap {
                     type,dbHost,port,service,serviceKey(type,service),hostPortKey(dbHost,port),shortHost(dbHost),
                     first(ds.get("driverName"),ds.get("driverClass")),driver[0],driver[1],statusLabel(driver[2]),supportStatus(ds),
                     dbHost.isEmpty()?"Destino não identificado":evidence(ds),observation,s(ds.get("id")),hostId));
-                row(values);rows++;
+                sink.accept(values);rows++;
             }
         }
         return rows;
@@ -113,7 +113,7 @@ final class InventoryArchiveMap {
     static String s(Object v){return v==null?"":v instanceof Double d&&d==Math.rint(d)?String.valueOf(d.longValue()):String.valueOf(v);}
     static String list(Object v){if(v instanceof List<?> l){StringBuilder b=new StringBuilder();for(Object o:l){if(o==null)continue;if(b.length()>0)b.append("; ");b.append(o);}return b.toString();}return s(v);}
     static String first(Object... values){for(Object v:values){String t=s(v);if(!t.isEmpty())return t;}return "";}
-    private void row(List<Object> values){
+    static String line(List<Object> values){
         StringBuilder line=new StringBuilder();boolean firstCell=true;
         for(Object value:values){
             if(!firstCell)line.append(';');firstCell=false;
@@ -121,7 +121,7 @@ final class InventoryArchiveMap {
             if(text.isEmpty())continue;
             line.append('"').append(formula(text)?"'":"").append(text.replace("\"","\"\"")).append('"');
         }
-        output.accept(line.append("\r\n").toString());
+        return line.append("\r\n").toString();
     }
     private static boolean formula(String text){char c=text.charAt(0);return c=='='||c=='+'||c=='-'||c=='@'||c=='\t';}
 }

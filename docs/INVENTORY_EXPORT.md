@@ -2,7 +2,7 @@
 
 Disponível na versão 2.1.16 revisada. Por solicitação explícita do operador, os pacotes dessa versão foram substituídos para oferecer JSON/CSV em arquivo único; a versão original permanece no histórico Git.
 
-Em **Administração → Exportar inventário**, o administrador pode preencher uma identificação do levantamento ou cliente selecionar **JSON** ou **CSV** e clicar em **Exportar inventário em ZIP**. A identificação é opcional e deve ter até 120 caracteres. O arquivo gerado contém todo o inventário atual, independentemente de ambiente, máquina, busca ou filtros abertos nas demais telas. O download é sempre um ZIP com apenas um arquivo de dados no formato selecionado. Os relatórios PDF/CSV existentes continuam disponíveis.
+Em **Administração → Exportar inventário**, o administrador pode preencher uma identificação do levantamento ou cliente selecionar **JSON**, **Excel (.xlsx)**, **CSV** ou **Mapa de bancos** e clicar em **Exportar inventário em ZIP**. A identificação é opcional e deve ter até 120 caracteres. O arquivo gerado contém todo o inventário atual, independentemente de ambiente, máquina, busca ou filtros abertos nas demais telas. O download é sempre um ZIP com apenas um arquivo de dados no formato selecionado. Os relatórios PDF/CSV existentes continuam disponíveis.
 
 O objetivo é permitir que uma aplicação separada faça pesquisas e levantamentos com os dados coletados. Este dashboard não importa o pacote. O arquivo não substitui um backup e não contém dados suficientes para restaurar o dashboard ou suas credenciais.
 
@@ -25,7 +25,7 @@ Textos técnicos permitidos passam também por remoção de padrões de credenci
 
 ## Formato 2 — um único arquivo
 
-O ZIP usa UTF-8 e contém **somente `inventario.json` ou `inventario.csv`**, conforme a escolha. A versão do formato de dados passou para 2; a versão do produto continua 2.1.16.
+O ZIP usa UTF-8 e contém **um único arquivo**, conforme a escolha: `inventario.json`, `inventario.xlsx`, `inventario.csv` ou `mapa-bancos.csv`. A versão do formato de dados passou para 2; a versão do produto continua 2.1.16.
 
 ### JSON
 
@@ -36,6 +36,20 @@ Um documento com duas propriedades: `metadata` e `data`. `metadata` contém `for
 CSV UTF-8 com BOM, separador vírgula, aspas duplicadas e linhas CRLF. A primeira linha é o cabeçalho. A primeira linha de dados tem `recordType=metadata` e o objeto completo de metadados em `exportMetadata`; assim, até uma exportação vazia preserva identificação e contagens. As linhas seguintes têm **uma linha por recurso**.
 
 As colunas iniciais `recordType`, `machineName`, `environmentName` e `hostIpAddresses` identificam o contexto. As demais abrangem todos os campos técnicos permitidos, como `javaVersion`, `driverArtifact`, `driverVersion`, `databaseHost` e `domainName`. Campos que não se aplicam ficam vazios. Listas e objetos (candidatos, associações por PID, destinos múltiplos, suporte, cobertura) são JSON dentro de uma célula CSV, sem resumir ou cortar seus detalhes. Strings que poderiam iniciar fórmulas de planilha recebem apóstrofo de proteção; no JSON permanecem strings originais sanitizadas. Null e campo ausente são células vazias; para preservar essa distinção, use JSON.
+
+### Excel (.xlsx)
+
+O ZIP contém somente `inventario.xlsx`, uma planilha com uma aba por tipo, cada uma só com as colunas que aparecem naquele tipo:
+
+`Resumo` (formato, versão, data, identificação e contagens) · `Ambientes` · `Máquinas` · `Java` · `Processos` · `Servidores` · `Bibliotecas` · `Aplicações` · `Datasources` · `Mapa de bancos` (as mesmas linhas e colunas do formato Mapa de bancos).
+
+- As abas de recursos começam com `maquina` e `ambiente`; a primeira linha é fixa e tem filtro.
+- Listas e evidências aparecem **resumidas em texto**: candidatos de driver como `caminho (versão)`, com `[fora do classpath]` quando for o caso; associações como `PID n: servidor [status]`; destinos como `host:porta/serviço`; suporte como `status — linha — fim`; cobertura como `status — n observação(ões)`. Valores sim/não aparecem como `sim`/`não`.
+- Uma célula com mais de 32.000 caracteres é cortada e termina com `… [cortado; detalhe completo na exportação JSON]`, em vez de o Excel cortar sem aviso.
+- Os textos são gravados como texto: nada é interpretado como fórmula.
+- Limite de 1.048.575 linhas por aba (limite do Excel); acima disso a exportação falha com orientação para usar o JSON.
+
+Para integração com outro sistema, use o JSON: ele preserva toda a estrutura e as evidências sem resumo.
 
 ### Mapa de bancos (CSV para Excel)
 
@@ -58,7 +72,7 @@ A identificação do cliente é informativa, não autenticada. Não una clientes
 
 ## Consistência e limites
 
-O endpoint `GET /api/admin/inventory-export?format=json|csv&label=...` exige sessão de administrador. Sem `format`, o padrão é JSON; outros valores são rejeitados. Uma leitura SQLite consistente abrange todas as coleções. A geração percorre os registros incrementalmente, escreve em temporário privado e só entrega o arquivo após concluir e conferir novamente a autorização. O temporário é removido em sucesso ou falha. A resposta usa `application/zip` e `Cache-Control: no-store`.
+O endpoint `GET /api/admin/inventory-export?format=json|csv|xlsx|mapa&label=...` exige sessão de administrador. Sem `format`, o padrão é JSON; outros valores são rejeitados. Uma leitura SQLite consistente abrange todas as coleções. A geração percorre os registros incrementalmente, escreve em temporário privado e só entrega o arquivo após concluir e conferir novamente a autorização. O temporário é removido em sucesso ou falha. A resposta usa `application/zip` e `Cache-Control: no-store`.
 
 Há limite de uma exportação/relatório por vez, um milhão de registros somados e 512 MiB de conteúdo descompactado. Ao exceder o limite ou ocorrer falha, a operação retorna erro, sem entregar um pacote parcial. Os limites não truncam silenciosamente a coleta exportada. O arquivo representa o estado atual; não contém histórico de coletas anteriores.
 

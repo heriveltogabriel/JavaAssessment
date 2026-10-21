@@ -74,6 +74,30 @@ public final class InventoryArchiveTest {
         check(probable[0].endsWith("ojdbc6.jar")&&InventoryArchiveMap.statusLabel(probable[2]).contains("provável"),"unique on-classpath candidate labeled probable");
         check(table.stream().allMatch(r->r.size()==header.size()),"rectangular table");
     }
+    static Map<String,String> nested(byte[] data)throws Exception{
+        Map<String,String> result=new LinkedHashMap<>();
+        try(ZipInputStream zip=new ZipInputStream(new ByteArrayInputStream(data),StandardCharsets.UTF_8)){ZipEntry e;while((e=zip.getNextEntry())!=null)result.put(e.getName(),new String(zip.readAllBytes(),StandardCharsets.UTF_8));}
+        return result;
+    }
+    static void xlsx(InventoryStore store)throws Exception{
+        var out=new ByteArrayOutputStream();InventoryArchive.write(out,store,"Cliente A","xlsx");
+        byte[] book=null;
+        try(ZipInputStream zip=new ZipInputStream(new ByteArrayInputStream(out.toByteArray()),StandardCharsets.UTF_8)){ZipEntry e=zip.getNextEntry();check(e!=null&&e.getName().equals("inventario.xlsx"),"one workbook entry");book=zip.readAllBytes();check(zip.getNextEntry()==null,"only the workbook");}
+        var parts=nested(book);String all=String.join("\n",parts.values());
+        check(parts.keySet().containsAll(List.of("[Content_Types].xml","_rels/.rels","xl/workbook.xml","xl/_rels/workbook.xml.rels","xl/styles.xml","xl/worksheets/sheet1.xml","xl/worksheets/sheet10.xml")),"workbook parts: "+parts.keySet());
+        for(String sheet:List.of("Resumo","Ambientes","Máquinas","Java","Processos","Servidores","Bibliotecas","Aplicações","Datasources","Mapa de bancos"))check(parts.get("xl/workbook.xml").contains("name=\""+sheet+"\""),"sheet "+sheet);
+        for(String secret:List.of("MAP_PASSWORD","CANDIDATE_PASSWORD","DECISION_TOKEN","DB_PASSWORD","ASSOC_SECRET","COMMAND_SECRET","HOST_TOKEN","NOTE_SECRET"))check(!all.contains(secret),"xlsx omitted "+secret);
+        check(parts.get("xl/worksheets/sheet10.xml").contains("oracle|DPDBRJ2")&&parts.get("xl/worksheets/sheet10.xml").contains("dsv04_domain"),"database map sheet");
+        check(parts.get("xl/worksheets/sheet3.xml").contains("ol07")&&parts.get("xl/worksheets/sheet8.xml").contains("FORMACAO_PERIODOS_SE.jar"),"machine and application sheets");
+        check(!all.contains("<f>")&&!all.contains("\u0001"),"no formulas, no invalid XML characters");
+        check(InventoryArchiveXlsx.escape("a<b&\u0001").equals("a&lt;b&amp; "),"XML escaping");
+        check(InventoryArchiveXlsx.column(0).equals("A")&&InventoryArchiveXlsx.column(25).equals("Z")&&InventoryArchiveXlsx.column(26).equals("AA")&&InventoryArchiveXlsx.column(33).equals("AH"),"column letters");
+        check(InventoryArchiveXlsx.cell("driverCandidates",List.of(map("path","/a/ojdbc8.jar","version","19.3","onClasspath",false))).equals("/a/ojdbc8.jar (19.3) [fora do classpath]"),"candidate summary");
+        check(InventoryArchiveXlsx.cell("databaseEndpoints",List.of(map("host","db","port",1521,"service","S"))).equals("db:1521/S"),"endpoint summary");
+        var sheetTest=new ByteArrayOutputStream();var wb=new InventoryArchiveXlsx(sheetTest,text->{});
+        try(var sheet=wb.sheet("T",List.of("x"))){sheet.row(new ArrayList<>(List.of("y".repeat(40_000))));}wb.finish();
+        String longCell=nested(sheetTest.toByteArray()).get("xl/worksheets/sheet1.xml");check(longCell.contains(InventoryArchiveXlsx.CUT)&&!longCell.contains("y".repeat(32_001)),"long cell cut with notice");
+    }
     public static void main(String[] args)throws Exception{
         Path root=Files.createTempDirectory("inventory-archive-");
         try(InventoryStore store=new InventoryStore(root.toFile(),map(),"","")){
@@ -90,6 +114,7 @@ public final class InventoryArchiveTest {
             var csv=entries(archive(store,"csv"));check(csv.keySet().equals(Set.of("inventario.csv")),"one CSV file");
             check(csv.get("inventario.csv").contains("\"'=JDBC"),"CSV formula protected");
             mapa(store);
+            xlsx(store);
             for(String invalid:List.of("xml","JSON","../csv")){try{InventoryArchive.format(invalid);throw new AssertionError("invalid format accepted");}catch(InventoryArchive.Failure expected){}}
             if(args.length==2&&args[0].equals("--export")){Path dir=Path.of(args[1]);Files.createDirectories(dir);Files.write(dir.resolve("json.zip"),archive(store));Files.write(dir.resolve("csv.zip"),archive(store,"csv"));}
             for(long[] limits:List.of(new long[]{50,100},new long[]{999999,2})){

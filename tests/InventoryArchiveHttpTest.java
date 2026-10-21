@@ -31,6 +31,7 @@ public final class InventoryArchiveHttpTest {
             check(raw("GET",ENDPOINT+"?format=xml",null,true,null).statusCode()==400,"invalid format blocked");cleanTemps();
             var csv=raw("GET",ENDPOINT+"?format=csv",null,true,null);check(csv.statusCode()==200,"CSV archive download");check(InventoryArchiveTest.entries(csv.body()).keySet().equals(Set.of("inventario.csv")),"single CSV entry");cleanTemps();
             var mapa=raw("GET",ENDPOINT+"?format=mapa",null,true,null);check(mapa.statusCode()==200&&InventoryArchiveTest.entries(mapa.body()).keySet().equals(Set.of("mapa-bancos.csv")),"database map download");cleanTemps();
+            var xlsx=raw("GET",ENDPOINT+"?format=xlsx",null,true,null);check(xlsx.statusCode()==200&&InventoryArchiveTest.entries(xlsx.body()).keySet().equals(Set.of("inventario.xlsx")),"workbook download");cleanTemps();
             String adminCookie=cookie,adminCsrf=csrf;
             var reader=ok("POST","/api/admin/users",map("name","Reader Fixture","email","reader@example.com","role","READER","adminPassword",TestAccounts.PASSWORD),true,null,201);
             var user=obj(reader.get("user"));app.auth.changePassword((String)user.get("id"),app.auth.find((String)user.get("id")).revision(),(String)reader.get("temporaryPassword"),"reader-personal-password-1234");
