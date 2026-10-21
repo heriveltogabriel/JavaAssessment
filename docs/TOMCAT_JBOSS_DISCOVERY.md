@@ -22,6 +22,12 @@ Coordenadas Maven de um artefato de módulo podem fornecer versão declarada sem
 
 Limites específicos: 8 raízes de módulos, 16 camadas, 32 add-ons, 32 overlays, 32 recursos por módulo e 128 deployments. Todos compartilham os limites globais de arquivos, metadados e tempo. A leitura truncada da origem decisiva impede uma identificação definitiva.
 
+## Profile/contexto no dashboard (2.1.20)
+
+A aba Datasources JDBC e os detalhes exibem **Profile/contexto**, usando `configurationContext` do inventário. Para `domain profile full`, a coluna mostra `full`; para `domain profile full-ha`, mostra `full-ha`. Contextos ausentes aparecem como **Não identificado**. Nomes iguais em perfis distintos permanecem registros distintos. A coluna pode ser ocultada no seletor de colunas.
+
+Essa apresentação não muda o vínculo aos processos nem confirma o perfil efetivamente usado em execução. Quando o campo já foi coletado, basta atualizar o dashboard para visualizá-lo; não é necessário atualizar o agente ou repetir a coleta por essa mudança.
+
 ## Novos padrões de coleta
 
 - Incluídos: `/usr/java`, `/usr/lib/jvm`, `/opt`, `/u01`, `/etc/config`, `/prd1`.

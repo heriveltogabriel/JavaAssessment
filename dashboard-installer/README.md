@@ -66,3 +66,7 @@ Ao atualizar um dashboard anterior, a tela de configuração exige a senha admin
 Em Administração → Exportar inventário, escolha JSON, CSV completo, Excel (.xlsx) com abas por tipo ou Mapa de bancos. O ZIP contém um único arquivo com dados técnicos, vínculos, versões Java/JDBC e JARs. Excel resume listas/evidências e avisa sobre células longas; JSON preserva os detalhes estruturados. O mapa relaciona datasource, destino configurado e processo/aplicação. Não inclui cadastros de usuários, credenciais, chaves ou configurações operacionais. Nomes, IPs e caminhos permanecem identificáveis. O pacote serve para análise em outra aplicação, não para restaurar o dashboard.
 
 A entrega 2.1.18 permite atualizar o dashboard pela console a partir da 2.1.14 ou 2.1.16 com o web-update apropriado. Este instalador é apenas para servidor novo. Atualizar o dashboard não atualiza os agentes automaticamente; não houve mudança funcional no coletor e os novos formatos usam os dados já coletados.
+
+## Profile/contexto — 2.1.20
+
+A tabela e os detalhes de Datasources JDBC mostram o profile/contexto encontrado na configuração, sem unir nomes iguais de perfis diferentes. O campo usa dados existentes; não confirma atividade em execução. Atualizar o dashboard não atualiza os agentes automaticamente. Esta melhoria não exige agente novo. Use o web-update para atualizar uma instalação compatível; o instalador completo é para servidor novo.

@@ -1,12 +1,18 @@
 # Java Assessment
 
-Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versão **2.1.18**, preparada para teste pela console, reúne dashboard, agente Linux e banco SQLite local, com organização por ambiente e máquina.
+Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versão **2.1.20**, preparada para teste pela console, reúne dashboard, agente Linux e banco SQLite local, com organização por ambiente e máquina.
 
 ![Overview do Java Assessment com indicadores de agentes, instalações Java, servidores e datasources JDBC](imagens/overview.png)
 
 Esta entrega reúne [configurações Spring/JDBC](docs/SPRING_DISCOVERY.md), [driver WebLogic por processo](docs/JDBC_DRIVER_RESOLUTION.md) e [Tomcat/JBoss](docs/TOMCAT_JBOSS_DISCOVERY.md). Excel, Mapa de bancos e o ajuste do driver provável estão nas [notas da 2.1.18](docs/RELEASE_2.1.18.md).
 
-## Nova entrega — 2.1.18
+## Nova entrega — 2.1.20
+
+A tabela e os detalhes de **Datasources JDBC** exibem **Profile/contexto**, diferenciando nomes iguais em perfis distintos. A informação vem do inventário existente; não há mudança funcional no agente. [Notas](docs/RELEASE_2.1.20.md) · [Pacotes](install/v2.1.20/README.md) · [Validação](docs/validation/console-release-2.1.20.md).
+
+Use o web-update em **Administração → Atualização do dashboard**. **Atualizar o dashboard não atualiza agentes automaticamente**; revise versões e elegibilidade no painel e atualize separadamente se desejar alinhar a versão.
+
+## Entrega anterior preservada — 2.1.18
 
 **Administração → Exportar inventário** inclui Excel (.xlsx), com abas por tipo, e **Mapa de bancos**, para cruzar datasources, destinos e aplicações com outro inventário. JSON e CSV completo continuam disponíveis. A tela só apresenta driver provável quando o candidato único estava no classpath. [Notas](docs/RELEASE_2.1.18.md) · [Formatos](docs/INVENTORY_EXPORT.md) · [Instaladores](install/v2.1.18/README.md).
 
@@ -81,12 +87,12 @@ Na raiz deste repositório, com Python 3 e OpenSSL disponíveis:
 
 ```sh
 # Recupera somente os artefatos públicos assinados do instalador publicado.
-unzip -o install/v2.1.18/assessment-dashboard-installer-2.1.18.zip 'dist/*' -d .
+unzip -o install/v2.1.20/assessment-dashboard-installer-2.1.20.zip 'dist/*' -d .
 python3 -B ops/prepare-beta-dependencies.py --check
 python3 -B dashboard-installer/build.py --with-source
 ```
 
-Os resultados ficam em `dist/assessment-dashboard-installer-2.1.18.zip` e `dist/assessment-dashboard-source-2.1.18.zip`, com arquivos SHA-256. O build usa as bibliotecas fixadas, o agente genérico e o catálogo público assinado incluídos no repositório. Não exige arquivos da máquina de desenvolvimento nem a chave privada de assinatura.
+Os resultados ficam em `dist/assessment-dashboard-installer-2.1.20.zip` e `dist/assessment-dashboard-source-2.1.20.zip`, com arquivos SHA-256. O build usa as bibliotecas fixadas, o agente genérico e o catálogo público assinado incluídos no repositório. Não exige arquivos da máquina de desenvolvimento nem a chave privada de assinatura.
 
 O pacote do agente versionado em `dist/assessment-collector.zip` é genérico e não contém identidade cadastrada. O catálogo extraído em `dist/` inclui os pacotes completos e as rotas de migração. O build verifica assinaturas, chave pública e integridade antes de empacotar. Alterações nos arquivos executáveis exigem uma nova entrega assinada; o build não assina nem substitui a confiança instalada.
 
@@ -217,7 +223,7 @@ Os testes de navegador usam Playwright e Chrome. Configure `NODE`, `NODE_PATH`, 
 - [Validações e gates antes de publicar](docs/validation/full-agent-update.md)
 - [Migração e backup](dashboard-installer/BETA_MIGRATION.md)
 
-Os nomes de alguns scripts e documentos mantêm `beta` por compatibilidade com a estrutura anterior. A entrega preparada atual é 2.1.18; a 2.1.0 permanece preservada. Relatórios históricos descrevem somente o cenário e a versão em que foram produzidos.
+Os nomes de alguns scripts e documentos mantêm `beta` por compatibilidade com a estrutura anterior. A entrega preparada atual é 2.1.20; a 2.1.0 permanece preservada. Relatórios históricos descrevem somente o cenário e a versão em que foram produzidos.
 
 Configurações privadas, chaves, inventário, logs, pacotes de ambientes e ferramentas específicas do laboratório ficam fora do Git. Publicar código neste repositório não instala nem atualiza servidores ou agentes.
 

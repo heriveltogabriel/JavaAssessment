@@ -20,7 +20,23 @@ assert(!ds.reportCell('<img src=x> — d · Destino configurado: <b>').includes(
 const h={link:(k,id,label,sub)=>'['+label+(sub?'|'+sub:'')+']',hostLink:id=>'host:'+id,value:v=>v==null||v===''?'—':String(v),resolutionLabel:s=>({IDENTIFIED:'Identificado em arquivo',NOT_FOUND:'Driver não localizado'})[s]||''};
 const row={id:'a',hostId:'h1',name:'jdbc/Pedidos',jndiNames:['jdbc/Pedidos','java:/Pedidos'],serverName:'AdminServer',associations:[{applicationName:'loja'}],linkedContexts:[{context:'context:/shop'}],databaseType:'Oracle',databaseHost:'db1',databasePort:1521,databaseName:'PEDIDOS',driverName:'oracle.jdbc.OracleDriver',driverVersion:'19.3',driverResolution:'NOT_FOUND',state:'DISABLED'};
 const cols=ds.columns(h);
-assert.deepEqual(cols.map(c=>c.key),['name','host','relations','databaseType','destination','driver','driverArtifact','driverVersion','support','driverResolution','state']);
+assert.deepEqual(cols.map(c=>c.key),['name','configurationContext','host','relations','databaseType','destination','driver','driverArtifact','driverVersion','support','driverResolution','state']);
+// Same JNDI/process can belong to separate domain profiles; keep both identities.
+const profileColumn=cols.find(c=>c.key==='configurationContext');
+assert.equal(profileColumn.label,'Profile/contexto');
+const examples=[{...row,id:'full-ds',name:'java:jboss/datasources/ExampleDS',configurationContext:'domain profile full'},
+  {...row,id:'ha-ds',name:'java:jboss/datasources/ExampleDS',configurationContext:'domain profile full-ha'}];
+assert.deepEqual(examples.map(profileColumn.render),['full','full-ha']);
+assert.deepEqual(examples.map(r=>r.id),['full-ds','ha-ds']);
+for(const configurationContext of [undefined,null,{},[],42,'','   ','domain profile ']) {
+  assert.equal(profileColumn.render({configurationContext}),'Não identificado');
+}
+assert.equal(ds.contextLabel({configurationContext:'standalone'}),'Standalone');
+assert.equal(ds.contextLabel({configurationContext:'JBoss deploy'}),'Deployment JBoss');
+assert.equal(ds.contextLabel({configurationContext:'context:/orders'}),'context:/orders');
+assert.equal(ds.contextLabel({configurationContext:'toString'}),'toString');
+assert.equal(ds.contextLabel({configurationContext:'domain profile full'}),'full');
+assert.equal(profileColumn.render({configurationContext:'domain profile <img src=x>'}),'&lt;img src=x&gt;');
 const rendered=Object.fromEntries(cols.map(c=>[c.key,c.render(row)]));
 assert.equal(rendered.name,'[jdbc/Pedidos|java:/Pedidos]');
 assert(rendered.relations.includes('AdminServer')&&rendered.relations.includes('loja')&&rendered.relations.includes('context:/shop'));

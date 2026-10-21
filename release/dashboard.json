@@ -1,5 +1,5 @@
 {
-  "version": "2.1.18",
+  "version": "2.1.20",
   "releases": [
     {
       "version": "1.0.1-beta",
@@ -617,6 +617,20 @@
       "builtAt": "2026-10-21T04:27:01.367121+00:00",
       "status": "prepared",
       "bridgeVersion": "2.1.17",
+      "candidateOnly": true
+    },
+    {
+      "version": "2.1.19",
+      "builtAt": "2026-10-21T13:38:54.576449+00:00",
+      "status": "bridge-prepared",
+      "kind": "agent-bridge",
+      "targetVersion": "2.1.20"
+    },
+    {
+      "version": "2.1.20",
+      "builtAt": "2026-10-21T13:38:54.576449+00:00",
+      "status": "prepared",
+      "bridgeVersion": "2.1.19",
       "candidateOnly": true
     }
   ]

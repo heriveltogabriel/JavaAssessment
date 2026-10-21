@@ -1,5 +1,13 @@
 # Melhorias planejadas
 
+## Entrega 2.1.20 — Profile/contexto dos datasources
+
+- [x] Coluna **Profile/contexto** e campo nos detalhes usando `configurationContext` já coletado. Datasources homônimos em perfis distintos permanecem separados; campo ausente aparece como “Não identificado”.
+- [x] Sintaxe e 11 suítes JavaScript atuais passaram; teste legado beta-ui já falha na base publicada (registrado no plano).
+- [x] Suíte completa, build final, pacotes assinados, navegador e atualização/restauração direta 2.1.16/2.1.18 → 2.1.20 em fixtures. [Evidências](validation/console-release-2.1.20.md).
+- [x] READMEs, guia Tomcat/JBoss e instaladores com SHA-256 em install/v2.1.20 atualizados; versões anteriores preservadas.
+- [ ] Operador testar upload/reinício pela console e conferir Profile/contexto no inventário real. Nenhum deploy remoto realizado.
+
 ## Entrega 2.1.18 — Excel e Mapa de bancos
 
 - [x] Consolidar os dois commits de `mapa-bancos`, sem alterar implementação: Excel com dez abas, mapa CSV e driver provável restrito ao classpath.

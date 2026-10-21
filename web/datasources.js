@@ -17,6 +17,14 @@
     return text(state);
   }
 
+  function contextLabel(row) {
+    const context = typeof row.configurationContext === 'string' ? row.configurationContext.trim() : '';
+    if (/^domain profile(?:\s|$)/.test(context)) return context.slice('domain profile'.length).trim() || 'Não identificado';
+    if (context === 'standalone') return 'Standalone';
+    if (context === 'JBoss deploy') return 'Deployment JBoss';
+    return context || 'Não identificado';
+  }
+
   // Servers and applications named directly, by associated processes or by linked application contexts.
   function relations(row) {
     const associations = Array.isArray(row.associations) ? row.associations.filter(a => a && typeof a === 'object') : [];
@@ -40,6 +48,7 @@
         const jndi = Array.isArray(r.jndiNames) ? r.jndiNames.map(text).filter(name => name && name !== r.name) : [];
         return h.link('datasources', r.id, r.name || r.driverName, jndi.join(', '), r.hostId);
       }),
+      column('configurationContext', 'Profile/contexto', r => esc(contextLabel(r))),
       column('host', 'Máquina', r => h.hostLink(r.hostId)),
       column('relations', 'Servidor / aplicação', r => {
         const found = relations(r);
@@ -142,6 +151,6 @@
       '</ul></details>';
   }
 
-  const api = {columns, databases, focusLabel, reportCell, summary, parseLine, relations, stateLabel};
+  const api = {columns, databases, focusLabel, reportCell, summary, parseLine, relations, stateLabel, contextLabel};
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.AssessmentDatasources = api;
 })(typeof window !== 'undefined' ? window : globalThis);

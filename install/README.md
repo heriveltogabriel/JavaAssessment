@@ -19,7 +19,13 @@ O playbook usa wget, instala com sudo em lotes de duas máquinas e ignora agente
 - [Manual ilustrado da solução](Manual.pdf): arquitetura, inventário, atualização de agentes, relatórios e filtros JDBC.
 - [Guia de instalação](Guia-instalacao.pdf): requisitos, comandos, configuração do dashboard e instalação dos agentes.
 
-## Entrega para teste pela console — 2.1.18
+## Entrega para teste pela console — 2.1.20
+
+[Pacotes 2.1.20](v2.1.20/README.md): coluna **Profile/contexto** nos datasources e nos detalhes. Use o [web-update](v2.1.20/assessment-dashboard-web-update-2.1.20.zip) na atualização administrativa. [Notas](../docs/RELEASE_2.1.20.md) · [Validação](../docs/validation/console-release-2.1.20.md).
+
+Atualizar o dashboard não atualiza agentes automaticamente. Esta melhoria usa dados já coletados e não exige agente novo; revise a elegibilidade no painel para alinhar versões separadamente.
+
+## Entrega anterior preservada — 2.1.18
 
 [Pacotes da 2.1.18](v2.1.18/README.md): Excel (.xlsx), Mapa de bancos e driver provável somente com candidato no classpath. Use o [web-update](v2.1.18/assessment-dashboard-web-update-2.1.18.zip) a partir da 2.1.14 ou 2.1.16. [Notas](../docs/RELEASE_2.1.18.md) · [Validação](../docs/validation/console-release-2.1.18.md).
 
