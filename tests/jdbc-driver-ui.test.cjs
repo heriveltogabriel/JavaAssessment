@@ -39,5 +39,6 @@ assert(!ui.version({...four,associations:[{}]}).includes('11.2.0.3.0'));
 assert(!ui.version({...incomplete,driverCandidates:[probableCandidate,{...probableCandidate,path:'/other.jar',version:'21.1'}]}).includes('11.2.0.3.0'));
 assert(!ui.version({...incomplete,driverCandidates:[{...probableCandidate,replacedOnDisk:true}]}).includes('11.2.0.3.0'));
 assert(!ui.version({...incomplete,driverCandidates:[null]}).includes('Provável'));
+for(const source of ['aplicação; não usado pelo datasource do Tomcat','disco, fora do classpath'])assert(!ui.version({...incomplete,driverCandidates:[{...probableCandidate,onClasspath:false,source}]}).includes('Provável'),'off-classpath candidate never probable: '+source);
 assert(ui.artifact({...incomplete,driverCandidates:[{...probableCandidate,path:'/lib/<script>.jar'}]}).includes('&lt;script&gt;'));
 console.log('JDBC_PROBABLE_DISPLAY=PASS four-PID agreement conflicts missing evidence replaced files escaping immutable');

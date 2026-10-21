@@ -30,6 +30,50 @@ public final class InventoryArchiveTest {
     });}
     static byte[] archive(InventoryStore store)throws Exception{return archive(store,"json");}
     static byte[] archive(InventoryStore store,String format)throws Exception{var out=new ByteArrayOutputStream();InventoryArchive.write(out,store,"Cliente A",format);return out.toByteArray();}
+    /** Minimal ';' CSV reader for the map: quoted cells, doubled quotes, CRLF rows. */
+    static List<List<String>> rows(String text){
+        List<List<String>> out=new ArrayList<>();List<String> row=new ArrayList<>();StringBuilder cell=new StringBuilder();boolean q=false;
+        for(int i=text.startsWith("﻿")?1:0;i<text.length();i++){char c=text.charAt(i);
+            if(q){if(c=='"'){if(i+1<text.length()&&text.charAt(i+1)=='"'){cell.append('"');i++;}else q=false;}else cell.append(c);}
+            else if(c=='"')q=true;else if(c==';'){row.add(cell.toString());cell.setLength(0);}
+            else if(c=='\r'){}else if(c=='\n'){row.add(cell.toString());cell.setLength(0);out.add(row);row=new ArrayList<>();}else cell.append(c);
+        }return out;
+    }
+    static void mapa(InventoryStore store)throws Exception{
+        store.transaction(()->{
+            store.putInventory("processes","host-a",new ArrayList<>(List.of(map("id","proc-wl","hostId","host-a","pid",22195,"javaHome","/u01/jdk8","serverType","WebLogic"),map("id","proc-wl2","hostId","host-a","pid",22215,"javaHome","/u01/jdk8","serverType","WebLogic"))));
+            store.putInventory("runtimes","host-a",new ArrayList<>(List.of(map("id","rt","hostId","host-a","javaHome","/u01/jdk8","version","1.8.0_202"))));
+            store.putInventory("servers","host-a",new ArrayList<>(List.of(map("id","srv-wl","hostId","host-a","type","WebLogic","version","12.2.1.4.0","name","AdminServer","domainName","dsv04_domain","pid",22195))));
+            store.putInventory("applications","host-a",new ArrayList<>(List.of(map("id","app-x","hostId","host-a","name","FORMACAO_PERIODOS_SE.jar","applicationType","Spring Boot","pid",22215))));
+            var identified=map("driverResolution","IDENTIFIED","driverArtifact","/u01/wl/oracle_common/modules/oracle.jdbc/ojdbc8.jar","driverVersion","19.3.0.0.0");
+            var appOnly=map("driverResolution","INCOMPLETE","driverResolutionReason","Classpath truncado","driverCandidates",List.of(map("path","/app/WEB-INF/lib/ojdbc11.jar","version","23.4","onClasspath",false)));
+            store.putInventory("datasources","host-a",new ArrayList<>(List.of(
+                map("id","ds-gercor","hostId","host-a","name","jdbc/GERCOR","jndiName","jdbc/GERCOR","databaseType","Oracle","databaseName","dPDBrj2","driverName","oracle.jdbc.OracleDriver","configurationSource","/u01/domains/dsv04_domain/config/jdbc/gercor-jdbc.xml","password","MAP_PASSWORD",
+                    "databaseEndpoints",List.of(map("host","E1113-dscan10.exadata.prevnet","port",1521),map("host","10.1.2.3","port",1522)),
+                    "associations",List.of(map("pid",22195,"serverId","srv-wl","serverName","AdminServer","driverResult",identified),map("pid",22215,"applicationId","app-x","applicationName","FORMACAO_PERIODOS_SE.jar","driverResult",appOnly))),
+                map("id","ds-jndi","hostId","host-a","name","cache-consultas-jndi","jndiName","java:/cacheConsultasDS","databaseType","PostgreSQL","jndiResolution","JNDI declarado; datasource não encontrado nesta máquina","pid",22215,"applicationId","app-x")
+            )));
+            return null;
+        });
+        var files=entries(archive(store,"mapa"));check(files.keySet().equals(Set.of("mapa-bancos.csv")),"one map file");
+        String text=files.get("mapa-bancos.csv");check(text.startsWith("﻿")&&!text.contains("MAP_PASSWORD")&&!text.contains("jdbc:oracle"),"BOM and no secrets/URLs");
+        var table=rows(text);var header=table.get(0);check(header.equals(InventoryArchiveMap.COLUMNS),"header");
+        java.util.function.BiFunction<List<String>,String,String> col=(r,name)->r.get(header.indexOf(name));
+        var gercor=table.stream().filter(r->r.size()==header.size()&&"jdbc/GERCOR".equals(col.apply(r,"datasource"))).toList();
+        check(gercor.size()==4,"two endpoints x two processes: "+gercor.size());
+        var admin=gercor.stream().filter(r->"22195".equals(col.apply(r,"pid"))&&"1521".equals(col.apply(r,"bancoPorta"))).findFirst().orElseThrow();
+        check(col.apply(admin,"servidorTipo").equals("WebLogic")&&col.apply(admin,"dominio").equals("dsv04_domain")&&col.apply(admin,"javaVersao").equals("1.8.0_202"),"server and Java joined: "+admin);
+        check(col.apply(admin,"chaveServico").equals("oracle|DPDBRJ2")&&col.apply(admin,"chaveHostPorta").equals("e1113-dscan10.exadata.prevnet:1521")&&col.apply(admin,"hostCurto").equals("e1113-dscan10"),"join keys normalized: "+admin);
+        check(col.apply(admin,"driverJar").endsWith("ojdbc8.jar")&&col.apply(admin,"driverVersao").equals("19.3.0.0.0")&&col.apply(admin,"driverStatus").startsWith("Em uso")&&col.apply(admin,"ambiente").equals("Produção")&&col.apply(admin,"levantamento").equals("Cliente A"),"driver, environment and label: "+admin);
+        var ip=gercor.stream().filter(r->"1522".equals(col.apply(r,"bancoPorta"))).findFirst().orElseThrow();check(col.apply(ip,"hostCurto").equals("10.1.2.3"),"IP kept whole");
+        var app=gercor.stream().filter(r->"22215".equals(col.apply(r,"pid"))).findFirst().orElseThrow();
+        check(col.apply(app,"aplicacao").equals("FORMACAO_PERIODOS_SE.jar")&&col.apply(app,"aplicacaoTipo").equals("Spring Boot")&&col.apply(app,"driverJar").isEmpty()&&col.apply(app,"driverStatus").equals("Inspeção incompleta"),"off-classpath candidate never becomes the driver: "+app);
+        var jndi=table.stream().filter(r->r.size()==header.size()&&"cache-consultas-jndi".equals(col.apply(r,"datasource"))).toList();
+        check(jndi.size()==1&&col.apply(jndi.get(0),"bancoHost").isEmpty()&&col.apply(jndi.get(0),"observacao").contains("JNDI")&&col.apply(jndi.get(0),"bancoTipo").equals("PostgreSQL")&&col.apply(jndi.get(0),"evidenciaBanco").equals("Destino não identificado"),"missing endpoint row kept with reason: "+jndi);
+        String[] probable=InventoryArchiveMap.driver(map("driverResolution","INCOMPLETE","driverCandidates",List.of(map("path","/domain/lib/ojdbc6.jar","version","11.2","onClasspath",true))));
+        check(probable[0].endsWith("ojdbc6.jar")&&InventoryArchiveMap.statusLabel(probable[2]).contains("provável"),"unique on-classpath candidate labeled probable");
+        check(table.stream().allMatch(r->r.size()==header.size()),"rectangular table");
+    }
     public static void main(String[] args)throws Exception{
         Path root=Files.createTempDirectory("inventory-archive-");
         try(InventoryStore store=new InventoryStore(root.toFile(),map(),"","")){
@@ -45,6 +89,7 @@ public final class InventoryArchiveTest {
             check(all.contains("db.internal")&&all.contains("Oracle Linux 7"),"technical infrastructure retained");
             var csv=entries(archive(store,"csv"));check(csv.keySet().equals(Set.of("inventario.csv")),"one CSV file");
             check(csv.get("inventario.csv").contains("\"'=JDBC"),"CSV formula protected");
+            mapa(store);
             for(String invalid:List.of("xml","JSON","../csv")){try{InventoryArchive.format(invalid);throw new AssertionError("invalid format accepted");}catch(InventoryArchive.Failure expected){}}
             if(args.length==2&&args[0].equals("--export")){Path dir=Path.of(args[1]);Files.createDirectories(dir);Files.write(dir.resolve("json.zip"),archive(store));Files.write(dir.resolve("csv.zip"),archive(store,"csv"));}
             for(long[] limits:List.of(new long[]{50,100},new long[]{999999,2})){

@@ -30,11 +30,12 @@ public final class InventoryArchiveHttpTest {
             InventoryArchiveTest.seed(app.store);check(raw("GET",ENDPOINT,null,true,null).statusCode()==200,"slot released after generation failure");cleanTemps();
             check(raw("GET",ENDPOINT+"?format=xml",null,true,null).statusCode()==400,"invalid format blocked");cleanTemps();
             var csv=raw("GET",ENDPOINT+"?format=csv",null,true,null);check(csv.statusCode()==200,"CSV archive download");check(InventoryArchiveTest.entries(csv.body()).keySet().equals(Set.of("inventario.csv")),"single CSV entry");cleanTemps();
+            var mapa=raw("GET",ENDPOINT+"?format=mapa",null,true,null);check(mapa.statusCode()==200&&InventoryArchiveTest.entries(mapa.body()).keySet().equals(Set.of("mapa-bancos.csv")),"database map download");cleanTemps();
             String adminCookie=cookie,adminCsrf=csrf;
             var reader=ok("POST","/api/admin/users",map("name","Reader Fixture","email","reader@example.com","role","READER","adminPassword",TestAccounts.PASSWORD),true,null,201);
             var user=obj(reader.get("user"));app.auth.changePassword((String)user.get("id"),app.auth.find((String)user.get("id")).revision(),(String)reader.get("temporaryPassword"),"reader-personal-password-1234");
             var login=raw("POST","/api/login",map("email","reader@example.com","password","reader-personal-password-1234"),false,null);check(login.statusCode()==200,"reader login");cookie=login.headers().firstValue("set-cookie").orElseThrow().split(";")[0];
-            check(raw("GET",ENDPOINT,null,true,null).statusCode()==403,"reader blocked");check(raw("GET",ENDPOINT+"?format=csv",null,true,null).statusCode()==403,"reader CSV blocked");cleanTemps();cookie=adminCookie;csrf=adminCsrf;
+            check(raw("GET",ENDPOINT,null,true,null).statusCode()==403,"reader blocked");check(raw("GET",ENDPOINT+"?format=csv",null,true,null).statusCode()==403,"reader CSV blocked");check(raw("GET",ENDPOINT+"?format=mapa",null,true,null).statusCode()==403,"reader map blocked");cleanTemps();cookie=adminCookie;csrf=adminCsrf;
         }finally{stop();try(var files=Files.walk(root)){for(Path p:files.sorted(Comparator.reverseOrder()).toList())Files.deleteIfExists(p);}}
         System.out.println("InventoryArchiveHttpTest passed");
     }

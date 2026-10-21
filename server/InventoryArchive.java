@@ -72,7 +72,7 @@ final class InventoryArchive {
     }
     static String format(String value){
         if(value==null||value.isEmpty())return "json";
-        if(!Set.of("json","csv").contains(value))throw new Failure("Escolha JSON ou CSV para exportar.");
+        if(!Set.of("json","csv","mapa").contains(value))throw new Failure("Escolha JSON, CSV ou Mapa de bancos para exportar.");
         return value;
     }
     static List<String> fields(){TreeSet<String> fields=new TreeSet<>(RECORD);fields.addAll(ENV);fields.addAll(HOST);return List.copyOf(fields);}
@@ -83,6 +83,11 @@ final class InventoryArchive {
         String title=label(label),format=format(requested),exportedAt=Instant.now().toString();
         try(ZipOutputStream zip=new ZipOutputStream(output,StandardCharsets.UTF_8)){
             Budget budget=new Budget(zip,byteLimit);long[] total={0};
+            if(format.equals("mapa")){
+                zip.putNextEntry(new ZipEntry("mapa-bancos.csv"));
+                store.readSnapshot(()->{writeMap(store,budget,title,exportedAt,recordLimit);return null;});
+                zip.closeEntry();return;
+            }
             zip.putNextEntry(new ZipEntry("inventario."+format));
             store.readSnapshot(()->{
                 Map<String,Object> counts=new LinkedHashMap<>();
@@ -116,6 +121,20 @@ final class InventoryArchive {
                 return null;
             });
             zip.closeEntry();
+        }
+    }
+    /** Join tables first, then one row per datasource x endpoint x process; same allowlist and scrubbing as JSON/CSV. */
+    private static void writeMap(InventoryStore store,Budget budget,String title,String exportedAt,long recordLimit){
+        InventoryArchiveMap map=new InventoryArchiveMap(budget::text,title);map.start();long[] total={0};
+        for(String collection:List.of("environments","hosts","servers","applications","processes","runtimes","datasources")){
+            boolean direct=collection.equals("hosts")||collection.equals("environments");
+            String sql=direct?"SELECT payload FROM "+collection+" ORDER BY id":"SELECT payload FROM inventory WHERE kind=? ORDER BY host_id,id";
+            store.forEachRow(sql,row->{
+                if(++total[0]>recordLimit)throw new Failure("O inventário excedeu o limite de registros para este pacote.");
+                @SuppressWarnings("unchecked") Map<String,Object> record=(Map<String,Object>)Json.parse(String.valueOf(row.get("payload")),32*1024*1024);
+                if(collection.equals("datasources")){Lifecycle.decorate(collection,List.of(record),Instant.parse(exportedAt));map.datasource(document(collection,record));}
+                else map.index(collection,document(collection,record));
+            },direct?new Object[0]:new Object[]{collection});
         }
     }
     private static final class Budget {

@@ -15,7 +15,7 @@ const jdbcDriverProbableCandidate = row => {
     if(!result || result.driverResolution !== 'INCOMPLETE' || result.driverArtifact || !Array.isArray(result.driverCandidates) || !result.driverCandidates.length)return null;
     let candidate=null;
     for(const c of result.driverCandidates){
-      if(!c || typeof c.path!=='string' || !/\.jar$/i.test(c.path) || typeof c.version!=='string' || !c.version.trim() || c.replacedOnDisk)return null;
+      if(!c || typeof c.path!=='string' || !/\.jar$/i.test(c.path) || typeof c.version!=='string' || !c.version.trim() || c.replacedOnDisk || c.onClasspath===false)return null;
       if(candidate && (candidate.path!==c.path || candidate.version!==c.version))return null;
       candidate=c;
     }

@@ -37,6 +37,19 @@ CSV UTF-8 com BOM, separador vírgula, aspas duplicadas e linhas CRLF. A primeir
 
 As colunas iniciais `recordType`, `machineName`, `environmentName` e `hostIpAddresses` identificam o contexto. As demais abrangem todos os campos técnicos permitidos, como `javaVersion`, `driverArtifact`, `driverVersion`, `databaseHost` e `domainName`. Campos que não se aplicam ficam vazios. Listas e objetos (candidatos, associações por PID, destinos múltiplos, suporte, cobertura) são JSON dentro de uma célula CSV, sem resumir ou cortar seus detalhes. Strings que poderiam iniciar fórmulas de planilha recebem apóstrofo de proteção; no JSON permanecem strings originais sanitizadas. Null e campo ausente são células vazias; para preservar essa distinção, use JSON.
 
+### Mapa de bancos (CSV para Excel)
+
+Terceira opção de formato: o ZIP contém somente `mapa-bancos.csv`, feito para cruzar com outro inventário (por exemplo, a lista de bancos da equipe de DBA) e responder "qual aplicação/servidor usa qual banco e com qual driver". Endpoint: `format=mapa`.
+
+- **Uma linha por ligação:** datasource × destino do banco configurado × processo/aplicação associado. Um banco com vários endereços (RAC/SCAN) gera uma linha por endereço; um datasource usado por vários servidores gera uma linha por processo.
+- **Formato:** UTF-8 com BOM, separador `;` (padrão do Excel em português), CRLF, sem JSON dentro das células. Quebras de linha são trocadas por espaço; textos que começariam fórmula recebem apóstrofo.
+- **Colunas:** `levantamento`, `ambiente`, `maquina`, `maquinaFqdn`, `maquinaIps`, `servidorTipo`, `servidorVersao`, `servidorNome`, `dominio`, `pid`, `javaVersao`, `aplicacao`, `aplicacaoTipo`, `contexto`, `datasource`, `jndi`, `origemConfiguracao`, `arquivoConfiguracao`, `bancoTipo`, `bancoHost`, `bancoPorta`, `bancoServico`, `chaveServico`, `chaveHostPorta`, `hostCurto`, `driverClasse`, `driverJar`, `driverVersao`, `driverStatus`, `driverSuporte`, `evidenciaBanco`, `observacao`, `datasourceId`, `hostId`.
+- **Chaves de cruzamento:** `chaveServico` = tipo em minúsculas + `|` + serviço/SID/database em maiúsculas (ex.: `oracle|DPDBRJ2`), a melhor chave para Oracle com SCAN; `chaveHostPorta` = host em minúsculas + porta; `hostCurto` = host sem domínio (IPs ficam inteiros).
+- **Driver:** JAR e versão da decisão do processo da linha. Uma inspeção incompleta com um único candidato no classpath aparece como "Inspeção incompleta (candidato provável)"; candidatos fora do classpath (biblioteca da aplicação no Tomcat, arquivo em disco fora do classpath) nunca preenchem o driver.
+- **Sem destino:** a linha é mantida com `bancoHost` vazio, `evidenciaBanco = Destino não identificado` e o motivo em `observacao` (ex.: JNDI sem datasource nesta máquina).
+
+O mapa mostra o **banco configurado, não uma conexão comprovada**. Usa a mesma lista de campos permitidos e a mesma remoção de credenciais do JSON/CSV; URLs JDBC e senhas não aparecem.
+
 ### Vínculos e interpretação
 
 `hostId` referencia `hosts.id`; `hosts.environmentId` referencia `environments.id` ou é vazio para máquina sem ambiente. IDs de recursos são locais à máquina e à coleção: use `(coleção, hostId, id)`. Os vínculos com aplicações e servidores permanecem em seus campos e em `associations`. A ausência de um recurso vinculado pode refletir limites da coleta original.
