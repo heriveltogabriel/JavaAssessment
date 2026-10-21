@@ -1,8 +1,8 @@
 # Exportação de inventário para análise
 
-Disponível na versão 2.1.16 revisada. Por solicitação explícita do operador, os pacotes dessa versão foram substituídos para oferecer JSON/CSV em arquivo único; a versão original permanece no histórico Git.
+JSON e CSV único estão disponíveis desde a 2.1.16 revisada. Excel (.xlsx) e Mapa de bancos são entregues na 2.1.18; as versões anteriores permanecem preservadas.
 
-Em **Administração → Exportar inventário**, o administrador pode preencher uma identificação do levantamento ou cliente selecionar **JSON**, **Excel (.xlsx)**, **CSV** ou **Mapa de bancos** e clicar em **Exportar inventário em ZIP**. A identificação é opcional e deve ter até 120 caracteres. O arquivo gerado contém todo o inventário atual, independentemente de ambiente, máquina, busca ou filtros abertos nas demais telas. O download é sempre um ZIP com apenas um arquivo de dados no formato selecionado. Os relatórios PDF/CSV existentes continuam disponíveis.
+Em **Administração → Exportar inventário**, o administrador pode preencher uma identificação do levantamento ou cliente, selecionar **JSON**, **Excel (.xlsx)**, **CSV** ou **Mapa de bancos** e clicar em **Exportar inventário em ZIP**. A identificação é opcional e deve ter até 120 caracteres. O arquivo gerado contém todo o inventário atual, independentemente de ambiente, máquina, busca ou filtros abertos nas demais telas. O download é sempre um ZIP com apenas um arquivo de dados no formato selecionado. Os relatórios PDF/CSV existentes continuam disponíveis.
 
 O objetivo é permitir que uma aplicação separada faça pesquisas e levantamentos com os dados coletados. Este dashboard não importa o pacote. O arquivo não substitui um backup e não contém dados suficientes para restaurar o dashboard ou suas credenciais.
 
@@ -25,7 +25,7 @@ Textos técnicos permitidos passam também por remoção de padrões de credenci
 
 ## Formato 2 — um único arquivo
 
-O ZIP usa UTF-8 e contém **um único arquivo**, conforme a escolha: `inventario.json`, `inventario.xlsx`, `inventario.csv` ou `mapa-bancos.csv`. A versão do formato de dados passou para 2; a versão do produto continua 2.1.16.
+O ZIP usa UTF-8 e contém **um único arquivo**, conforme a escolha: `inventario.json`, `inventario.xlsx`, `inventario.csv` ou `mapa-bancos.csv`. A versão do formato de dados passou para 2; a versão do produto desta entrega é 2.1.18.
 
 ### JSON
 
@@ -53,7 +53,7 @@ Para integração com outro sistema, use o JSON: ele preserva toda a estrutura e
 
 ### Mapa de bancos (CSV para Excel)
 
-Terceira opção de formato: o ZIP contém somente `mapa-bancos.csv`, feito para cruzar com outro inventário (por exemplo, a lista de bancos da equipe de DBA) e responder "qual aplicação/servidor usa qual banco e com qual driver". Endpoint: `format=mapa`.
+Opção para cruzamento de inventários: o ZIP contém somente `mapa-bancos.csv`, feito para cruzar com outro inventário (por exemplo, a lista de bancos da equipe de DBA) e responder "qual aplicação/servidor usa qual banco e com qual driver". Endpoint: `format=mapa`.
 
 - **Uma linha por ligação:** datasource × destino do banco configurado × processo/aplicação associado. Um banco com vários endereços (RAC/SCAN) gera uma linha por endereço; um datasource usado por vários servidores gera uma linha por processo.
 - **Formato:** UTF-8 com BOM, separador `;` (padrão do Excel em português), CRLF, sem JSON dentro das células. Quebras de linha são trocadas por espaço; textos que começariam fórmula recebem apóstrofo.

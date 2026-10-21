@@ -1,6 +1,6 @@
 # Pendente de release — Excel, Mapa de bancos e driver provável
 
-Branch `mapa-bancos`, sobre `main` 2.1.16. Sem versão reservada; gerar como **2.1.18** (ponte 2.1.17) na máquina de build. Nunca reaproveitar o número 2.1.16.
+Escopo original da branch `mapa-bancos`, sobre `main` 2.1.16. Entrega preparada como **2.1.18** (ponte 2.1.17), sem reaproveitar 2.1.16. Consulte as [notas finais](RELEASE_2.1.18.md) e [validação](validation/console-release-2.1.18.md).
 
 ## Dashboard
 

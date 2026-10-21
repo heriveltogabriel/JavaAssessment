@@ -63,4 +63,6 @@ Ao atualizar um dashboard anterior, a tela de configuração exige a senha admin
 
 ## Exportar inventário para análise
 
-Em Administração → Exportar inventário, baixe um ZIP com dados técnicos, vínculos, versões Java/JDBC, JARs e observações da coleta. Não inclui cadastros de usuários, credenciais, chaves ou configurações operacionais. Nomes, IPs e caminhos permanecem identificáveis. O pacote serve para análise em outra aplicação, não para restaurar o dashboard.
+Em Administração → Exportar inventário, escolha JSON, CSV completo, Excel (.xlsx) com abas por tipo ou Mapa de bancos. O ZIP contém um único arquivo com dados técnicos, vínculos, versões Java/JDBC e JARs. Excel resume listas/evidências e avisa sobre células longas; JSON preserva os detalhes estruturados. O mapa relaciona datasource, destino configurado e processo/aplicação. Não inclui cadastros de usuários, credenciais, chaves ou configurações operacionais. Nomes, IPs e caminhos permanecem identificáveis. O pacote serve para análise em outra aplicação, não para restaurar o dashboard.
+
+A entrega 2.1.18 permite atualizar o dashboard pela console a partir da 2.1.14 ou 2.1.16 com o web-update apropriado. Este instalador é apenas para servidor novo. Atualizar o dashboard não atualiza os agentes automaticamente; não houve mudança funcional no coletor e os novos formatos usam os dados já coletados.

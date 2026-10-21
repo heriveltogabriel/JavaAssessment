@@ -14,7 +14,7 @@ final class AgentTransport {
     // These utilities run in their own process. Old JDK6 keep-alive pooling can race
     // closed server connections across sequential bootstrap requests.
     static { System.setProperty("http.keepAlive", "false"); }
-    static final String VERSION = "2.1.16";
+    static final String VERSION = "2.1.18";
     static final int MAX_BODY = 2 * 1024 * 1024;
     final String server;
     private final SSLSocketFactory sockets;

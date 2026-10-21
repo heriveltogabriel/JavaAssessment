@@ -1,5 +1,14 @@
 # Melhorias planejadas
 
+## Entrega 2.1.18 — Excel e Mapa de bancos
+
+- [x] Consolidar os dois commits de `mapa-bancos`, sem alterar implementação: Excel com dez abas, mapa CSV e driver provável restrito ao classpath.
+- [x] Suíte de fontes, navegador e exportação sobre classes finais; planilha aberta com openpyxl.
+- [x] Pacotes finais e verificadores originais; atualização/restauração direta 2.1.14 e ambas as compilações 2.1.16 → 2.1.18 em fixtures. [Evidências](validation/console-release-2.1.18.md).
+- [x] Reservar ponte 2.1.17/final 2.1.18 e preparar três ZIPs com SHA-256 em install/v2.1.18, preservando versões anteriores. READMEs e guias afetados atualizados.
+- [ ] Operador validar upload/reinício pela console e os quatro formatos de exportação com amostra real autorizada.
+- Atualizar o dashboard não atualiza os agentes automaticamente. O agente não teve alteração funcional; os dados já coletados atendem às novas funcionalidades.
+
 ## Entrega 2.1.16 — exportação técnica em ZIP
 
 - [x] Aba administrativa revisada: escolha JSON/CSV e ZIP com um único arquivo; CSV com uma linha por recurso e detalhes múltiplos nas células. Campos permitidos e exclusão de credenciais preservados.
