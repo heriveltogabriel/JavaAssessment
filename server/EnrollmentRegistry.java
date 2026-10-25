@@ -6,7 +6,7 @@ import java.util.*;
 
 /** Per-identity SQLite records; credentials are never included in inventory responses. */
 final class EnrollmentRegistry {
-    static final int MAX_HOSTS=1000, MAX_ENROLLMENTS=500;
+    static final int MAX_ENROLLMENTS=500;
     static final class Failure extends RuntimeException { final int status; Failure(int s,String text){super(text);status=s;} }
     private final InventoryStore store;
     private final SecureRandom random=new SecureRandom();
@@ -54,7 +54,6 @@ final class EnrollmentRegistry {
                 if(!"active".equals(h.get("status")))throw new Failure(403,"Collector credential has been revoked");return h;
             }
             if(num(e.get("usedCount"))>=num(e.get("maxUses")))throw new Failure(409,"Enrollment usage limit reached");
-            if(store.scalar("SELECT count(*) FROM identities WHERE coalesce(json_extract(payload,'$.deleted'),0) <> 1")>=MAX_HOSTS)throw new Failure(409,"Registered machine limit reached (1,000)");
             Map<String,Object> h=AssessmentServer.map("hostId","host-"+UUID.randomUUID(),"agentToken",token(),"status","active","installationId",installationId,"enrollmentId",e.get("id"),"createdAt",AssessmentServer.now(),"metadata",metadata,"settings",e.get("settings"),"autoCollect",e.get("autoCollect"),"environmentId",str(e.get("environmentId")));
             store.put("identities",h);e.put("usedCount",num(e.get("usedCount"))+1);store.put("enrollments",e);return h;
         });

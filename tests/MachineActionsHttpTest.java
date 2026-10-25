@@ -91,8 +91,9 @@ public final class MachineActionsHttpTest {
             // More than 1,000 tombstones must not consume the limit for visible registered machines.
             app.store.transaction(()->{for(int i=0;i<1001;i++)app.store.put("identities",map("hostId","deleted-capacity-"+i,"status","revoked","tokenHash",InventoryStore.hash("discarded-"+i),"installationId","deleted-capacity-installation-"+i,"enrollmentId","historical","deleted",true));return null;});
             Response capacity=register(codeB,"new-capacity-installation","capacity-node");check(capacity.status==200,"deleted tombstones do not consume machine capacity");
-            long used=app.store.scalar("SELECT count(*) FROM identities WHERE coalesce(json_extract(payload,'$.deleted'),0) <> 1");app.store.transaction(()->{for(long i=used;i<EnrollmentRegistry.MAX_HOSTS;i++)app.store.put("identities",map("hostId","actual-capacity-"+i,"status","active","tokenHash",InventoryStore.hash("capacity-token-"+i),"installationId","actual-capacity-installation-"+i));return null;});
-            check(register(codeB,"over-capacity-installation","limit-node").status==409,"actual registered identities still enforce capacity");
+            // Registration has no machine-count cap: 1,500 active identities must all register.
+            app.store.transaction(()->{for(int i=0;i<1500;i++)app.store.put("identities",map("hostId","actual-capacity-"+i,"status","active","tokenHash",InventoryStore.hash("capacity-token-"+i),"installationId","actual-capacity-installation-"+i));return null;});
+            check(register(codeB,"beyond-old-cap-installation","no-cap-node").status==200,"registration accepts machine number beyond 1,000");
             System.out.println("MachineActionsHttpTest PASS: "+checks+" checks; auth/CSRF/name/active/busy/rollback/isolation/move/detach/tombstone/restart/capacity/audit; loopback disposable fixtures only.");
         }finally{stop();try(var files=Files.walk(root)){for(Path file:files.sorted(Comparator.reverseOrder()).toList())Files.deleteIfExists(file);}}
     }

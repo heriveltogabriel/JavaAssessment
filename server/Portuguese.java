@@ -85,7 +85,6 @@ final class Portuguese {
         ERRORS.put("Please wait before trying again","Aguarde antes de tentar novamente.");
         ERRORS.put("Please wait one minute before retrying","Aguarde um minuto antes de tentar novamente.");
         ERRORS.put("RELEASE_UNAVAILABLE","O pacote desta versão está indisponível.");
-        ERRORS.put("Registered machine limit reached (1,000)","O limite de 1.000 máquinas cadastradas foi atingido.");
         ERRORS.put("Request too large","A solicitação excede o tamanho permitido.");
         ERRORS.put("Search is too long","O texto da busca é muito longo.");
         ERRORS.put("Select the item's machine","Selecione a máquina do item.");
