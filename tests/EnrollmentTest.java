@@ -30,7 +30,7 @@ public final class EnrollmentTest {
         try{
             ServerTest.start();ServerTest.login();
             check(call("POST","/api/enrollments",map("label","denied"),false,null)[0].equals(401),"anonymous enrollment blocked");String csrf=ServerTest.csrf;ServerTest.csrf="incorrect";check(call("POST","/api/enrollments",map("label","denied"),true,null)[0].equals(403),"CSRF enrollment blocked");ServerTest.csrf=csrf;
-            check(call("POST","/api/enrollments",map("label","bad limits","maxUses",1001),true,null)[0].equals(400),"enrollment bounded");
+            check(call("POST","/api/enrollments",map("label","bad limits","maxUses",EnrollmentRegistry.MAX_USES_PER_CODE+1),true,null)[0].equals(400),"enrollment bounded");
             Map issued=issue(2);String code=(String)issued.get("enrollmentToken"),enrollmentId=(String)((Map)issued.get("enrollment")).get("id");
             check(call("POST","/api/agent/register",registration("fixture-install-01"),false,"invalid")[0].equals(401),"invalid enrollment rejected");
             Map first=ok(call("POST","/api/agent/register",registration("fixture-install-01"),false,code),200,"first register"),second=ok(call("POST","/api/agent/register",registration("fixture-install-02"),false,code),200,"second register");

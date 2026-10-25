@@ -16,7 +16,7 @@ O download não executa sudo nem instala Java. O diretório de extração é tem
 
 O **comando não expira**. Ele permanece válido até renovação/desativação do acesso, exclusão do ambiente ou alteração do endereço/certificado do dashboard. Baixa a versão disponível no momento da execução; para um lote que precisa de versão idêntica, não publique uma nova versão durante sua instalação.
 
-Cada ZIP obtido recebe uma autorização própria de cadastro de 24 horas e até 1.000 cadastros, respeitando o limite global de máquinas do produto. Expirar o ZIP não expira o comando: baixe novamente. O sistema limita dois streams simultâneos e 1.200 emissões por hora por ambiente; os comandos repetem downloads com espera crescente até seis tentativas. Grandes lotes devem escalonar os downloads. O endpoint de cadastro conserva seus limites preexistentes.
+Cada ZIP obtido recebe uma autorização própria de cadastro de 24 horas e até 100.000 cadastros, sem limite fixo de máquinas do produto. Expirar o ZIP não expira o comando: baixe novamente. O sistema limita dois streams simultâneos e 1.200 emissões por hora por ambiente; os comandos repetem downloads com espera crescente até seis tentativas. Grandes lotes devem escalonar os downloads. O endpoint de cadastro conserva seus limites preexistentes.
 
 - **Renovar acesso de instalação:** gera nova credencial e invalida o comando antigo e novos cadastros pelos ZIPs baixados com ele.
 - **Desativar novos cadastros:** desativa esse acesso e os ZIPs associados, sem remover o ambiente.

@@ -33,6 +33,8 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
     private final ThreadLocal<String> agentHost=new ThreadLocal<>();
     private final ThreadLocal<String> requestBody=new ThreadLocal<>();
     private final Map<String,long[]> registrationAttempts=new HashMap<>(),attempts=new HashMap<>();
+    /** Registrations allowed per client IP per minute; configurable as registrationPerMinute (1–100000, default 600). */
+    private final int registrationPerMinute;
     private final Map<String,Session> sessions=new ConcurrentHashMap<>();
     private final SecureRandom random=new SecureRandom();
     private final Semaphore exportSlot=new Semaphore(1);
@@ -58,6 +60,7 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
     AssessmentServer(File root,boolean provisioning,java.nio.file.Path maintenanceState)throws Exception {
         maintenance=new DashboardMaintenance(maintenanceState);
         this.root=root.getCanonicalFile();Lifecycle.load(new File(this.root,"web/lifecycle.json"));data=new File(root,"data");conf=new Properties();try(InputStream in=new FileInputStream(new File(root,"conf/server.properties"))){conf.load(in);}
+        registrationPerMinute=registrationLimit(conf.getProperty("registrationPerMinute","600"));
         for(String k:new String[]{"agentToken","hostId"})if(conf.getProperty(k,"").length()<4)throw new IllegalArgumentException("Missing server configuration: "+k);
         boolean legacy=Boolean.parseBoolean(conf.getProperty("seedLegacyHost","true"));
         Map<String,Object> defaults=map("fleet",map("name",conf.getProperty("fleetName","Java Assessment"),"description","Java estate assessment","createdAt",now()),"hosts",new ArrayList<>(),"jobs",new ArrayList<>(),"environments",new ArrayList<>(),"settings",map("enabled",false,"frequency","once","timeZone","America/Sao_Paulo","windowStart","00:00","windowEnd","06:00","maxDurationSeconds",180,"maxFiles",50000,"batchSize",100,"pauseMillis",30,"includePaths",legacy?Arrays.asList("/home/opc/oracle","/usr/java","/usr/lib/jvm","/opt","/u01","/etc/config","/prd1"):Arrays.asList("/usr/java","/usr/lib/jvm","/opt","/u01","/etc/config","/prd1"),"appConfigPaths",Arrays.asList("/etc/config"),"excludePaths",Arrays.asList("/proc","/sys","/dev","/tmp"),"inspectArchives",true),"coverage",map("status","pending","warnings",new ArrayList<>()),"eventIds",new ArrayList<>(),"scheduleRevision",UUID.randomUUID().toString());
@@ -187,7 +190,8 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
     private String serverUrl(){return conf.getProperty("publicUrl","https://"+conf.getProperty("publicHost","localhost"));}
     private static String bounded(Object value,String name,int max,boolean required){if(!(value instanceof String))throw new ApiError(400,"Invalid "+name);String s=(String)value;if(s.length()>max||(required&&s.trim().isEmpty())||s.matches("(?s).*[\\x00-\\x1f\\x7f].*"))throw new ApiError(400,"Invalid "+name);return s;}
     private static int integer(Object value,int fallback,int min,int max){if(value==null)return fallback;if(!(value instanceof Number))throw new ApiError(400,"Integer expected");long n=((Number)value).longValue();if(((Number)value).doubleValue()!=n||n<min||n>max)throw new ApiError(400,"Integer outside allowed range");return (int)n;}
-    private synchronized void rateRegistration(HttpExchange x){String addr=x.getRemoteAddress().getAddress().getHostAddress();long now=System.currentTimeMillis();registrationAttempts.entrySet().removeIf(e->now-e.getValue()[0]>60000);long[] rate=registrationAttempts.get(addr);if(rate==null){if(registrationAttempts.size()>=4096)throw new ApiError(429,"Please retry later");rate=new long[]{now,0};registrationAttempts.put(addr,rate);}if(++rate[1]>30)throw new ApiError(429,"Please wait one minute before retrying");}
+    static int registrationLimit(String value){try{int n=Integer.parseInt(value.trim());return Math.max(1,Math.min(100000,n));}catch(RuntimeException e){return 600;}}
+    private synchronized void rateRegistration(HttpExchange x){String addr=x.getRemoteAddress().getAddress().getHostAddress();long now=System.currentTimeMillis();registrationAttempts.entrySet().removeIf(e->now-e.getValue()[0]>60000);long[] rate=registrationAttempts.get(addr);if(rate==null){if(registrationAttempts.size()>=4096)throw new ApiError(429,"Please retry later");rate=new long[]{now,0};registrationAttempts.put(addr,rate);}if(++rate[1]>registrationPerMinute)throw new ApiError(429,"Please wait one minute before retrying");}
     private Map<String,Object> register(HttpExchange x)throws Exception{
         method(x,"POST");rateRegistration(x);Map<String,Object> b=body(x);String installationId=bounded(b.get("installationId"),"installationId",100,true);if(!installationId.matches("[A-Za-z0-9_-]{16,100}"))throw new ApiError(400,"Invalid installation identifier");
         Map<String,Object> meta=map();for(String key:new String[]{"hostname","collectorVersion","javaVersion","osName","architecture"})meta.put(key,bounded(b.get(key),key,200,true));
@@ -323,7 +327,7 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
         }
         if(path.equals("/api/settings")){method(x,"PUT");Map<String,Object> settings=settings(body(x));store.metadata("settings",settings);store.metadata("scheduleRevision",UUID.randomUUID().toString());return new Reply(200,settings);}
         if(path.equals("/api/enrollments")){
-            method(x,"POST");Map<String,Object> b=body(x);String label=bounded(b.get("label"),"label",100,true);int expires=integer(b.get("expiresInMinutes"),60,5,10080),uses=integer(b.get("maxUses"),1,1,1000);if(b.containsKey("autoCollect")&&!(b.get("autoCollect") instanceof Boolean))throw new ApiError(400,"Boolean autoCollect expected");Map<String,Object> overrides=b.containsKey("settings")?obj(b.get("settings")):map();settings(overrides);overrides.putIfAbsent("enabled",false);Map<String,Object> issued=registry.issue(label,expires,uses,overrides,!Boolean.FALSE.equals(b.get("autoCollect")),"",environmentIds());issued.put("serverUrl",serverUrl());return new Reply(201,issued);
+            method(x,"POST");Map<String,Object> b=body(x);String label=bounded(b.get("label"),"label",100,true);int expires=integer(b.get("expiresInMinutes"),60,5,10080),uses=integer(b.get("maxUses"),1,1,EnrollmentRegistry.MAX_USES_PER_CODE);if(b.containsKey("autoCollect")&&!(b.get("autoCollect") instanceof Boolean))throw new ApiError(400,"Boolean autoCollect expected");Map<String,Object> overrides=b.containsKey("settings")?obj(b.get("settings")):map();settings(overrides);overrides.putIfAbsent("enabled",false);Map<String,Object> issued=registry.issue(label,expires,uses,overrides,!Boolean.FALSE.equals(b.get("autoCollect")),"",environmentIds());issued.put("serverUrl",serverUrl());return new Reply(201,issued);
         }
         if(path.equals("/api/enrollments/revoke")){method(x,"POST");registry.revokeEnrollment(str(body(x).get("enrollmentId")));return new Reply(200,map("revoked",true));}
         if(path.equals("/api/hosts/revoke")){
@@ -335,7 +339,7 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
         if(path.equals("/api/environments")){if(!Set.of("POST","PUT","DELETE").contains(x.getRequestMethod()))throw new ApiError(405,"Method not allowed");return environmentChange(x);}
         if(path.equals("/api/environments/install-access"))return installAccessApi(x);
         if(path.equals("/api/environments/package")){
-            method(x,"POST");Map<String,Object> b=body(x);String id=bounded(b.get("environmentId"),"environmentId",100,true);Map<String,Object> env=environment(id);int minutes=integer(b.get("expiresInMinutes"),1440,5,10080),uses=integer(b.get("maxUses"),100,1,1000);if(b.containsKey("autoCollect")&&!(b.get("autoCollect") instanceof Boolean))throw new ApiError(400,"Boolean autoCollect expected");
+            method(x,"POST");Map<String,Object> b=body(x);String id=bounded(b.get("environmentId"),"environmentId",100,true);Map<String,Object> env=environment(id);int minutes=integer(b.get("expiresInMinutes"),1440,5,10080),uses=integer(b.get("maxUses"),100,1,EnrollmentRegistry.MAX_USES_PER_CODE);if(b.containsKey("autoCollect")&&!(b.get("autoCollect") instanceof Boolean))throw new ApiError(400,"Boolean autoCollect expected");
             InstallerPackage installer=installerPackage();try{Map<String,Object> issued=registry.issue(str(env.get("name")),minutes,uses,map(),!Boolean.FALSE.equals(b.get("autoCollect")),id,environmentIds());return new Reply(200,new PackageReply(str(env.get("name")),serverUrl(),str(issued.get("enrollmentToken")),id));}finally{installer.close();}
         }
         if(path.equals("/api/collector/info")){

@@ -89,7 +89,7 @@ Results retry by `(hostId,jobId,eventId)` without duplicate inventory. A result 
 
 ## Limits and operation
 
-- 1,000 registered machines; 200 environments; 500 enrollment records.
+- No fixed registered-machine cap. Active unexpired enrollment codes: 10,000 (exhausted codes do not count). Uses per code: up to 100,000. Registrations per client IP per minute: `registrationPerMinute` (1–100,000, default 600). 200 environments.
 - Result body 2 MiB; other JSON bodies 32 KiB. Up to 2,000 rows per inventory kind; 16 KiB per row; 64 KiB host detail record.
 - HTTP and HTTPS each use eight workers and a queue of 32; exports are serialized.
 - Default retention: 100 completed jobs and 200 result receipts per machine. `jobHistoryPerHost` (10–1,000) and `receiptHistoryPerHost` (200–2,000) configure these limits. Queued/running jobs are preserved.

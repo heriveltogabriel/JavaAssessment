@@ -6,7 +6,8 @@ import java.util.*;
 
 /** Per-identity SQLite records; credentials are never included in inventory responses. */
 final class EnrollmentRegistry {
-    static final int MAX_ENROLLMENTS=500;
+    /** Upper bounds that protect memory and SQLite; not machine limits. Exhausted codes do not count toward MAX_ENROLLMENTS. */
+    static final int MAX_USES_PER_CODE=100000, MAX_ENROLLMENTS=10000, MAX_INSTALL_ACCESS_ENROLLMENTS=10000;
     static final class Failure extends RuntimeException { final int status; Failure(int s,String text){super(text);status=s;} }
     private final InventoryStore store;
     private final SecureRandom random=new SecureRandom();
@@ -26,15 +27,17 @@ final class EnrollmentRegistry {
         return issue(label,minutes,maxUses,settings,autoCollect,environmentId,ids,null);
     }
     Map<String,Object> issueInstallAccess(String label,String environmentId,String generation,Set<String> ids)throws IOException{
-        return issue(label,1440,1000,AssessmentServer.map(),true,environmentId,ids,generation);
+        return issue(label,1440,MAX_USES_PER_CODE,AssessmentServer.map(),true,environmentId,ids,generation);
     }
     private Map<String,Object> issue(String label,int minutes,int maxUses,Map<String,Object> settings,boolean autoCollect,String environmentId,Set<String> ids,String generation)throws IOException{
         return store.transaction(()->{
             String category=generation==null?"json_extract(payload,'$.installAccessGeneration') IS NULL":"json_extract(payload,'$.installAccessGeneration') IS NOT NULL";
-            int limit=generation==null?MAX_ENROLLMENTS:2000;
-            if(store.scalar("SELECT count(*) FROM enrollments WHERE "+category)>=limit){
+            // Exhausted codes (all uses consumed) are kept for retries and expire later; they no longer occupy an active slot.
+            String active=category+" AND NOT (json_extract(payload,'$.usedCount') >= json_extract(payload,'$.maxUses'))";
+            int limit=generation==null?MAX_ENROLLMENTS:MAX_INSTALL_ACCESS_ENROLLMENTS;
+            if(store.scalar("SELECT count(*) FROM enrollments WHERE "+active)>=limit){
                 store.exec("DELETE FROM enrollments WHERE status <> 'active' OR expires_millis <= ? OR (coalesce(json_extract(payload,'$.environmentId'),'') <> '' AND json_extract(payload,'$.environmentId') NOT IN (SELECT id FROM environments))",System.currentTimeMillis());
-                if(store.scalar("SELECT count(*) FROM enrollments WHERE "+category)>=limit)throw new Failure(409,"Enrollment history limit reached");
+                if(store.scalar("SELECT count(*) FROM enrollments WHERE "+active)>=limit)throw new Failure(409,"Enrollment history limit reached");
             }
             String code=token(),id="enr-"+UUID.randomUUID();long expires=System.currentTimeMillis()+minutes*60000L;
             Map<String,Object> e=AssessmentServer.map("id",id,"label",label,"createdAt",AssessmentServer.now(),"expiresAt",stamp(expires),"expiresMillis",expires,"maxUses",maxUses,"usedCount",0,"status","active","tokenHash",InventoryStore.hash(code),"settings",settings,"autoCollect",autoCollect,"environmentId",environmentId);
