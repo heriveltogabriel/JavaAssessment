@@ -1,0 +1,30 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const source=fs.readFileSync('web/enrollment.js','utf8');
+for(const file of ['web/enrollment.js','web/environments.js'])assert.match(fs.readFileSync(file,'utf8'),/name=\\"maxUses\\" type=\\"number\\" min=\\"1\\" max=\\"100000\\"/);
+const nodes=new Map(),listeners={},pending=[];
+function node(id){if(!nodes.has(id))nodes.set(id,{id,innerHTML:'',textContent:'',dataset:{},hidden:false,disabled:false,open:false,handlers:{},setAttribute(){},addEventListener(k,fn){this.handlers[k]=fn;},replaceChildren(){this.innerHTML='';},showModal(){this.open=true;},close(){this.open=false;this.handlers.close?.();}});return nodes.get(id);}
+const document={getElementById:node,createElement:()=>node('enrollment-dialog'),body:{append(){}},addEventListener(k,fn){listeners[k]=fn;}};
+const window={AssessmentLocale:{status:x=>x}};let scope='env-a';
+vm.runInNewContext(source,{window,document,URLSearchParams,setTimeout});
+window.AssessmentEnrollment.init({isAdmin:()=>true,getEnrollmentData:()=>({scope:{environmentId:scope,name:scope}}),getData:()=>({}),api:url=>new Promise((resolve,reject)=>pending.push({url,resolve,reject}))});
+const click=selector=>({target:{closest:s=>s===selector?{}:null}});
+const tick=()=>new Promise(resolve=>setImmediate(resolve));
+(async()=>{
+ listeners.click(click('[data-enrollment-list]'));
+ assert.match(pending[0].url,/page=1&environmentId=env-a/);
+ pending.shift().resolve({page:1,total:601,enrollments:[{id:'first',label:'Primeiro',status:'active',usedCount:0,maxUses:100000}]});await tick();
+ assert.match(node('enrollment-content').innerHTML,/Página 1 de 7/);
+ const next=node('enrollment-dialog').handlers.click({target:{closest:s=>s==='[data-codes-page]'?{dataset:{codesPage:'7'}}:null}});
+ assert.match(pending[0].url,/page=7/);
+ pending.shift().resolve({page:7,total:601,enrollments:[{id:'beyond-500',label:'Último',status:'active'}]});await next;
+ assert.match(node('enrollment-content').innerHTML,/data-code-revoke="beyond-500"/);
+ listeners.click({target:{closest:s=>s==='[data-code-revoke]'?{dataset:{codeRevoke:'beyond-500'}}:null}});
+ assert.equal(node('enrollment-form').dataset.targetId,'beyond-500');assert.match(node('enrollment-content').innerHTML,/Último/);
+ listeners.click(click('[data-enrollment-list]'));scope='env-b';window.AssessmentEnrollment.render({},'overview','');
+ const stale=pending.shift(),current=pending.shift();assert.match(current.url,/environmentId=env-b/);
+ stale.resolve({page:1,total:1,enrollments:[{label:'STALE'}]});await tick();assert.doesNotMatch(node('enrollment-content').innerHTML,/STALE/);
+ current.reject(Error('Falha de consulta'));await tick();assert.match(node('enrollment-content').innerHTML,/Consultar novamente/);assert.equal(node('enrollment-error').hidden,false);
+ listeners.click(click('[data-enrollment-list]'));window.AssessmentEnrollment.clear();pending.shift().resolve({page:1,total:1,enrollments:[{label:'CLOSED'}]});await tick();assert.doesNotMatch(node('enrollment-content').innerHTML,/CLOSED/);
+ console.log('ENROLLMENT_CAPACITY_UI=PASS limits, paging beyond 500, revoke, scope race, retry and close');
+})().catch(e=>{console.error(e);process.exitCode=1;});

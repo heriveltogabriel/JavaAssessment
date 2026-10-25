@@ -19,7 +19,13 @@ O playbook usa wget, instala com sudo em lotes de duas máquinas e ignora agente
 - [Manual ilustrado da solução](Manual.pdf): arquitetura, inventário, atualização de agentes, relatórios e filtros JDBC.
 - [Guia de instalação](Guia-instalacao.pdf): requisitos, comandos, configuração do dashboard e instalação dos agentes.
 
-## Entrega para teste pela console — 2.1.20
+## Entrega para teste pela console — 2.1.22
+
+[Pacotes 2.1.22](v2.1.22/README.md): cadastro sem teto fixo de máquinas, formulários com 100.000 usos por código, limpeza e paginação. Envie o [web-update](v2.1.22/assessment-dashboard-web-update-2.1.22.zip) na Administração da sua console 2.1.20. [Notas](../docs/RELEASE_2.1.22.md) · [Validação](../docs/validation/console-release-2.1.22.md).
+
+**Atualizar o dashboard não atualiza agentes automaticamente.** Agentes 2.1.20 podem permanecer instalados para esta melhoria. Não é necessário instalar a ponte 2.1.21 manualmente.
+
+## Entrega anterior preservada — 2.1.20
 
 [Pacotes 2.1.20](v2.1.20/README.md): coluna **Profile/contexto** nos datasources e nos detalhes. Use o [web-update](v2.1.20/assessment-dashboard-web-update-2.1.20.zip) na atualização administrativa. [Notas](../docs/RELEASE_2.1.20.md) · [Validação](../docs/validation/console-release-2.1.20.md).
 

@@ -26,7 +26,7 @@ done
   tmp/source-evidence/jdbc-fixtures.json tmp/source-evidence/jdbc-http
 "$JAVA_HOME/bin/java" -Djava.io.tmpdir="$JTMP" -Xmx384m -cp "$CP" assessment.InventoryArchiveTest --export tmp/source-evidence/inventory-export
 python3 tests/inventory-archive-csv.py tmp/source-evidence/inventory-export
-for suite in inventory-export-ui.test.cjs jdbc-driver-ui.test.cjs jdbc-endpoint-ui.test.cjs datasources-ui.test.cjs environment-presence.test.cjs locale.test.cjs dashboard.test.cjs interface-refresh.test.cjs version-js.test.cjs agent-release-notice.test.cjs lifecycle-ui.test.cjs; do
+for suite in enrollment-capacity-ui.test.cjs inventory-export-ui.test.cjs jdbc-driver-ui.test.cjs jdbc-endpoint-ui.test.cjs datasources-ui.test.cjs environment-presence.test.cjs locale.test.cjs dashboard.test.cjs interface-refresh.test.cjs version-js.test.cjs agent-release-notice.test.cjs lifecycle-ui.test.cjs; do
   "${NODE:-node}" "tests/$suite"
 done
 "${NODE:-node}" tests/jdbc-overview.test.cjs tmp/source-evidence/jdbc-http/overview-fixtures.json

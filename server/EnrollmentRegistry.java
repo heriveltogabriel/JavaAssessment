@@ -23,6 +23,17 @@ final class EnrollmentRegistry {
         return AssessmentServer.map("id",e.get("id"),"label",e.get("label"),"createdAt",e.get("createdAt"),"expiresAt",e.get("expiresAt"),"maxUses",e.get("maxUses"),"usedCount",e.get("usedCount"),"status",status,"environmentId",str(e.get("environmentId")));
     }
     List<Object> summaries(Set<String> ids){List<Object> result=new ArrayList<>();for(Map<String,Object> e:store.documents("SELECT payload FROM enrollments WHERE json_extract(payload,'$.installAccessGeneration') IS NULL ORDER BY rowid DESC LIMIT 500"))result.add(summary(e,ids));return result;}
+    Map<String,Object> page(Set<String> ids,String environmentId,int page){
+        return store.readSnapshot(()->{
+            String where="json_extract(payload,'$.installAccessGeneration') IS NULL";
+            List<Object> args=new ArrayList<>();
+            if(!environmentId.isEmpty()){where+=" AND coalesce(json_extract(payload,'$.environmentId'),'')=?";args.add(environmentId.equals("__unassigned__")?"":environmentId);}
+            long total=store.scalar("SELECT count(*) FROM enrollments WHERE "+where,args.toArray());
+            List<Object> values=new ArrayList<>();args.add(100);args.add((page-1)*100);
+            for(Map<String,Object> e:store.documents("SELECT payload FROM enrollments WHERE "+where+" ORDER BY rowid DESC LIMIT ? OFFSET ?",args.toArray()))values.add(summary(e,ids));
+            return AssessmentServer.map("enrollments",values,"total",total,"page",page,"pageSize",100);
+        });
+    }
     Map<String,Object> issue(String label,int minutes,int maxUses,Map<String,Object> settings,boolean autoCollect,String environmentId,Set<String> ids)throws IOException{
         return issue(label,minutes,maxUses,settings,autoCollect,environmentId,ids,null);
     }
@@ -32,13 +43,12 @@ final class EnrollmentRegistry {
     private Map<String,Object> issue(String label,int minutes,int maxUses,Map<String,Object> settings,boolean autoCollect,String environmentId,Set<String> ids,String generation)throws IOException{
         return store.transaction(()->{
             String category=generation==null?"json_extract(payload,'$.installAccessGeneration') IS NULL":"json_extract(payload,'$.installAccessGeneration') IS NOT NULL";
-            // Exhausted codes (all uses consumed) are kept for retries and expire later; they no longer occupy an active slot.
-            String active=category+" AND NOT (json_extract(payload,'$.usedCount') >= json_extract(payload,'$.maxUses'))";
+            // Preserve exhausted but unexpired codes for registration retries. Cleanup must
+            // run independently of the active count, including after low-volume installations.
+            store.exec("DELETE FROM enrollments WHERE status <> 'active' OR expires_millis <= ? OR (coalesce(json_extract(payload,'$.environmentId'),'') <> '' AND json_extract(payload,'$.environmentId') NOT IN (SELECT id FROM environments))",System.currentTimeMillis());
+            String active=category+" AND json_extract(payload,'$.usedCount') < json_extract(payload,'$.maxUses')";
             int limit=generation==null?MAX_ENROLLMENTS:MAX_INSTALL_ACCESS_ENROLLMENTS;
-            if(store.scalar("SELECT count(*) FROM enrollments WHERE "+active)>=limit){
-                store.exec("DELETE FROM enrollments WHERE status <> 'active' OR expires_millis <= ? OR (coalesce(json_extract(payload,'$.environmentId'),'') <> '' AND json_extract(payload,'$.environmentId') NOT IN (SELECT id FROM environments))",System.currentTimeMillis());
-                if(store.scalar("SELECT count(*) FROM enrollments WHERE "+active)>=limit)throw new Failure(409,"Enrollment history limit reached");
-            }
+            if(store.scalar("SELECT count(*) FROM enrollments WHERE "+active)>=limit)throw new Failure(409,"Enrollment history limit reached");
             String code=token(),id="enr-"+UUID.randomUUID();long expires=System.currentTimeMillis()+minutes*60000L;
             Map<String,Object> e=AssessmentServer.map("id",id,"label",label,"createdAt",AssessmentServer.now(),"expiresAt",stamp(expires),"expiresMillis",expires,"maxUses",maxUses,"usedCount",0,"status","active","tokenHash",InventoryStore.hash(code),"settings",settings,"autoCollect",autoCollect,"environmentId",environmentId);
             if(generation!=null)e.put("installAccessGeneration",generation);

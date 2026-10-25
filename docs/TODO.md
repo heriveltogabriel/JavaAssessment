@@ -1,5 +1,15 @@
 # Melhorias planejadas
 
+## Entrega 2.1.22 — cadastro em escala
+
+- [x] Consolidar a branch remover-limite-maquinas e corrigir máximos dos formulários, limpeza independente da capacidade e paginação administrativa por ambiente.
+- [x] Regressão completa, limite exato, retry, retenção, isolamento e navegador desktop/mobile.
+- [x] Build 2.1.21/2.1.22, três ZIPs e SHA-256, verificadores originais, precheck e atualização/restauração 2.1.20 → 2.1.22 em fixture. [Evidências](validation/console-release-2.1.22.md).
+- [x] READMEs, contrato, guia de acesso de instalação e notas atualizados; pacotes antigos preservados.
+- [ ] Operador validar upload/reinício pela console 2.1.20 antes de implantar no cliente. Sem deploy remoto ou merge no main nesta entrega para teste.
+- [ ] Medir capacidade operacional com volume representativo antes de recomendar quantidade de agentes por servidor. Sem teto fixo de cadastro não significa recursos ilimitados.
+- Agentes 2.1.20 continuam compatíveis. Atualizar o dashboard não atualiza os agentes automaticamente.
+
 ## Entrega 2.1.20 — Profile/contexto dos datasources
 
 - [x] Coluna **Profile/contexto** e campo nos detalhes usando `configurationContext` já coletado. Datasources homônimos em perfis distintos permanecem separados; campo ausente aparece como “Não identificado”.

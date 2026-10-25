@@ -95,7 +95,14 @@ public final class UserAccessHttpTest {
                 Response r=expected(200,"GET",path,null,reader);noSecrets(r.text,secrets);
                 if(path.startsWith("/api/state")){check(!r.body.containsKey("defaultSettings"),"reader omits defaults");Object codes=r.body.get("enrollments");check(codes==null||codes instanceof List<?> values&&values.isEmpty(),"reader sees no enrollment summaries");}
             }
-            String[] adminGets={"/api/collector.zip","/api/collector/info","/api/admin/users","/api/admin/audit","/api/state?view=settings","/api/unknown-sensitive"};
+            expected(401,"GET","/api/enrollments",null,null);
+            Response codes=expected(200,"GET","/api/enrollments?page=1",null,admin);
+            check(codes.body.get("enrollments") instanceof List&&((Number)codes.body.get("pageSize")).intValue()==100,"admin paged codes");
+            expected(400,"GET","/api/enrollments?page=0",null,admin);
+            expected(400,"GET","/api/enrollments?page=1000001",null,admin);
+            expected(400,"GET","/api/enrollments?page=bad",null,admin);
+            expected(404,"GET","/api/enrollments?environmentId=missing",null,admin);
+            String[] adminGets={"/api/enrollments","/api/collector.zip","/api/collector/info","/api/admin/users","/api/admin/audit","/api/state?view=settings","/api/unknown-sensitive"};
             for(String path:adminGets)expected(403,"GET",path,null,reader);
             String[][] writes={{"POST","/api/jobs"},{"POST","/api/jobs/run-scope"},{"PUT","/api/settings"},{"POST","/api/enrollments"},{"POST","/api/enrollments/revoke"},{"POST","/api/hosts/revoke"},{"PUT","/api/hosts/settings"},{"POST","/api/environments"},{"PUT","/api/environments"},{"DELETE","/api/environments"},{"POST","/api/environments/package"},{"PUT","/api/hosts/environment"},{"POST","/api/hosts/uninstall"},{"POST","/api/hosts/uninstall/cancel"},{"POST","/api/admin/users"},{"PUT","/api/admin/users"},{"POST","/api/admin/users/reset"}};
             for(String[] endpoint:writes)expected(403,endpoint[0],endpoint[1],map(),reader);

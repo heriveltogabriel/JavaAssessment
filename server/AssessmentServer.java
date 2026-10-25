@@ -327,6 +327,11 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
         }
         if(path.equals("/api/settings")){method(x,"PUT");Map<String,Object> settings=settings(body(x));store.metadata("settings",settings);store.metadata("scheduleRevision",UUID.randomUUID().toString());return new Reply(200,settings);}
         if(path.equals("/api/enrollments")){
+            if(x.getRequestMethod().equals("GET")){
+                String environmentId=query(x,"environmentId");
+                if(!environmentId.isEmpty()&&!environmentId.equals("__unassigned__"))environment(environmentId);
+                return new Reply(200,registry.page(environmentIds(),environmentId,queryInteger(x,"page",1,1,1000000)));
+            }
             method(x,"POST");Map<String,Object> b=body(x);String label=bounded(b.get("label"),"label",100,true);int expires=integer(b.get("expiresInMinutes"),60,5,10080),uses=integer(b.get("maxUses"),1,1,EnrollmentRegistry.MAX_USES_PER_CODE);if(b.containsKey("autoCollect")&&!(b.get("autoCollect") instanceof Boolean))throw new ApiError(400,"Boolean autoCollect expected");Map<String,Object> overrides=b.containsKey("settings")?obj(b.get("settings")):map();settings(overrides);overrides.putIfAbsent("enabled",false);Map<String,Object> issued=registry.issue(label,expires,uses,overrides,!Boolean.FALSE.equals(b.get("autoCollect")),"",environmentIds());issued.put("serverUrl",serverUrl());return new Reply(201,issued);
         }
         if(path.equals("/api/enrollments/revoke")){method(x,"POST");registry.revokeEnrollment(str(body(x).get("enrollmentId")));return new Reply(200,map("revoked",true));}

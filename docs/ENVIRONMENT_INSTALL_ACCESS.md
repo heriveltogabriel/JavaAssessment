@@ -35,3 +35,11 @@ A renovação não altera o certificado HTTPS. Se mudar endereço/CA, copie um c
 ## Validação desta entrega
 
 Testes locais verificam autenticação/roles/CSRF, download em lote, sobrevivência a reinício, revogação de ZIPs anteriores, manutenção das credenciais operacionais, proteção da chave, limites e concorrência. Os comandos são exercitados com downloaders simulados, incluindo falha, privacidade e checksum; a API é testada em HTTP local descartável. Uma prova com curl real e HTTPS local confirma CA válida, recusa de CA incorreta antes do envio da credencial e ausência de redirecionamento. A interface foi verificada em desktop/mobile, incluindo o download ZIP anterior. Esses testes não substituem a prova com curl/wget e TLS da distribuição do cliente.
+
+## Cadastro em escala
+
+O dashboard não impõe um teto fixo de máquinas cadastradas. Cada código pode permitir até 100.000 usos; os formulários de cadastro e de pacote por ambiente respeitam esse limite. Códigos ativos não esgotados têm limite de 10.000 por categoria (manual/pacote e acesso de instalação). Os códigos esgotados ainda válidos são preservados para repetição do cadastro; expirados, revogados ou de ambientes removidos são limpos ao emitir o próximo código. Credenciais dos agentes já registrados não são removidas por essa limpeza.
+
+**Códigos de cadastro** usa páginas de 100 registros, com Anterior/Próxima e filtro pelo ambiente atual. Somente administradores podem consultar ou revogar códigos; nenhum segredo é devolvido na listagem.
+
+`registrationPerMinute=600`, em `conf/server.properties`, controla as tentativas de cadastro por IP por minuto (1 a 100.000; reiniciar após alterar). IPs compartilhados por NAT/proxy dividem o limite; respostas 429 indicam que o instalador deve aguardar antes de repetir. Os limites de 1.000 máquinas por ação de coleta/atualização permanecem. Remover o teto de cadastro não comprova capacidade operacional ilimitada.
