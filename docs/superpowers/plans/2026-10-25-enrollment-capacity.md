@@ -13,4 +13,6 @@ Escopo aprovado na conversa: corrigir formulários, retenção e acesso aos cód
 - [x] Release: build-dashboard-release.py --lab-canary, web-update e dashboard-installer/build.py. Verificar reserva prevista 2.1.21/2.1.22 contra o contador atual; não sobrescrever pacotes.
 - [x] Validar pacote final com atualização/restauração 2.1.20, assinatura, baseline, identidade, SQLite, TLS, CRC e SHA-256; precheck do instalador.
 - [x] Atualizar README.md, install/README.md, README dos pacotes, notas e evidências. Informar agentes compatíveis 2.1.20 e atualização separada.
-- [ ] Commit e push na branch remover-limite-maquinas. Não fazer merge no main antes do teste solicitado pelo operador.
+- [x] Commit e push na branch remover-limite-maquinas. Não fazer merge no main antes do teste solicitado pelo operador.
+
+Publicação confirmada: commit de release `a22a340` enviado para `origin/remover-limite-maquinas`. O main foi preservado para aguardar o teste do operador.
