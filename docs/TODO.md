@@ -1,5 +1,14 @@
 # Melhorias planejadas
 
+## Ansible — recuperação de instalações (sem alterar a versão 2.1.24)
+
+- [x] Modo auto: preservar agentes íntegros; retomar instalação clássica com identidade e reativar serviços V3 verificados.
+- [x] Reinstalação explícita por host, com pacote/Java verificados antes da remoção oficial e backup privado.
+- [x] Bloquear operações pendentes, caminhos inseguros, serviços alterados e resíduos sem propriedade reconhecida.
+- [x] Regressão local: 27 testes do helper e 14 do playbook, sintaxe e pacote ZIP/SHA verificados. [Evidências](validation/ansible-recovery-2026-10-26.md).
+- [ ] Validar primeiro host Linux com falha real usando `--limit`; testes locais simulam fronteiras de SO e não substituem esse teste operacional.
+
+
 ## Entrega 2.1.24 — coletor: drivers JDBC identificados
 
 - [x] Resolver WebLogic sem bloqueio por `vmArgs` truncado; configuração de domain home atribuída ao servidor do domínio (não ao processo auxiliar); `ojdbc14` reconhecido; motivos múltiplos no texto de INCOMPLETE. [Notas](RELEASE_2.1.24.md) e [validação](validation/collector-driver-resolution.md).

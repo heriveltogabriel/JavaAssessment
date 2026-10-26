@@ -8,7 +8,7 @@ Arquivos para instalar o dashboard e os agentes na infraestrutura do cliente. Os
 - [Baixar pacote Ansible](ansible/java-assessment-ansible.zip)
 - [SHA-256 do pacote](ansible/java-assessment-ansible.zip.sha256)
 
-O playbook usa wget, instala com sudo em lotes de duas máquinas e ignora agentes existentes. Preencha o inventário e guarde as credenciais no Ansible Vault. Os exemplos publicados não contêm credenciais reais.
+O playbook usa wget, instala com sudo em lotes de duas máquinas preserva agentes íntegros e recupera instalações incompletas reconhecidas. Uma opção por host permite reinstalação limpa com backup e remoção oficial. Preencha o inventário e guarde as credenciais no Ansible Vault. Os exemplos publicados não contêm credenciais reais.
 
 ## Java para instalação sem download na VM
 

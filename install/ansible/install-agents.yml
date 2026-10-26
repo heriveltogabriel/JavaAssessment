@@ -11,28 +11,14 @@
       ansible.builtin.assert:
         that:
           - not ansible_check_mode
+          - (assessment_install_mode | default('auto')) in ['auto', 'reinstall']
           - (assessment_batch_size | default(2) | int) >= 1
           - (assessment_batch_size | default(2) | int) <= 2
-        fail_msg: Use --syntax-check para validar. Este playbook instala em lotes de 1 ou 2 hosts.
+        fail_msg: Use --syntax-check para validar. Use assessment_install_mode auto ou reinstall. Este playbook instala em lotes de 1 ou 2 hosts.
 
-    - name: Consultar instalação existente sem ler credenciais
-      ansible.builtin.raw: |
-        set -eu
-        test "$(uname -s)" = Linux
-        root=/opt/java-assessment-collector
-        if test -L "$root"; then
-          echo JA_STATE=PARTIAL
-        elif test -f "$root/conf/installation-id" && test ! -L "$root/conf/installation-id" &&
-             test -f "$root/conf/collector.properties" && test ! -L "$root/conf/collector.properties" &&
-             { test -f "$root/collector.jar" || test -f "$root/current.json"; }; then
-          echo JA_STATE=EXISTING
-        else
-          for p in "$root" /opt/java-assessment-update /opt/java-assessment-uninstall; do
-            if test -e "$p" || test -L "$p"; then echo JA_STATE=PARTIAL; exit 0; fi
-          done
-          echo JA_STATE=ABSENT
-        fi
-      args:
+    - name: Consultar instalação, identidade e serviços sem exibir credenciais
+      ansible.builtin.script:
+        cmd: files/manage-agent.sh probe
         executable: /bin/sh
       become: true
       become_user: root
@@ -40,20 +26,19 @@
       changed_when: false
       register: ja_state
 
-    - name: Recusar instalação parcial ou resultado inesperado
+    - name: Validar classificação local
       ansible.builtin.assert:
         that:
-          - "'JA_STATE=ABSENT' in ja_state.stdout or 'JA_STATE=EXISTING' in ja_state.stdout"
-          - "'JA_STATE=PARTIAL' not in ja_state.stdout"
-        fail_msg: Há uma instalação parcial ou resíduos. Diagnostique antes de reinstalar; nenhum diretório será excluído.
+          - ja_state.stdout is search('JA_STATE=(ABSENT|HEALTHY|REPAIR|RESIDUE)')
+        fail_msg: Estado local não reconhecido. Nenhum arquivo será removido.
 
     - name: Informar instalação existente preservada
       ansible.builtin.debug:
-        msg: Agente já cadastrado; instalação ignorada. Confira comunicação, ambiente e atualização no dashboard.
-      when: "'JA_STATE=EXISTING' in ja_state.stdout"
+        msg: Agente íntegro e serviços ativos; instalação preservada. Atualizações e confirmação do contato continuam pelo dashboard.
+      when: "'JA_STATE=HEALTHY' in ja_state.stdout and (assessment_install_mode | default('auto')) == 'auto'"
 
-    - name: Instalar somente em máquina sem agente
-      when: "'JA_STATE=ABSENT' in ja_state.stdout"
+    - name: Instalar, recuperar ou reinstalar conforme o estado local
+      when: "'JA_STATE=HEALTHY' not in ja_state.stdout or (assessment_install_mode | default('auto')) == 'reinstall'"
       block:
         - name: Validar variáveis de instalação sem exibir credenciais
           ansible.builtin.assert:
@@ -120,11 +105,10 @@
             ja_stage: "{{ ja_stages[0] }}"
 
         - name: Instalar e configurar serviços com sudo
-          ansible.builtin.raw: >-
-            /bin/sh {{ (ja_stage ~ '/package/install.sh') | quote }} --system-root
-            {{ ('--java ' ~ (assessment_java_path | quote)) if (assessment_java_path | default('') | length > 0) else '' }}
-            </dev/null
-          args:
+          ansible.builtin.script:
+            cmd: >-
+              files/manage-agent.sh apply {{ (assessment_install_mode | default('auto')) | quote }}
+              {{ (ja_stage ~ '/package') | quote }} {{ (assessment_java_path | default('')) | quote }}
             executable: /bin/sh
           become: true
           become_user: root
@@ -132,33 +116,13 @@
           register: ja_install
           no_log: true
 
-        - name: Confirmar cadastro local e agendamento
-          ansible.builtin.raw: |
-            set -eu
-            test -s /opt/java-assessment-collector/conf/installation-id
-            test -s /opt/java-assessment-collector/conf/collector.properties
-            if command -v systemctl >/dev/null 2>&1 && test -d /run/systemd/system; then
-              systemctl is-active --quiet java-assessment-collector.timer
-            else
-              /bin/sh /opt/java-assessment-collector/root-service.sh status
-            fi
-            echo JA_INSTALLATION=LOCAL_OK
-          args:
-            executable: /bin/sh
-          become: true
-          become_user: root
-          become_method: sudo
-          changed_when: false
-          register: ja_verify
-          retries: 6
-          delay: 10
-          until: ja_verify.rc == 0
-
-        - name: Informar instalação concluída
+        - name: Informar resultado sem expor o log privado
           ansible.builtin.debug:
             msg: >-
-              Instalação e agendamento locais confirmados para {{ assessment_environment_id }}.
-              Confira a máquina e o recebimento da coleta em Solicitações no dashboard.
+              {{ inventory_hostname }}: operação local concluída.
+              {{ 'Serviços recuperados; versão e cadastro preservados.' if 'JA_RESULT=SERVICES_RECOVERED' in ja_install.stdout else 'Confira abaixo o backup da operação.' }}
+              {{ ja_install.stdout | regex_findall('JA_BACKUP=(/opt/java-assessment-ansible[.][A-Za-z0-9]+/backup)') | join(', ') }}.
+              Confira o contato e a coleta no dashboard. Em modo auto, o cadastro anterior é preservado.
       rescue:
         - name: Interromper lote com orientação de diagnóstico
           ansible.builtin.fail:
@@ -166,7 +130,10 @@
               Falha em {{ inventory_hostname }}, etapa {{ ansible_failed_task.name }}.
               Credenciais e saída da instalação foram ocultadas.
               Para falha de instalação, consulte /opt/java-assessment-collector/logs/install.log na máquina.
-              Verifique o estado antes de repetir; instalações parciais não são removidas automaticamente.
+              Diagnóstico: {{ (ja_install.stdout | default('')) | regex_findall('JA_ERROR=([A-Z_]+)') | join(', ') }}
+              {{ (ja_install.stderr | default('')) | regex_findall('JA_ERROR=([A-Z_]+)') | join(', ') }}.
+              Log privado: {{ (ja_install.stdout | default('')) | regex_findall('JA_LOG=(/opt/java-assessment-ansible[.][A-Za-z0-9]+/operation[.]log)') | join(', ') }}.
+              A automação não força a remoção de operações pendentes ou arquivos desconhecidos.
       always:
         - name: Limpar áreas temporárias mesmo se a limpeza remota falhar
           block:

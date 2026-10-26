@@ -3,6 +3,8 @@ all:
     assessment_agents:
       vars:
         ansible_user: opc
+        # auto preserva agentes íntegros e recupera instalações reconhecidas.
+        assessment_install_mode: auto
         assessment_dashboard_url: "https://dashboard.exemplo.com"
         assessment_ca_file: "{{ playbook_dir }}/private/dashboard-ca.pem"
         # Opcional: caminho absoluto do executável Java, definido por grupo/host.
@@ -15,6 +17,8 @@ all:
           hosts:
             app-prod-01:
               ansible_host: 192.0.2.11
+              # Apenas quando desejar novo cadastro; retirar após o sucesso:
+              # assessment_install_mode: reinstall
             app-prod-02:
               ansible_host: 192.0.2.12
         homologacao:
