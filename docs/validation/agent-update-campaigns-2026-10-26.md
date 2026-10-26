@@ -2,6 +2,8 @@
 
 Status: implementação validada localmente, sem novo número de versão, sem instalador publicado e sem operação em hosts do cliente. Base `06f0e1d`, branch `codex/agent-update-campaigns`. Binários/protocolo dos agentes não foram alterados.
 
+A implementação descrita abaixo foi posteriormente empacotada na **2.1.26**. Consulte as [provas com os pacotes finais](console-release-2.1.26.md); o registro abaixo conserva o escopo da validação anterior ao build.
+
 ## Resultados
 
 - `ops/test-source.sh`: PASS. Inclui coleta, inventário, permissões, exportações, dashboard, atualização e coletas vinculadas. A suíte foi repetida após a integração; os últimos ajustes de prazo/grupo foram revalidados nas suítes específicas abaixo.

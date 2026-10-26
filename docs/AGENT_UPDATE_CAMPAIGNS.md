@@ -1,6 +1,6 @@
 # Campanhas de atualização de agentes
 
-Implementação na branch `codex/agent-update-campaigns`, ainda sem release publicada. O número 2.1.24 e os instaladores anteriores foram preservados. Atualizar o dashboard não atualiza os agentes automaticamente.
+Disponível na release **2.1.26**, preparada para teste do operador. Os instaladores anteriores foram preservados. Veja os [pacotes](../install/v2.1.26/README.md) e as [provas de atualização](validation/console-release-2.1.26.md). Atualizar o dashboard não atualiza os agentes automaticamente.
 
 ## Revisar e iniciar
 
