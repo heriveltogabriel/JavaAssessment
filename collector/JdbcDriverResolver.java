@@ -21,7 +21,7 @@ final class JdbcDriverResolver {
     static String version(String v){return v!=null&&v.matches("[0-9][A-Za-z0-9._+ ()\\-]{0,127}")?v:null;}
     static void addVersion(Archive a,String v){if(version(v)!=null)a.versions.add(v);}
     static boolean linked(Map row,long pid){if(row.get("associations") instanceof List)for(Object raw:(List)row.get("associations"))if(raw instanceof Map&&Long.valueOf(pid).equals(((Map)raw).get("pid")))return true;return false;}
-    static String family(String path){String name=new File(path).getName();java.util.regex.Matcher m=java.util.regex.Pattern.compile("(?i)^(ojdbc(5|6|7|8|10|11|17))(?:[-_.].*)?\\.jar$").matcher(name);return m.matches()?m.group(1).toLowerCase(Locale.ENGLISH)+" (JDK "+m.group(2)+(m.group(2).equals("8")?"+":"")+")":null;}
+    static String family(String path){String name=new File(path).getName();java.util.regex.Matcher m=java.util.regex.Pattern.compile("(?i)^(ojdbc(14|5|6|7|8|10|11|17))(?:[-_.].*)?\\.jar$").matcher(name);return m.matches()?m.group(1).toLowerCase(Locale.ENGLISH)+" (JDK "+(m.group(2).equals("14")?"1.4":m.group(2))+(m.group(2).equals("8")?"+":"")+")":null;}
     interface Strategy { String prepare(AssessmentScan.ProcessContext context,Map row); void resolve(Search search,Map row,List<String> classpath); boolean requiresClasspath(); }
     Strategy strategy(String type) {
         if("WebLogic".equals(type))return new WebLogicDriverStrategy(this);
@@ -84,7 +84,8 @@ final class JdbcDriverResolver {
         final Set<String>seen=new HashSet<String>();final List<Map>candidates=new ArrayList<Map>();
         String reason,notFoundReason,winnerReason,caveat;Map winner;boolean terminal,probable,declared,followManifest=true;int order;
         Search(AssessmentScan.ProcessContext c,Set<String>w,String d,OpenFiles o){context=c;wanted=w;driver=d;open=o;}
-        void fail(String why){if(winner==null&&!terminal&&reason==null)reason=why;}
+        final List<String> reasons=new ArrayList<String>();
+        void fail(String why){if(why!=null&&winner==null&&!reasons.contains(why)&&reasons.size()<4)reasons.add(why);if(winner==null&&!terminal&&reason==null)reason=why;}
         List<File> directory(File raw,String source){
             List<File> out=new ArrayList<File>();File dir=scan.linkedPath(raw);
             if(dir==null){fail("Caminho excluído ou não acessível: "+raw.getPath());return out;}
@@ -133,6 +134,7 @@ final class JdbcDriverResolver {
             open.read();for(Map c:candidates)markOpen(c);
             String status=winner!=null?((probable||declared)?"PROBABLE":winner.get("version")==null?"VERSION_UNAVAILABLE":"IDENTIFIED"):terminal?"AMBIGUOUS":reason!=null?"INCOMPLETE":"NOT_FOUND";
             String why=winnerReason!=null&&winner!=null?winnerReason:winner!=null?(probable?"Único JAR candidato aberto pela JVM; carregamento da classe não comprovado":"Classe exata selecionada pela ordem de carregamento; leitura passiva") :reason!=null?reason:notFoundReason!=null?notFoundReason:"Classe do driver não encontrada nas origens examinadas";
+            if(winner==null&&"INCOMPLETE".equals(status)&&reasons.size()>1){StringBuilder more=new StringBuilder(why);for(int i=0;i<reasons.size();i++)if(!reasons.get(i).equals(reason)&&more.length()<400)more.append(" | também: ").append(reasons.get(i));why=more.toString();}
             Map out=AssessmentScan.map("driverResolution",status,"driverResolutionReason",why,"driverCandidates",candidates);
             if(winner!=null){winner.put("loaded",Boolean.valueOf(!probable&&!declared));out.put("driverArtifact",winner.get("path"));if(winner.get("version")!=null)out.put("driverVersion",winner.get("version"));out.put("driverVersionSource",winner.get("versionSource"));out.put("driverFamily",winner.get("family"));if(probable||declared)out.put("driverConfidence","PROBABLE");if(Boolean.TRUE.equals(winner.get("replacedOnDisk"))){out.put("driverReplacedOnDisk",Boolean.TRUE);out.put("driverResolutionReason",why+"; JAR do driver substituído em disco; reinício pendente. Versão refere-se ao arquivo atual em disco");}}
             if(caveat!=null){out.put("driverResolutionCaveat",caveat);out.put("driverResolutionReason",out.get("driverResolutionReason")+"; "+caveat);}
@@ -214,7 +216,9 @@ final class JdbcDriverResolver {
         a.classpath=attrs.getValue("Class-Path");
         String implementation=attrs.getValue("Implementation-Version");
         String specification=attrs.getValue("Specification-Version");
-        addVersion(a,version(implementation)!=null?implementation:version(specification)!=null?specification:attrs.getValue("Bundle-Version"));
+        String embedded=null;
+        if(version(implementation)==null&&implementation!=null){java.util.regex.Matcher m=java.util.regex.Pattern.compile("(?i)driver version\\s*-\\s*([0-9][0-9A-Za-z._+\\-]*)$").matcher(implementation.trim());if(m.find())embedded=m.group(1);}
+        addVersion(a,version(implementation)!=null?implementation:embedded!=null?embedded:version(specification)!=null?specification:attrs.getValue("Bundle-Version"));
         if(!a.versions.isEmpty())a.versionSource="manifest";
     }
 }

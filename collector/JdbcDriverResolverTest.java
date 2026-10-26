@@ -77,6 +77,14 @@ public final class JdbcDriverResolverTest {
             check("21.9.0.0".equals(row(scan(signed,null,151,null)).get("driverVersion")),"Large signed manifest reads only main attributes");
             AssessmentScan disabled=ProcessLaunchTest.scanner();disabled.settings.put("inspectArchives",Boolean.FALSE);row=row(scan(domain,null,108,disabled));check(row.get("driverVersion")==null,"Inspection opt-out honored");
             AssessmentScan multi=scan(two,manifest.getCanonicalPath(),109,null);scan(wrong,null,110,multi);check(multi.datasources.size()==2,"Domains remain separate");
+            File legacy=new File(root,"legacy");JdbcEndpointTest.domain(legacy,"old.local");
+            jar(new File(legacy,"lib/ojdbc14.jar"),"oracle.jdbc.OracleDriver","Oracle JDBC Driver version - 10.2.0.5.0",null,null);
+            row=row(scan(legacy,null,200,null));
+            check("10.2.0.5.0".equals(row.get("driverVersion"))&&"ojdbc14 (JDK 1.4)".equals(row.get("driverFamily")),"ojdbc14 manifest text yields the version and family: "+Json.stringify(row));
+            File bare=new File(root,"bare");JdbcEndpointTest.domain(bare,"bare.local");
+            jar(new File(bare,"lib/ojdbc14.jar"),"oracle.jdbc.OracleDriver",null,null,null);
+            row=row(scan(bare,null,201,null));
+            check("VERSION_UNAVAILABLE".equals(row.get("driverResolution"))&&"ojdbc14 (JDK 1.4)".equals(row.get("driverFamily")),"ojdbc14 without version still reports its family");
             System.out.println("JDBC_DRIVER_RESOLVER_TESTS=PASS checks="+checks);
         } finally {CollectorTest.remove(root);}
     }

@@ -56,6 +56,19 @@ final class ProcessLaunch {
     String pathsReason() {
         return runtimePathsReason != null ? runtimePathsReason : !incompletePaths.isEmpty() ? incompletePaths.values().iterator().next() : null;
     }
+    /**
+     * Clipped perf-data vmArgs hide only what JAVA_TOOL_OPTIONS-style variables could add to a complete command line.
+     * Without those variables (and with a readable environment) the launcher stays complete.
+     */
+    void environmentOptions(String environment) {
+        String why = environment == null ? "Ambiente do processo não legível; opções adicionais da JVM não confirmadas (argumentos hsperfdata truncados)" : null;
+        if (environment != null) for (String pair : environment.split("\u0000")) {
+            int equals = pair.indexOf('=');
+            String name = equals < 0 ? pair : pair.substring(0, equals);
+            if (name.equals("JAVA_TOOL_OPTIONS") || name.equals("_JAVA_OPTIONS") || name.equals("JDK_JAVA_OPTIONS")) why = "Opções da JVM no ambiente (" + name + ") com argumentos hsperfdata truncados; não confirmadas";
+        }
+        if (why != null) { runtimePathsReason = why; runtimePathsIncomplete = true; }
+    }
     static boolean truncated(Map<String,String> perf, String key) { return "true".equals(perf.get("assessment.truncated." + key)); }
     void property(String arg, File cwd) {
         if (arg.startsWith("-Xbootclasspath/p:")) { readPaths(bootPrepend, arg.substring(18), cwd); return; }
@@ -135,7 +148,8 @@ final class ProcessLaunch {
             launch.classpath.clear(); launch.incompletePaths.remove(launch.classpath); launch.readPaths(launch.classpath, cp, launch.cwd);
             launch.explicitClasspath = true; launch.perfDataCompleted = true;
         }
-        if (truncated(perf, "java.rt.vmArgs")) launch.runtimePathsReason = "Argumentos da JVM truncados nos metadados hsperfdata; opções adicionais não confirmadas";
+        // The real command line is authoritative; clipped perf-data vmArgs only matter when it is opaque (@argfile). Environment options are checked by environmentOptions.
+        if (truncated(perf, "java.rt.vmArgs") && launch.opaqueArguments) launch.runtimePathsReason = "Argumentos da JVM truncados nos metadados hsperfdata; opções adicionais não confirmadas";
         boolean specific = false; for (String key : perf.keySet()) if (key.startsWith("assessment.truncated.")) specific = true;
         if (!specific && "true".equals(perf.get("assessment.pathsIncomplete"))) launch.runtimePathsReason = "Metadados de caminhos da JVM incompletos; fonte não especificada";
         launch.runtimePathsIncomplete = !launch.incompletePaths.isEmpty() || launch.runtimePathsReason != null;

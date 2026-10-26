@@ -604,6 +604,7 @@ public final class AssessmentScan {
             Long uid = processUid(directory);
             Map<String,String> perf = mapping == null || mapping.perfData == null ? null : HsPerfData.read(this, new File(directory, "root" + mapping.perfData), uid);
             ProcessLaunch launch = ProcessLaunch.parse(args, cwd, perf);
+            if (perf != null && ProcessLaunch.truncated(perf, "java.rt.vmArgs") && !launch.opaqueArguments) launch.environmentOptions(metadataText(new File(directory, "environ"), ProcessLaunch.PROCESS_TEXT_LIMIT, false));
             if(!ordinaryJava){if(!"Tomcat".equals(launch.serverType)||!(new File(args[0]).getName().equals("jsvc")||mapping!=null&&mapping.javaHome!=null))continue;launch.nativeTomcat=true;}
             if (collectorTool(launch)) continue;
             boolean replaced = mapping != null && mapping.replaced;

@@ -66,7 +66,17 @@ public final class HsPerfDataTest {
         ProcessLaunch opaque=ProcessLaunch.parse(new String[]{"java","@args"},null,clipped);
         check(opaque.runtimePathsIncomplete,"Opaque command line cannot repair partial classpath");
         clipped.put("assessment.truncated.java.rt.vmArgs","true");
-        check(ProcessLaunch.parse(new String[]{"java","-cp",classpath.toString(),"weblogic.Server"},null,clipped).runtimePathsIncomplete,"Partial additional JVM options remain uncertain");
+        ProcessLaunch full=ProcessLaunch.parse(new String[]{"java","-cp",classpath.toString(),"weblogic.Server"},null,clipped);
+        check(!full.runtimePathsIncomplete,"Clipped vmArgs do not hide anything from a complete command line");
+        full.environmentOptions("PATH=/usr/bin\u0000HOME=/root");
+        check(!full.runtimePathsIncomplete,"An environment without JVM option variables keeps the launcher complete");
+        full.environmentOptions("JAVA_TOOL_OPTIONS=-Xbootclasspath/a:/x.jar");
+        check(full.runtimePathsIncomplete&&full.pathsReason().contains("JAVA_TOOL_OPTIONS"),"JVM options from the environment stay uncertain when vmArgs are clipped");
+        ProcessLaunch unreadable=ProcessLaunch.parse(new String[]{"java","-cp",classpath.toString(),"weblogic.Server"},null,clipped);
+        unreadable.environmentOptions(null);
+        check(unreadable.runtimePathsIncomplete&&unreadable.pathsReason().contains("não legível"),"An unreadable environment stays uncertain");
+        ProcessLaunch opaqueClipped=ProcessLaunch.parse(new String[]{"java","@args"},null,clipped);
+        check(opaqueClipped.runtimePathsIncomplete,"An @argfile with clipped vmArgs stays uncertain");
         HsPerfData.Mapping mapping = HsPerfData.mapping("55f337a19000-55f337a1a000 r--p 00000000 fe:00 240443                     /usr/lib/jvm/jdk 21/bin/java (deleted)\n"
             + "7f5ba5200000-7f5ba54a3000 r--p 00000000 fe:00 240804                     /usr/lib/jvm/jdk 21/lib/server/libjvm.so (deleted)\n"
             + "7f5ba6a15000-7f5ba6a1d000 rw-s 00000000 fe:00 960729                     /tmp/hsperfdata_app/77\n7f5ba6a1d000-7f5ba6a1e000 rw-p 00000000 00:00 0 \n");

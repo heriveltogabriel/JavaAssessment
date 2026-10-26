@@ -42,6 +42,18 @@ public final class ApplicationJdbcTest {
             AssessmentScan earScan=ProcessLaunchTest.scanner();new ApplicationJdbc(earScan).archive(ear,context(earScan));check(earScan.datasources.size()==1,"EAR nested WAR persistence");
             File big=new File(root,"config/huge.properties");RandomAccessFile out=new RandomAccessFile(big,"rw");out.setLength(512*1024+1);out.close();
             AssessmentScan bounded=ProcessLaunchTest.scanner();ApplicationJdbc limited=new ApplicationJdbc(bounded);limited.inspect(big,context(bounded));check(bounded.datasources.isEmpty()&&bounded.warnings.toString().contains("512 KiB"),"text size bound");
+            // A sidecar JVM (Derby) started in a WebLogic domain home must not claim the domain's configuration files.
+            File domain=new File(root,"domain");ProcessLaunchTest.text(new File(domain,"config/config.xml"),"<domain/>");
+            ProcessLaunchTest.text(new File(domain,"config/datasources_wl_config.json"),"{\"url\":\"jdbc:oracle:thin:@//db.example:1521/SVC\"}");
+            File sidecar=new File(root,"sidecar-proc");ProcessLaunchTest.process(sidecar,"98779010","java","org.apache.derby.drda.NetworkServerControl","start");
+            java.nio.file.Files.createSymbolicLink(new File(sidecar,"98779010/cwd").toPath(),domain.getCanonicalFile().toPath());
+            AssessmentScan homeScan=ProcessLaunchTest.scanner();homeScan.discoverProcesses(sidecar);
+            check(homeScan.datasources.isEmpty(),"A sidecar process in a WebLogic domain home does not own the domain configuration: "+Json.stringify(homeScan.datasources));
+            File plain=new File(root,"plain-dir");ProcessLaunchTest.text(new File(plain,"config/custom.json"),"{\"url\":\"jdbc:oracle:thin:@//db.example:1521/SVC\"}");
+            File other=new File(root,"other-proc");ProcessLaunchTest.process(other,"98779011","java","org.example.Worker");
+            java.nio.file.Files.createSymbolicLink(new File(other,"98779011/cwd").toPath(),plain.getCanonicalFile().toPath());
+            AssessmentScan plainScan=ProcessLaunchTest.scanner();plainScan.discoverProcesses(other);
+            check(plainScan.datasources.size()==1,"A process working directory that is not a domain home is still scanned");
         }finally{CollectorTest.remove(root);}
         System.out.println("APPLICATION_JDBC=PASS persistence Hibernate Spring-XML generic dedup scopes archives limits privacy XXE");
     }

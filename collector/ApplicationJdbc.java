@@ -22,7 +22,8 @@ final class ApplicationJdbc {
             // A server's working directory is not an application configuration root.
             if(c.server==null) {
                 if(c.launch.jarPath!=null){File jar=new File(c.launch.jarPath);archive(jar,c);directory(jar.getParentFile(),c,0);}
-                directory(c.launch.cwd,c,0);
+                // A WebLogic domain home belongs to the domain's servers; a sidecar process (e.g. Derby) started there does not own its configuration.
+                if(c.launch.cwd==null||!new File(c.launch.cwd,"config/config.xml").isFile())directory(c.launch.cwd,c,0);
                 for(String path:c.launch.classpath){File file=new File(path);if(file.isDirectory())directory(file,c,0);}
             }
             // WAR/EARs already associated with this observed server, never unrelated stopped deployments.
