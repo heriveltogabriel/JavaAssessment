@@ -2,6 +2,12 @@
 
 Disponível na release **2.1.26**, preparada para teste do operador. Os instaladores anteriores foram preservados. Veja os [pacotes](../install/v2.1.26/README.md) e as [provas de atualização](validation/console-release-2.1.26.md). Atualizar o dashboard não atualiza os agentes automaticamente.
 
+## Correção de carga após a 2.1.26 — ainda sem novo instalador
+
+A correção em desenvolvimento remove as transações de escrita e a manutenção da fila das consultas de acompanhamento. A manutenção independente no servidor continua a cada 5 segundos. A tela passa a consultar a cada 30 segundos depois da resposta anterior, com recuo para 60/120 segundos em falhas, sem consultas automáticas de inventário geral em Solicitações. Aba oculta não consulta; o botão Atualizar agora continua disponível. O último estado recebido permanece visível em erro.
+
+Isso reduz a carga de acompanhamento, mas não altera a frequência de contato dos agentes nem garante resolver toda a carga do ambiente. Enquanto usar o instalador 2.1.26 publicado, fechar a aba interrompe as consultas do navegador e mantém a campanha no servidor. [Provas da correção](validation/monitoring-load-2026-10-26.md).
+
 ## Revisar e iniciar
 
 1. Em **Revisar agentes**, filtre por máquina, ambiente, versão, contato recente ou elegibilidade. A consulta retorna 50 máquinas por página. Nenhuma vem selecionada automaticamente.

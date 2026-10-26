@@ -25,12 +25,12 @@ function appHarness(){
   return {...test,api:test.globals.window.test,calls,notices,stateQueue,workQueue,adminQueue,reportsQueue,expire(){epoch++;readable=false;test.globals.window.test.expire();}};
 }
 function workHarness(){
-  const test=runtime(),queue=[],calls=[];
+  const test=runtime(),queue=[],calls=[],timers=new Map();let timerId=0;test.globals.setTimeout=(fn,ms)=>{timers.set(++timerId,{fn,ms});return timerId;};test.globals.clearTimeout=id=>timers.delete(id);
   const instrumented=source('work-requests.js').replace('  root.AssessmentWorkRequests={init,sync,clear,refresh};',`
-    root.AssessmentWorkRequests={init,sync,clear,refresh};root.test={configure(value){scope={view:'jobs',environmentId:'prod',hostId:'host-a',...value.scope};selection={id:'batch-a',type:'AGENT_UPDATE',...value.selection};filters={...defaults(),q:'java',status:'ACTIVE',page:2,...value.filters};},state:()=>({list,detail,errors})};
+    root.AssessmentWorkRequests={init,sync,clear,refresh};root.test={schedule:()=>schedulePoll(),configure(value){scope={view:'jobs',environmentId:'prod',hostId:'host-a',...value.scope};selection={id:'batch-a',type:'AGENT_UPDATE',...value.selection};filters={...defaults(),q:'java',status:'ACTIVE',page:2,...value.filters};},state:()=>({list,detail,errors})};
   `);
   vm.runInNewContext(instrumented,test.globals);test.globals.window.AssessmentWorkRequests.init({canRead:()=>true,isAdmin:()=>true,getRevision:()=>1,api(path,options){calls.push({path,options});return queue.shift().promise;}});test.globals.window.test.configure({});
-  return {...test,queue,calls,api:test.globals.window.AssessmentWorkRequests,state:test.globals.window.test.state};
+  return {...test,queue,calls,timers,schedule:test.globals.window.test.schedule,api:test.globals.window.AssessmentWorkRequests,state:test.globals.window.test.state,tick(){assert.equal(timers.size,1);const [id,timer]=[...timers][0];timers.delete(id);return timer.fn();}};
 }
 function accessHarness(){
   const test=runtime(),queue=[],calls=[];
@@ -62,6 +62,21 @@ function accessHarness(){
     const refresh=h.api.refreshCurrentView();assert.equal(h.calls.length,1);assert.equal(h.calls[0].reports,true);assert.equal(h.calls[0].background,false);assert.equal(h.get('refresh').disabled,true);
     request.resolve(success);await refresh;assert.equal(h.calls.length,1,'reports refresh does not also request inventory or work requests');assert.equal(h.get('refresh').disabled,false);
     assert.equal(h.notices.at(-1).message,success?'Dados atualizados.':'Não foi possível atualizar todos os dados. O último estado conhecido foi mantido.');assert.equal(!!h.notices.at(-1).error,!success);checks++;
+  }
+  {
+    const h=appHarness();h.api.configure({current:'jobs'});
+    assert.equal(await h.api.loadState(true),true);assert.equal(h.calls.length,0,'jobs background does not also load global state');
+    const state=deferred();h.stateQueue.push(state);const manual=h.api.loadState(false);assert.equal(h.calls.length,1,'explicit refresh still retrieves state');state.resolve({hosts:[]});await manual;checks+=2;
+  }
+  {
+    const h=workHarness();h.schedule();assert.equal([...h.timers.values()][0].ms,30000);
+    const list=deferred(),detail=deferred();h.queue.push(list,detail);const tick=h.tick();assert.equal(h.calls.length,2);assert.equal(h.timers.size,0,'no next cycle while responses are pending');
+    list.resolve({items:[],pagination:{page:1}});await flush();assert.equal(h.timers.size,0,'wait for slow detail too');
+    detail.resolve({request:{id:'batch-a',counts:{}},machines:[]});await tick;assert.equal([...h.timers.values()][0].ms,30000);
+    for(const interval of [60000,120000,120000]){const a=deferred(),b=deferred();h.queue.push(a,b);const t=h.tick();a.reject(Error('offline'));b.reject(Error('offline'));await t;assert.equal([...h.timers.values()][0].ms,interval);}
+    h.globals.document.hidden=true;const count=h.calls.length;await h.tick();assert.equal(h.calls.length,count,'hidden tab makes no requests');h.globals.document.hidden=false;
+    const a=deferred(),b=deferred();h.queue.push(a,b);const recovered=h.tick();a.resolve({items:[],pagination:{page:1}});b.resolve({request:{id:'batch-a',counts:{}},machines:[]});await recovered;assert.equal([...h.timers.values()][0].ms,30000,'success resets interval');
+    const c=deferred(),d=deferred();h.queue.push(c,d);const pending=h.tick();h.api.clear();c.resolve({items:[],pagination:{page:1}});d.resolve({request:{id:'batch-a',counts:{}},machines:[]});await pending;assert.equal(h.timers.size,0,'disposed scope cannot rearm polling');checks+=8;
   }
   for(const transition of ['navigation','logout']){
     const h=appHarness(),request=deferred();h.adminQueue.push(request);h.api.configure({current:'administration',route:'#administration?env=all'});const run=h.api.refreshCurrentView();if(transition==='navigation')h.api.configure({current:'jobs',route:'#jobs?env=all'});else h.expire();request.resolve(true);await run;assert.equal(h.notices.length,0);assert.equal(h.calls.length,1);assert.equal(h.get('refresh').disabled,false);checks++;

@@ -1,5 +1,13 @@
 # Melhorias planejadas
 
+## Acompanhamento de campanhas — correção após 2.1.26
+
+- [x] Remover manutenção e escrita dos GETs de lista, resumo e detalhe; preservar manutenção independente.
+- [x] Consultar a cada 30 segundos após a resposta, recuar em erro, não sobrepor ciclos e suprimir state automático em Solicitações.
+- [x] Reproduzir contenção antes da correção; validar leituras durante escrita, expiração independente, navegador e frota de 5.000 registros. [Evidências](validation/monitoring-load-2026-10-26.md).
+- [ ] Gerar nova release consolidada antes de instalar a correção; não substituir os ZIPs 2.1.26 publicados.
+- [ ] Medir carga real após aplicar: estes testes não medem o tráfego dos agentes nem excluem outros gargalos de CPU, rede ou consultas.
+
 ## Campanhas de agentes — entrega 2.1.26 para teste
 
 - [x] Revisão SQL paginada (50 na tela), busca/ambiente/versão/presença, seleção explícita e snapshot de todo o filtro.

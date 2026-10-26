@@ -15,8 +15,10 @@ public final class AgentCampaignUiFixture {
             try(var out=Files.newOutputStream(root.resolve("conf/server.properties"))){config.store(out,"Disposable campaign test");}
             try(var app=new AssessmentServer(root.toFile())){
                 var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),32);var pool=Executors.newFixedThreadPool(4);server.setExecutor(pool);server.createContext("/",app);server.start();
+                // Same maintenance entry point as production; faster clock only for this disposable fixture.
+                var maintenance=Executors.newSingleThreadScheduledExecutor();maintenance.scheduleWithFixedDelay(app::maintainOperations,250,250,TimeUnit.MILLISECONDS);
                 try{String base="http://127.0.0.1:"+server.getAddress().getPort();TestAccounts.login(base);var admin=app.auth.authenticate(TestAccounts.EMAIL,TestAccounts.PASSWORD);var reader=app.auth.create(admin,"Reader","reader@example.com","READER");app.auth.changePassword(reader.user().id(),reader.user().revision(),reader.password(),"Reader42!");System.out.println("CAMPAIGN_UI_URL="+base);System.out.flush();System.in.read();}
-                finally{server.stop(0);pool.shutdownNow();}
+                finally{maintenance.shutdownNow();maintenance.awaitTermination(5,TimeUnit.SECONDS);server.stop(0);pool.shutdownNow();}
             }
         }
     }

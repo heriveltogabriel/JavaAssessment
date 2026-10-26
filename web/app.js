@@ -321,6 +321,7 @@ const jdbcDriverProcessTable = associations => (Array.isArray(associations)?asso
   }
   async function loadState(quiet) {
     if(!AssessmentAccess.canInventory())return false;
+    if(current==='jobs'&&quiet)return true;
     if(current==='reports'){if(quiet)return true;requestRevision++;stateController?.abort();refreshing=false;updateRefreshState();return AssessmentReports.refresh(false);}
     const key=current==='administration'?'administration':stateParams().toString();if(quiet&&refreshing&&key===requestKey)return;
     const revision=++requestRevision;requestKey=key;stateController?.abort();stateController=new AbortController();refreshing=true;updateRefreshState();
