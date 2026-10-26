@@ -2,6 +2,9 @@
 
 Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versão **2.1.24**, preparada para atualização pela console, reúne dashboard, agente Linux e banco SQLite local, com organização por ambiente e máquina.
 
+
+**Em desenvolvimento, ainda não incluído nos instaladores 2.1.24:** [campanhas de atualização de agentes](docs/AGENT_UPDATE_CAMPAIGNS.md), com revisão paginada, grupos de 10, concorrência global, pausa/retomada e cancelamento em lote. Validação local com 5.000 máquinas, sem impor esse número como limite da frota.
+
 ![Overview do Java Assessment com indicadores de agentes, instalações Java, servidores e datasources JDBC](imagens/overview.png)
 
 Esta entrega reúne [configurações Spring/JDBC](docs/SPRING_DISCOVERY.md), [driver WebLogic por processo](docs/JDBC_DRIVER_RESOLUTION.md) e [Tomcat/JBoss](docs/TOMCAT_JBOSS_DISCOVERY.md). Excel, Mapa de bancos e o ajuste do driver provável estão nas [notas da 2.1.18](docs/RELEASE_2.1.18.md).

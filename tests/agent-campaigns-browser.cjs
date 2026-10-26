@@ -1,0 +1,45 @@
+'use strict';
+// Browser -> production HTTP handlers -> SQLite, 5000 disposable hosts, no remote machines.
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const {spawn}=require('node:child_process'),{chromium}=require('playwright');
+(async()=>{
+ const cwd=path.resolve(__dirname,'..'),out=path.join(cwd,'tmp/source-evidence/campaign-browser');fs.mkdirSync(out,{recursive:true});
+ const server=spawn(process.env.JAVA_HOME+'/bin/java',['-Xmx384m','-cp','tmp/source-classes:lib/*','assessment.AgentCampaignUiFixture',path.join(cwd,'web')],{cwd,stdio:['pipe','pipe','pipe']});
+ let browser,diagnostics='',page;const errors=[],requests=[],timings=[];server.stderr.on('data',d=>diagnostics+=d);
+ try{
+  const base=await new Promise((resolve,reject)=>{let output='';const t=setTimeout(()=>reject(Error('Fixture timeout '+diagnostics)),30000);server.stdout.on('data',d=>{output+=d;const m=output.match(/CAMPAIGN_UI_URL=(\S+)/);if(m){clearTimeout(t);resolve(m[1]);}});server.on('exit',code=>{clearTimeout(t);reject(Error('Fixture exited '+code+' '+diagnostics));});});
+  browser=await chromium.launch({channel:process.env.BROWSER_CHANNEL||'chrome',headless:true});const context=await browser.newContext({viewport:{width:1440,height:1000}});await context.route('**/*',r=>new URL(r.request().url()).origin===base?r.continue():r.abort());page=await context.newPage();page.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(r.url().includes('/api/'))requests.push({url:r.url(),method:r.method(),body:r.postData()});});page.on('dialog',d=>d.accept());
+  await page.goto(base);await page.locator('#login-email').fill('fixture-admin@example.com');await page.locator('#password').fill('fixture-personal-password-1234');await page.locator('#login-submit').click();await page.locator('#login-layer').waitFor({state:'hidden'});
+  const sess=await(await context.request.get(base+'/api/session')).json(),headers={'X-CSRF-Token':sess.csrfToken};
+  let t=Date.now();await page.locator('#agent-release-notice-review').click();await page.locator('[data-update-host]').first().waitFor();timings.push({reviewMs:Date.now()-t});
+  assert.equal(await page.locator('[data-update-host]').count(),50);assert.equal(await page.locator('[data-update-host]:checked').count(),0);assert.equal(await page.locator('#agent-update-submit').isDisabled(),true);assert.equal(await page.locator('#agent-update-run-assessment').isChecked(),false);
+  await page.screenshot({path:path.join(out,'review-5000.png')});await page.locator('[data-campaign-page="2"]').first().click();await page.locator('[data-update-host="host-00050"]').waitFor();assert.equal(await page.locator('[data-update-host]').count(),50);
+  await page.locator('#campaign-query').fill('host-049');await page.locator('[data-campaign-filter]').click();await page.locator('[data-update-host="host-04900"]').waitFor();assert.match(await page.locator('.agent-update-dialog .work-pagination').first().innerText(),/100 máquinas/);
+  await page.locator('[data-campaign-page-select]').click();assert.equal(await page.locator('[data-update-host]:checked').count(),50);await page.locator('[data-campaign-clear]').click();assert.equal(await page.locator('[data-update-host]:checked').count(),0);
+  await page.locator('#campaign-query').fill('');await page.locator('[data-campaign-filter]').click();await page.locator('[data-update-host="host-00000"]').waitFor();
+  await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.screenshot({path:path.join(out,'review-mobile.png')});await page.setViewportSize({width:1440,height:1000});
+  await page.locator('#agent-update-dialog [data-update-close]').first().click();await page.locator('#agent-update-dialog').waitFor({state:'hidden'});await page.locator('#agent-release-notice-review').click();await page.locator('[data-update-host]').first().waitFor();await page.locator('.agent-update-help summary').click();await page.locator('#agent-update-run-assessment').check();
+  await page.locator('[data-campaign-all]').click();await page.locator('h3').filter({hasText:'Confirmar campanha'}).waitFor();assert.match(await page.locator('#agent-update-body').innerText(),/5000 máquinas/);assert.equal(requests.filter(r=>r.method==='POST'&&new URL(r.url).pathname==='/api/agent-campaigns').length,0);
+  // Lose acknowledgement AFTER the real server commits. Retrying must preserve the same key.
+  let lost=false;await page.route('**/api/agent-campaigns',async route=>{if(!lost&&route.request().method()==='POST'){lost=true;await route.fetch();return route.abort('failed');}return route.continue();});
+  await page.locator('#agent-update-submit').click();await page.locator('#agent-update-error').waitFor();const first=requests.filter(r=>r.method==='POST'&&new URL(r.url).pathname==='/api/agent-campaigns').at(-1).body;
+  assert.equal(JSON.parse(first).runAssessmentAfterUpdate,true);
+  await page.locator('#agent-update-submit').click();await page.locator('#agent-update-dialog').waitFor({state:'hidden'});await page.locator('[data-work-machine]').first().waitFor();assert.equal(requests.filter(r=>r.method==='POST'&&new URL(r.url).pathname==='/api/agent-campaigns').at(-1).body,first);assert.equal(await page.locator('[data-work-machine]').count(),50);
+  const batch=new URL(requests.filter(r=>r.url.includes('/work-requests/detail?')).at(-1).url).searchParams.get('id');
+  await page.locator('[data-work-campaign="pause"]').click();await page.locator('[data-work-campaign="resume"]').waitFor();
+  const beforeDetail=requests.filter(r=>r.url.includes('work-requests/detail')).length;await page.locator('[data-work-machine] summary').first().click();await page.waitForFunction(()=>document.querySelector('.work-machine[open] .work-request-timeline')!==null);await page.waitForTimeout(300);assert.ok(requests.filter(r=>r.url.includes('work-requests/detail')&&new URL(r.url).searchParams.get('hostId')).length>=1,'events fetched only after expanding');
+  await page.locator('[data-work-machine-page="2"]').first().click();await page.locator('[data-work-machine="host-00050"]').waitFor();assert.equal(await page.locator('[data-work-machine]').count(),50);
+  await page.locator('.work-detail-header').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(out,'campaign-5000.png')});
+  await page.locator('[data-work-pick-page]').click();await page.locator('[data-work-campaign="selected"]').click();await page.waitForTimeout(250);
+  await page.locator('[data-work-campaign="cancel"]').click();await page.waitForTimeout(250);
+  // Real API security: CSRF and readers cannot control or select a campaign.
+  assert.equal((await context.request.post(base+'/api/agent-campaigns/command',{data:{batchId:batch,action:'resume'}})).status(),403);
+  assert.equal((await context.request.post(base+'/api/agent-campaigns/settings',{headers,data:{concurrency:11}})).status(),400);
+  assert.equal((await context.request.get(base+'/api/agent-campaigns/preview?pageSize=5000')).status(),400);
+  const reader=await browser.newContext(),login=await reader.request.post(base+'/api/login',{data:{email:'reader@example.com',password:'Reader42!'}});assert.equal(login.status(),200);const rs=await login.json();assert.equal((await reader.request.get(base+'/api/agent-campaigns/preview')).status(),403);assert.equal((await reader.request.post(base+'/api/agent-campaigns/command',{headers:{'X-CSRF-Token':rs.csrfToken},data:{batchId:batch,action:'cancel'}})).status(),403);await reader.close();
+  // Closing the UI does not stop cancellation; polling only asks for a bounded page.
+  let remaining=5000;for(let i=0;i<30;i++){const r=await context.request.get(base+'/api/work-requests/detail?id='+batch+'&type=AGENT_UPDATE&compact=true&pageSize=50');assert.equal(r.status(),200);const d=await r.json();assert.ok(d.machines.length<=50);remaining=d.request.counts.WAITING;if(remaining===0)break;await page.waitForTimeout(200);}
+  assert.equal(remaining,0,'cancellation completes on server');assert.deepEqual(errors,[]);const evidence={status:'PASS',fleet:5000,checks:['50 per review page','nothing selected by default','server filters','page selection','all-filter snapshot confirmation','no implicit assessment','mobile layout','lost ACK replay','50 per monitoring page','lazy events','pause','bulk cancel selected/all','CSRF','reader denial','invalid capacity rejected'],timings};fs.writeFileSync(path.join(out,'results.json'),JSON.stringify(evidence,null,2));console.log(JSON.stringify(evidence));
+ }catch(e){if(page)await page.screenshot({path:path.join(out,'failure.png')}).catch(()=>{});console.error(diagnostics);throw e;}
+ finally{await browser?.close();server.stdin.end('\n');await new Promise(resolve=>{if(server.exitCode!==null)return resolve();server.once('exit',resolve);setTimeout(()=>{server.kill('SIGTERM');resolve();},3000).unref();});}
+})().catch(e=>{console.error(e);process.exitCode=1;});

@@ -17,7 +17,7 @@ done
 "$JAVA_HOME/bin/java" -Djava.io.tmpdir="$JTMP" -Xmx96m -cp "$CP" assessment.ServerDataSourcesTest \
   --export tmp/source-evidence/jdbc-fixtures.json
 for suite in JdbcEndpointReportsTest DatabaseGroupsHttpTest EnrollmentCapacityTest EnvironmentPresenceTest ArchiveDefaultsHttpTest SettingsPathsHttpTest PortugueseTest InventoryStoreTest UserAuthTest UserAccessHttpTest DashboardMaintenanceHttpTest EnvironmentInstallAccessTest EnvironmentInstallHttpTest InstallCommandTest \
-  MachineActionsHttpTest MachineCleanupHttpTest AgentUpdateWorkerTest AgentUpdateStartTimeoutTest AgentUpdateHttpTest \
+  MachineActionsHttpTest MachineCleanupHttpTest AgentUpdateWorkerTest AgentUpdateStartTimeoutTest AgentUpdateCampaignsTest AgentUpdateHttpTest \
   WorkRequestsHttpTest RuntimeInventoryHttpTest CsvExportTest InventoryArchiveTest InventoryArchiveHttpTest \
   VersionedCsvHttpTest DashboardVersionHttpTest CompactOverviewTest LifecycleHttpTest PostUpdateAssessmentsTest PostUpdateAssessmentHttpTest; do
   "$JAVA_HOME/bin/java" -Djava.io.tmpdir="$JTMP" -Xmx384m -cp "$CP" "assessment.$suite"

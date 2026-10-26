@@ -70,6 +70,9 @@ public final class InventoryStore implements AutoCloseable {
             org.sqlite.Function.create(c,"assessment_lower",new org.sqlite.Function(){
                 @Override protected void xFunc()throws SQLException {String value=value_text(0);result(value==null?"":java.text.Normalizer.normalize(value,java.text.Normalizer.Form.NFC).toLowerCase(Locale.ROOT));}
             },1,org.sqlite.Function.FLAG_DETERMINISTIC);
+            org.sqlite.Function.create(c,"assessment_update_older",new org.sqlite.Function(){
+                @Override protected void xFunc()throws SQLException {String v=value_text(0),target=value_text(1);result(AgentUpdateCatalog.version(v)&&AgentUpdateCatalog.version(target)&&AgentUpdateCatalog.compare(v,target)<0?1:0);}
+            },2,org.sqlite.Function.FLAG_DETERMINISTIC);
             Lifecycle.register(c);
             return c;
         } catch(SQLException e) {c.close();throw e;}
@@ -80,6 +83,9 @@ public final class InventoryStore implements AutoCloseable {
             String[] statements={
                 "CREATE TABLE IF NOT EXISTS agent_update_batches(id TEXT PRIMARY KEY,request_key TEXT NOT NULL UNIQUE,target_version TEXT NOT NULL,selection TEXT NOT NULL,payload TEXT NOT NULL)",
                 "CREATE TABLE IF NOT EXISTS agent_update_requests(id TEXT PRIMARY KEY,host_id TEXT NOT NULL,batch_id TEXT NOT NULL,ordinal INTEGER NOT NULL,status TEXT NOT NULL,payload TEXT NOT NULL,UNIQUE(batch_id,host_id))",
+                "CREATE TABLE IF NOT EXISTS agent_update_selections(id TEXT PRIMARY KEY,actor_id TEXT NOT NULL,version TEXT NOT NULL,expires_at INTEGER NOT NULL,payload TEXT NOT NULL)",
+                "CREATE TABLE IF NOT EXISTS agent_update_selection_hosts(selection_id TEXT NOT NULL REFERENCES agent_update_selections(id) ON DELETE CASCADE,host_id TEXT NOT NULL,ordinal INTEGER NOT NULL,PRIMARY KEY(selection_id,host_id))",
+                "CREATE INDEX IF NOT EXISTS agent_update_pending ON agent_update_requests(status,batch_id,ordinal)",
                 "CREATE TABLE IF NOT EXISTS agent_update_operations(id TEXT PRIMARY KEY,host_id TEXT NOT NULL,batch_id TEXT NOT NULL,ordinal INTEGER NOT NULL,status TEXT NOT NULL,payload TEXT NOT NULL)",
                 "CREATE TABLE IF NOT EXISTS agent_update_steps(id TEXT PRIMARY KEY,operation_id TEXT NOT NULL,ordinal INTEGER NOT NULL,kind TEXT NOT NULL,request_id TEXT,status TEXT NOT NULL,payload TEXT NOT NULL)",
                 "CREATE INDEX IF NOT EXISTS agent_update_operation_host ON agent_update_operations(host_id,status)",

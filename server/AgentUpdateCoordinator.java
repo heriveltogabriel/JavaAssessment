@@ -41,7 +41,7 @@ final class AgentUpdateCoordinator {
         var c=pinned(parent);var plan=obj(parent.get("updatePlan"));Object profiles=plan.get("profiles");require(profiles instanceof List<?> list&&index>=0&&index<list.size(),409,"MIGRATION_PROFILE_REQUIRED");String id=s(obj(((List<?>)profiles).get(index)).get("id"));return c.bridges().stream().filter(b->b.id().equals(id)).findFirst().orElseThrow(()->new EnrollmentRegistry.Failure(503,"RELEASE_UNAVAILABLE"));
     }
     private Map<String,Object> latestChild(Map<String,Object> parent){var rows=db.documents("SELECT r.payload FROM agent_update_steps st JOIN agent_update_requests r ON r.id=st.request_id WHERE st.operation_id=? AND st.kind='LEGACY_BRIDGE' ORDER BY st.ordinal DESC LIMIT 1",parent.get("id"));return rows.isEmpty()?null:rows.get(0);}
-    private boolean next(Map<String,Object> parent){return db.scalar("SELECT count(*) FROM agent_update_requests WHERE batch_id=? AND ordinal<? AND status IN ("+AgentUpdateRegistry.BUSY_SQL+")",parent.get("batchId"),parent.get("ordinal"))==0;}
+    private boolean next(Map<String,Object> parent){return AgentUpdateCampaigns.allowed(db,parent);}
     private boolean conflict(String host){return db.scalar("SELECT count(*) FROM jobs WHERE host_id=? AND status='RUNNING'",host)>0||db.scalar("SELECT count(*) FROM uninstall_requests WHERE host_id=? AND status IN ('WAITING','UNINSTALLING','UNCONFIRMED')",host)>0;}
     Map<String,Object> delivery(Map<String,Object> parent,String capability){
         if(!AgentUpdateRegistry.BUSY.contains(s(parent.get("status")))||!next(parent)||conflict(s(parent.get("hostId"))))return map("blocked",true);

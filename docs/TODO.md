@@ -1,5 +1,16 @@
 # Melhorias planejadas
 
+## Campanhas de agentes — implementação sem incremento de versão
+
+- [x] Revisão SQL paginada (50 na tela), busca/ambiente/versão/presença, seleção explícita e snapshot de todo o filtro.
+- [x] Campanha persistente e idempotente, grupos de 10 e concorrência global 2, ajustável até 10. Sem teto fixo de frota.
+- [x] Prazo somente na admissão, salto de offline, pausa por resultado desconhecido ou três falhas/restaurações.
+- [x] Pausa/retomada, cancelamento de fila/selecionados/filtro no servidor, sem interromper instalações iniciadas; repetir somente resultados problemáticos.
+- [x] Acompanhamento paginado, grupo atual e eventos carregados sob demanda; controle continua após reinício.
+- [x] Validar 5.000 registros, suíte de origem, navegador desktop/mobile e migração com pacotes assinados. [Guia](AGENT_UPDATE_CAMPAIGNS.md) · [Evidências](validation/agent-update-campaigns-2026-10-26.md).
+- [ ] Preparar a próxima release consolidada e validar os ZIPs finais antes de publicar; 2.1.24 e os instaladores publicados permanecem intactos.
+- [ ] Piloto no cliente com poucas máquinas; medir carga e ajustar concorrência antes de liberar a campanha completa. Não houve execução em máquinas do cliente nesta implementação.
+
 ## Ansible — atualização em lotes (sem alterar a versão 2.1.24)
 
 - [x] Playbook independente via API administrativa, seleção exata pelo inventário/ID, paginação e prévia padrão.
@@ -8,7 +19,7 @@
 - [x] Relatório por máquina, Vault/stdin e HTTPS/CA, sem credenciais nos relatórios.
 - [x] 31 testes aprovados, incluindo execução Ansible sobre HTTPS simulado. [Evidências](validation/ansible-update-batches-2026-10-26.md).
 - [ ] Validar piloto real com `--limit` de um host após encerrar a fila anterior; testes locais não substituem validação no cliente.
-- [ ] Melhorar a interface do dashboard: seleção paginada/sem seleção global automática, cancelamento de lote e validade de filas grandes. Este playbook não altera a interface nem os prazos do servidor.
+- [x] Implementar a interface e fila de campanhas descritas abaixo; o playbook continua separado. A publicação da nova console ainda está pendente.
 
 ## Ansible — recuperação de instalações (sem alterar a versão 2.1.24)
 

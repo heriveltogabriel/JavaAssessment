@@ -42,10 +42,11 @@ final class WorkRequests {
     }
     static final class Filter {
         String environment="",host="",type="ALL",status="ALL",q="",from="",to="";
-        int page=1,size=20;
+        int page=1,size=20; boolean compact=false; String machineStatus="",machineQuery="";
         void validate(){
             require(Set.of("ALL","ASSESSMENT","AGENT_UPDATE").contains(type)&&FILTERS.contains(status),400,"Invalid work request filter");
             require(environment.length()<=100&&host.length()<=100&&q.length()<=200&&page>=1&&page<=1000000&&size>=1&&size<=100,400,"Invalid work request scope or pagination");
+            require(machineQuery.length()<=200&&(machineStatus.isEmpty()||STATES.contains(machineStatus)),400,"Invalid machine filter");
             from=InventoryQueries.time(from,false);to=InventoryQueries.time(to,true);
             require(from.isEmpty()||to.isEmpty()||java.time.Instant.parse(from).isBefore(java.time.Instant.parse(to)),400,"Invalid date range");
         }
@@ -84,7 +85,7 @@ final class WorkRequests {
         Map<String,Object> counts=map("total",n(row.get("total")));for(String state:STATES)counts.put(state,n(row.get(state)));
         String type=s(row.get("type")),id=s(row.get("id")),status=s(row.get("status"));
         Map<String,Object> result=map("id",id,"type",type,"title",type.equals("AGENT_UPDATE")?"Atualização de agentes para v"+s(row.get("targetVersion")):"Assessment "+id.substring(0,Math.min(8,id.length())),"status",status,"createdAt",s(row.get("createdAt")),"updatedAt",s(row.get("updatedAt")),"requestedBy",clean(row.get("requestedBy")),"environmentId",s(row.get("environmentId")),"environmentName",clean(row.get("environmentName")),"targetVersion",s(row.get("targetVersion")),"counts",counts);
-        if(!Set.of("QUEUED","WAITING","RUNNING","UNCONFIRMED").contains(status)&&!s(row.get("finishedAt")).isEmpty())result.put("finishedAt",row.get("finishedAt"));List<String> notes=observationNotes(List.of(s(row.get("observationSummary"))),"");if(!notes.isEmpty())result.put("observationSummary",notes.get(0));result.put("pendingAssessments",n(row.get("pendingAssessments")));return result;
+        if(!Set.of("QUEUED","WAITING","RUNNING","UNCONFIRMED").contains(status)&&!s(row.get("finishedAt")).isEmpty())result.put("finishedAt",row.get("finishedAt"));List<String> notes=observationNotes(List.of(s(row.get("observationSummary"))),"");if(!notes.isEmpty())result.put("observationSummary",notes.get(0));result.put("pendingAssessments",n(row.get("pendingAssessments")));if(type.equals("AGENT_UPDATE")){var batches=db.documents("SELECT payload FROM agent_update_batches WHERE id=?",id);var control=batches.isEmpty()?Map.<String,Object>of():batches.get(0);result.put("campaign",map("enabled",control.getOrDefault("campaign",false),"state",control.getOrDefault("controlState","LEGACY"),"reason",control.getOrDefault("pauseReason",""),"batchSize",control.getOrDefault("batchSize",1),"concurrency",AgentUpdateCampaigns.limit(db)));}return result;
     }
     Map<String,Object> list(Filter f){
         f.validate();List<Object> args=new ArrayList<>();String cte=cte(f,args),where=conditions(f,args);long total=db.scalar(cte+"SELECT count(*) FROM operations WHERE "+where,args.toArray());long pages=Math.max(1,(total+f.size-1)/f.size);int page=(int)Math.min(f.page,pages);args.add(f.size);args.add((long)(page-1)*f.size);
@@ -103,20 +104,39 @@ final class WorkRequests {
         String status=s(payload.get("status"));List<Object> events;
         if(update)events=updateEvents(payload);else{events=new ArrayList<>();if(!s(payload.get("createdAt")).isEmpty())events.add(map("at",payload.get("createdAt"),"status","QUEUED","diagnostic",""));if(!s(payload.get("startedAt")).isEmpty())events.add(map("at",payload.get("startedAt"),"status","RUNNING","diagnostic",""));if(!s(payload.get("finishedAt")).isEmpty())events.add(map("at",payload.get("finishedAt"),"status",status,"diagnostic",clean(payload.getOrDefault("error",payload.get("summary")))));}
         Map<String,Object> result=map("id",payload.get("id"),"hostId",payload.get("hostId"),"hostname",clean(row.get("hostname")),"environmentId",s(row.get("environmentId")),"environmentName",clean(row.get("environmentName")),"fromVersion",s(payload.get("fromVersion")),"targetVersion",s(payload.get("targetVersion")),"status",status,"createdAt",s(payload.get("createdAt")),"updatedAt",s(payload.getOrDefault("updatedAt",payload.getOrDefault("finishedAt",payload.getOrDefault("startedAt",payload.get("createdAt"))))),"diagnostic",update?diagnostic(payload.get("diagnostic")):clean(payload.getOrDefault("error",payload.get("summary"))),"events",events,"historyPartial",update?!(payload.get("events") instanceof List<?>)||Boolean.TRUE.equals(payload.get("historyPartial")):false);
-        if((update?AgentUpdateRegistry.TERMINAL.contains(status):!Set.of("QUEUED","RUNNING").contains(status))&&!s(row.get("finishedAt")).isEmpty())result.put("finishedAt",row.get("finishedAt"));if(!update){result.putAll(observations(payload));result.put("updateOrigins",new PostUpdateAssessments(db).publicOrigins(s(payload.get("id"))));}else{result.put("assessment",new PostUpdateAssessments(db).publicRelation(s(payload.get("id"))));result.put("updateMode",payload.get("updateMode"));result.put("migrationStage",payload.get("migrationStage"));}return result;
+        if((update?AgentUpdateRegistry.TERMINAL.contains(status):!Set.of("QUEUED","RUNNING").contains(status))&&!s(row.get("finishedAt")).isEmpty())result.put("finishedAt",row.get("finishedAt"));if(!update){result.putAll(observations(payload));result.put("updateOrigins",new PostUpdateAssessments(db).publicOrigins(s(payload.get("id"))));}else{result.put("assessment",new PostUpdateAssessments(db).publicRelation(s(payload.get("id"))));result.put("updateMode",payload.get("updateMode"));result.put("migrationStage",payload.get("migrationStage"));result.put("runAssessmentAfterUpdate",payload.get("runAssessmentAfterUpdate"));result.put("waitingForSlot",Boolean.TRUE.equals(payload.get("campaign"))&&status.equals("WAITING")&&n(payload.get("startDeadlineMillis"))==0);result.put("cancelRequested",Boolean.TRUE.equals(payload.get("cancelRequested")));result.put("startDeadlineAt",payload.get("startDeadlineAt"));}return result;
     }
     @SuppressWarnings("unchecked") Map<String,Object> detail(Filter f,String id,String type){
         f.validate();require(!id.isEmpty()&&id.length()<=100&&Set.of("ASSESSMENT","AGENT_UPDATE").contains(type),400,"Select a work request");
         List<Object> args=new ArrayList<>();String prefix=cte(f,args);args.add(id);args.add(type);var rows=db.rows(prefix+"SELECT * FROM operations WHERE id=? AND type=? LIMIT 1",args.toArray());require(!rows.isEmpty(),404,"Work request not found in this scope");
-        List<Object> machines=new ArrayList<>(),skipped=new ArrayList<>();
+        List<Object> machines=new ArrayList<>(),skipped=new ArrayList<>();Map<String,Object> machinePagination=map("page",1,"pages",1,"pageSize",1,"total",1);
         args=new ArrayList<>();prefix=cte(f,args);args.add(id);String where=" AND "+f.scope(args);
         if(type.equals("AGENT_UPDATE")){
-            for(var row:db.rows(prefix+"SELECT u.*,r.payload FROM update_rows u JOIN agent_update_requests r ON r.id=u.rowId WHERE u.batchId=?"+where+" ORDER BY r.ordinal LIMIT 1000",args.toArray()))machines.add(machine((Map<String,Object>)Json.parse(s(row.get("payload"))),row,true));
+            if(!f.machineStatus.isEmpty()){where+=" AND u.status=?";args.add(f.machineStatus);}
+            if(!f.machineQuery.isEmpty()){where+=" AND u.hostname LIKE ? ESCAPE '\\'";args.add("%"+InventoryQueries.escapeLike(f.machineQuery)+"%");}
+            long machineTotal=db.scalar(prefix+"SELECT count(*) FROM update_rows u JOIN agent_update_requests r ON r.id=u.rowId WHERE u.batchId=?"+where,args.toArray());
+            int size=f.compact?f.size:1000;long pages=Math.max(1,(machineTotal+size-1)/size),page=Math.min(f.page,pages);args.add(size);args.add((page-1)*size);
+            for(var row:db.rows(prefix+"SELECT u.*,r.payload FROM update_rows u JOIN agent_update_requests r ON r.id=u.rowId WHERE u.batchId=?"+where+" ORDER BY r.ordinal LIMIT ? OFFSET ?",args.toArray())){
+                var value=machine((Map<String,Object>)Json.parse(s(row.get("payload"))),row,true);
+                if(f.compact){value.remove("events");value.put("eventsDeferred",true);}machines.add(value);
+            }
+            machinePagination=map("page",page,"pages",pages,"pageSize",size,"total",machineTotal);
             List<Object> skipArgs=new ArrayList<>();String skipPrefix=cte(f,skipArgs);skipArgs.add(id);String skipScope=f.scope(skipArgs);
-            for(var row:db.rows(skipPrefix+"SELECT u.hostId,u.hostname,coalesce(json_extract(sk.value,'$.reason'),'') AS reason FROM update_rows u JOIN agent_update_batches b ON b.id=u.batchId JOIN json_each(b.payload,'$.skipped') sk ON json_extract(sk.value,'$.hostId')=u.hostId WHERE u.isRequest=0 AND u.batchId=? AND "+skipScope+" ORDER BY u.hostId LIMIT 1000",skipArgs.toArray()))skipped.add(map("hostId",s(row.get("hostId")),"hostname",clean(row.get("hostname")),"reason",s(row.get("reason"))));
+            if(!f.compact)for(var row:db.rows(skipPrefix+"SELECT u.hostId,u.hostname,coalesce(json_extract(sk.value,'$.reason'),'') AS reason FROM update_rows u JOIN agent_update_batches b ON b.id=u.batchId JOIN json_each(b.payload,'$.skipped') sk ON json_extract(sk.value,'$.hostId')=u.hostId WHERE u.isRequest=0 AND u.batchId=? AND "+skipScope+" ORDER BY u.hostId LIMIT 1000",skipArgs.toArray()))skipped.add(map("hostId",s(row.get("hostId")),"hostname",clean(row.get("hostname")),"reason",s(row.get("reason"))));
         }else{
             for(var row:db.rows(prefix+"SELECT j.*,source.payload FROM job_rows j JOIN jobs source ON source.id=j.id WHERE j.id=?"+where+" LIMIT 1",args.toArray()))machines.add(machine((Map<String,Object>)Json.parse(s(row.get("payload"))),row,false));
         }
-        return map("request",item(rows.get(0)),"machines",machines,"skipped",skipped);
+        var summary=item(rows.get(0));
+        if(type.equals("AGENT_UPDATE")){
+            var campaign=(Map<String,Object>)summary.get("campaign");
+            campaign.put("globalWaiting",db.scalar("SELECT count(*) FROM agent_update_requests WHERE batch_id=? AND status='WAITING'",id));
+            if(Boolean.TRUE.equals(campaign.get("enabled"))){
+                long group=Math.max(1,n(campaign.get("batchSize"))),total=db.scalar("SELECT count(*) FROM agent_update_requests WHERE batch_id=?",id);
+                long pending=db.scalar("SELECT count(*) FROM agent_update_requests WHERE batch_id=? AND status IN ("+AgentUpdateRegistry.BUSY_SQL+")",id);
+                campaign.put("groups",(total+group-1)/group);
+                campaign.put("currentGroup",pending==0?0:db.scalar("SELECT min(ordinal) FROM agent_update_requests WHERE batch_id=? AND status IN ("+AgentUpdateRegistry.BUSY_SQL+")",id)/group+1);
+            }
+        }
+        return map("request",summary,"machines",machines,"skipped",f.compact?List.of():skipped,"machinePagination",machinePagination);
     }
 }
