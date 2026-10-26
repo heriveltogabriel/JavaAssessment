@@ -22,8 +22,10 @@ final class ApplicationJdbc {
             // A server's working directory is not an application configuration root.
             if(c.server==null) {
                 if(c.launch.jarPath!=null){File jar=new File(c.launch.jarPath);archive(jar,c);directory(jar.getParentFile(),c,0);}
-                // A WebLogic domain home belongs to the domain's servers; a sidecar process (e.g. Derby) started there does not own its configuration.
+                // A WebLogic domain home belongs to the domain's servers: a sidecar process (e.g. Derby) started there is not the owner.
+                AssessmentScan.ProcessContext home=c.launch.cwd!=null&&new File(c.launch.cwd,"config/config.xml").isFile()?domainOwner(c.launch.cwd):null;
                 if(c.launch.cwd==null||!new File(c.launch.cwd,"config/config.xml").isFile())directory(c.launch.cwd,c,0);
+                else if(home!=null&&home!=c)directory(c.launch.cwd,home,0);
                 for(String path:c.launch.classpath){File file=new File(path);if(file.isDirectory())directory(file,c,0);}
             }
             // WAR/EARs already associated with this observed server, never unrelated stopped deployments.
@@ -35,6 +37,16 @@ final class ApplicationJdbc {
         }
         scan.applicationConfigFiles.load();
         for(File file:scan.applicationConfigFiles.files)if(!scan.applicationConfigFiles.shared.contains(file.getPath()))inspect(file,scan.applicationConfigFiles.owner(file));
+    }
+    /** The first running WebLogic server (lowest PID) whose domain is this directory; null for a stopped or unrelated domain. */
+    AssessmentScan.ProcessContext domainOwner(File directory){
+        String wanted=ApplicationConfigFiles.canonical(directory);AssessmentScan.ProcessContext owner=null;
+        if(wanted==null)return null;
+        for(AssessmentScan.ProcessContext w:scan.processContexts){
+            if(w.server==null||!"WebLogic".equals(w.server.get("type"))||!(w.server.get("domainPath") instanceof String))continue;
+            if(wanted.equals(ApplicationConfigFiles.canonical(new File((String)w.server.get("domainPath"))))&&(owner==null||w.pid<owner.pid))owner=w;
+        }
+        return owner;
     }
     String identity(String path,AssessmentScan.ProcessContext c){return path+":"+(c==null?"machine":String.valueOf(c.application.get("id")))+":"+(c==null?0:c.pid);}
     boolean capacity(){if(files>=FILES||entries>=ENTRIES){scan.warn("Limite da busca de configurações JDBC das aplicações atingido");return false;}return scan.available();}
@@ -169,11 +181,13 @@ final class ApplicationJdbc {
         // A dialect by itself is not a configured datasource.
         if(properties.get("url")==null&&driver==null&&jndi==null)return;
         if(generic&&fields.get("databaseHost")==null)return;
+        String domain=c!=null&&c.server!=null&&"WebLogic".equals(c.server.get("type"))&&c.server.get("domainPath") instanceof String?(String)c.server.get("domainPath"):null;
         for(Object value:scan.datasources){Map existing=(Map)value;
             boolean sameApp=c==null?existing.get("applicationId")==null:c.application.get("id")!=null&&c.application.get("id").equals(existing.get("applicationId"));
             boolean sameSource=source.equals(existing.get("configurationSource"));
             boolean endpoint=fields.get("databaseHost")!=null&&fields.get("databaseHost").equals(existing.get("databaseHost"))&&equal(fields.get("databasePort"),existing.get("databasePort"))&&equal(fields.get("databaseName"),existing.get("databaseName"));
             boolean sameJndi=jndi!=null&&jndi.equals(JndiLinks.normalized(existing.get("jndiName")));
+            if(domain!=null&&domain.equals(existing.get("domainPath"))&&(endpoint||sameJndi))return;
             if(sameApp&&(generic||sameSource)&&(endpoint||sameJndi)&&(generic||properties.get("name")==null))return;
         }
         if(scan.datasources.size()>=512){scan.warn("Limite de datasources atingido");return;}
@@ -187,6 +201,7 @@ final class ApplicationJdbc {
         SpringDataSource.matchPackagedDriver(fields,libraries);
         int before=scan.datasources.size();scan.addConfiguredSpringDatasource(source,fields,app,context);
         for(int i=before;i<scan.datasources.size();i++){Map row=(Map)scan.datasources.get(i);row.put("evidence","Configuração JDBC encontrada por "+method+"; carregamento do driver e conexão não verificados");
+            if(domain!=null){row.put("domainPath",domain);row.put("domainName",new File(domain).getName());}
             if(c==null){for(String key:new String[]{"pid","applicationId","applicationName","associations"})row.remove(key);row.put("configurationBinding","machine-unbound");row.put("scanScope","app-config-dir");}
         }
     }

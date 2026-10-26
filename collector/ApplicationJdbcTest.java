@@ -42,13 +42,22 @@ public final class ApplicationJdbcTest {
             AssessmentScan earScan=ProcessLaunchTest.scanner();new ApplicationJdbc(earScan).archive(ear,context(earScan));check(earScan.datasources.size()==1,"EAR nested WAR persistence");
             File big=new File(root,"config/huge.properties");RandomAccessFile out=new RandomAccessFile(big,"rw");out.setLength(512*1024+1);out.close();
             AssessmentScan bounded=ProcessLaunchTest.scanner();ApplicationJdbc limited=new ApplicationJdbc(bounded);limited.inspect(big,context(bounded));check(bounded.datasources.isEmpty()&&bounded.warnings.toString().contains("512 KiB"),"text size bound");
-            // A sidecar JVM (Derby) started in a WebLogic domain home must not claim the domain's configuration files.
-            File domain=new File(root,"domain");ProcessLaunchTest.text(new File(domain,"config/config.xml"),"<domain/>");
-            ProcessLaunchTest.text(new File(domain,"config/datasources_wl_config.json"),"{\"url\":\"jdbc:oracle:thin:@//db.example:1521/SVC\"}");
-            File sidecar=new File(root,"sidecar-proc");ProcessLaunchTest.process(sidecar,"98779010","java","org.apache.derby.drda.NetworkServerControl","start");
+            // A sidecar JVM (Derby) started in a WebLogic domain home must not own the domain configuration: the domain's WebLogic server does.
+            File domain=new File(root,"domain");JdbcEndpointTest.domain(domain,"db.example");
+            ProcessLaunchTest.text(new File(domain,"config/datasources_wl_config.json"),"{\"a\":\"jdbc:oracle:thin:@//db.example:1521/ORDERS\",\"b\":\"jdbc:oracle:thin:@//extra.example:1521/EXTRA\"}");
+            File sidecar=new File(root,"sidecar-proc");
+            ProcessLaunchTest.process(sidecar,"98779010","java","org.apache.derby.drda.NetworkServerControl","start");
             java.nio.file.Files.createSymbolicLink(new File(sidecar,"98779010/cwd").toPath(),domain.getCanonicalFile().toPath());
+            AssessmentScan stopped=ProcessLaunchTest.scanner();stopped.discoverProcesses(sidecar);
+            check(stopped.datasources.isEmpty(),"Without a running WebLogic server of that domain nothing is attributed to the sidecar: "+Json.stringify(stopped.datasources));
+            ProcessLaunchTest.process(sidecar,"98779011","java","-Dweblogic.RootDirectory="+domain.getCanonicalPath(),"-Dweblogic.Name=AdminServer","weblogic.Server");
             AssessmentScan homeScan=ProcessLaunchTest.scanner();homeScan.discoverProcesses(sidecar);
-            check(homeScan.datasources.isEmpty(),"A sidecar process in a WebLogic domain home does not own the domain configuration: "+Json.stringify(homeScan.datasources));
+            String all=Json.stringify(homeScan.datasources);
+            check(homeScan.datasources.size()==2,"Domain datasource (config.xml) plus the one endpoint only present in the JSON file: "+all);
+            int found=0;for(Object o:homeScan.datasources){Map row=(Map)o;if("EXTRA".equals(row.get("databaseName"))){found++;
+                check(row.get("domainPath")!=null&&row.get("domainName")!=null&&"domain".equals(row.get("domainName")),"New endpoint carries the domain");
+                for(Object assoc:(List)row.get("associations"))check(Long.valueOf(98779011L).equals(((Map)assoc).get("pid")),"Associated with the WebLogic server, not the Derby sidecar: "+all);}}
+            check(found==1&&!all.contains("NetworkServerControl datasource"),"Single extra row and no Derby-named datasource: "+all);
             File plain=new File(root,"plain-dir");ProcessLaunchTest.text(new File(plain,"config/custom.json"),"{\"url\":\"jdbc:oracle:thin:@//db.example:1521/SVC\"}");
             File other=new File(root,"other-proc");ProcessLaunchTest.process(other,"98779011","java","org.example.Worker");
             java.nio.file.Files.createSymbolicLink(new File(other,"98779011/cwd").toPath(),plain.getCanonicalFile().toPath());

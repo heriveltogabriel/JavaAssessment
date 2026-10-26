@@ -85,6 +85,7 @@ final class ApplicationConfigFiles {
         if (previous != null && previous != context) { directOwners.remove(file.getPath()); shared.add(file.getPath()); }
         else directOwners.put(file.getPath(), context);
     }
+    static String canonical(File file) { try { return file.getCanonicalPath(); } catch (IOException e) { return null; } }
     AssessmentScan.ProcessContext owner(File file) {
         if (directOwners.containsKey(file.getPath())) return directOwners.get(file.getPath());
         if (shared.contains(file.getPath())) return null;
