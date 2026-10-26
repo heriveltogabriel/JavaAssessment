@@ -32,6 +32,16 @@ A tabela mostra JAR e versão com o rótulo **Provável · seleção não confir
 
 Listas de classpath aceitam até 1.024 caminhos únicos e argumentos/ambiente do processo até 256 KiB. A lista no limite exato permanece completa; conteúdo descartado ou não resolvido é sinalizado. Metadados hsperfdata cortados não substituem um classpath explícito completo quando as entradas iniciais coincidem. Fontes divergentes e opções adicionais da JVM truncadas continuam com ressalva específica. Não é necessário alterar flags ou reiniciar o WebLogic.
 
+## Correções da 2.1.24
+
+Argumentos `java.rt.vmArgs` truncados no hsperfdata deixam de bloquear a seleção quando a linha de comando é completa e o ambiente do processo pode ser lido sem `JAVA_TOOL_OPTIONS`, `_JAVA_OPTIONS` ou `JDK_JAVA_OPTIONS`. Argumentos opacos (`@argfile`), opções adicionais no ambiente e ambiente ilegível continuam com identificação incompleta. O diagnóstico reúne até quatro motivos distintos.
+
+Configurações descobertas no diretório de um domínio WebLogic são associadas a um servidor WebLogic em execução nesse domínio, e não a um processo auxiliar como Derby. Para esses arquivos adicionais, o vínculo usa o menor PID do domínio; isso identifica uma associação de configuração, sem comprovar o servidor que efetivamente usa o pool. Os descritores do `config.xml` mantêm suas associações próprias. Endpoints/JNDIs já encontrados no domínio não geram nova linha por essa descoberta adicional.
+
+A família `ojdbc14` é reconhecida. O texto `Oracle JDBC Driver version - X` no manifesto fornece a versão; sem metadados válidos, a versão permanece indisponível. A versão não é inferida do nome do JAR.
+
+Atualize o agente e execute nova coleta para obter os novos resultados. [Notas](RELEASE_2.1.24.md) · [Validação das correções](validation/collector-driver-resolution.md).
+
 ## Limites e privacidade
 
 Até 256 arquivos contendo classes JDBC e 4.096 referências no cache, profundidade de manifestos 24, 32 candidatos por decisão e 4.096 descritores de arquivo por processo. Índices ZIP têm limite de 65.535 entradas/8 MiB e o cabeçalho do manifesto, 64 KiB. A leitura compartilha os orçamentos globais de metadados, arquivos e tempo. Heap permanece em 96 MiB; não houve aumento dos padrões operacionais nesta mudança.

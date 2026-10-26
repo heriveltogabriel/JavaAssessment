@@ -4,7 +4,7 @@
 
 - [x] Resolver WebLogic sem bloqueio por `vmArgs` truncado; configuração de domain home atribuída ao servidor do domínio (não ao processo auxiliar); `ojdbc14` reconhecido; motivos múltiplos no texto de INCOMPLETE. [Notas](RELEASE_2.1.24.md) e [validação](validation/collector-driver-resolution.md).
 - [x] Testes novos (falham no código anterior), prova em Linux real e suíte completa de origem.
-- [ ] Gerar o build 2.1.24 (ponte e final) em máquina com as chaves de assinatura e publicar os pacotes em `install/v2.1.24`; os READMEs de instalação e o índice serão atualizados com os pacotes.
+- [x] Build 2.1.23/2.1.24 e três ZIPs com SHA-256 preparados em `install/v2.1.24`, com READMEs e notas atualizados. Verificadores originais e atualização/restauração da console a partir de 2.1.20 e 2.1.22 aprovados; atualizadores originais dos agentes executados em fixtures com os bundles reais. [Evidências e limites](validation/console-release-2.1.24.md).
 - [ ] Atualizar os agentes e coletar de novo para medir a cobertura de drivers. Estimativa antes da medição: perto de 90%, contra 27% na coleta de 26/10/2026.
 - [ ] Datasources só de configuração, sem processo associado, continuam sem driver.
 - Atualizar o dashboard não atualiza os agentes automaticamente.

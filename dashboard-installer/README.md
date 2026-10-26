@@ -71,8 +71,10 @@ A entrega 2.1.18 permite atualizar o dashboard pela console a partir da 2.1.14 o
 
 A tabela e os detalhes de Datasources JDBC mostram o profile/contexto encontrado na configuração, sem unir nomes iguais de perfis diferentes. O campo usa dados existentes; não confirma atividade em execução. Atualizar o dashboard não atualiza os agentes automaticamente. Esta melhoria não exige agente novo. Use o web-update para atualizar uma instalação compatível; o instalador completo é para servidor novo.
 
-## Cadastro em escala — 2.1.22
+## Drivers JDBC — 2.1.24
 
-Sem teto fixo de 1.000 máquinas cadastradas. Os formulários permitem até 100.000 usos por código; a lista administrativa tem páginas de 100 registros e escopo por ambiente. A emissão de novos códigos remove os expirados/revogados, preservando agentes já cadastrados. `registrationPerMinute`, em `conf/server.properties`, controla tentativas por IP/minuto (padrão 600; reiniciar após alterar). Os limites de lote de coleta/atualização e de recursos do servidor permanecem.
+Melhor identificação de drivers WebLogic com argumentos longos, associação das configurações ao domínio correto, reconhecimento de `ojdbc14` e motivos detalhados de inspeção incompleta.
 
-Para atualizar uma console 2.1.20, use o ZIP **web-update 2.1.22** pela Administração. Este instalador completo é para servidor novo. Agentes 2.1.20 continuam compatíveis para esta melhoria; atualizar o dashboard não atualiza os agentes automaticamente.
+Para atualizar uma console existente, use o ZIP **web-update 2.1.24** pela Administração, após a validação de elegibilidade. Este instalador completo é para servidor novo.
+
+**Atualizar o dashboard não atualiza os agentes automaticamente.** Atualize os agentes separadamente em **Revisar agentes** e solicite nova coleta. Sem capacidade/rota compatível no painel, use o pacote configurado para o ambiente. Não instale a ponte interna 2.1.23 manualmente.

@@ -22,4 +22,12 @@ Cada linha atribuída ao domínio WebLogic liga a um único servidor (o de menor
 
 ## Validação
 
-Detalhes e comandos em [validação do coletor 2.1.24](validation/collector-driver-resolution.md). Suíte completa de origem aprovada, testes novos que falham no código anterior e prova em Linux real (JVM 8 em contêiner, linha de comando de 2.715 bytes). Não houve teste em máquina do cliente, nem do caminho de atualização do agente 2.1.20 ou 2.1.22 para 2.1.24 pelo painel: isso fica para o build, com os canários do processo de release.
+Detalhes e comandos em [validação do coletor 2.1.24](validation/collector-driver-resolution.md). Suíte completa de origem aprovada, testes novos que falham no código anterior e prova em Linux real (JVM 8 em contêiner, linha de comando de 2.715 bytes). A validação inicial das correções não incluiu o caminho de atualização. No build final, foram executadas as provas locais documentadas em [validação da release](validation/console-release-2.1.24.md), incluindo os atualizadores originais 2.1.20/2.1.22. Não houve atualização de máquina do cliente nem prova de serviços/reboot em uma VM nesta entrega.
+
+## Pacotes e atualização
+
+[Instaladores e instruções](../install/v2.1.24/README.md) · [Evidências da release](validation/console-release-2.1.24.md).
+
+Console 2.1.20/2.1.22: use o web-update pela Administração, após a validação de elegibilidade. Agentes V3 dessas versões são atualizados separadamente pelo painel. A ponte interna 2.1.23 não exige instalação manual. Instalações sem rota/capacidade compatível precisam do instalador do agente configurado para o ambiente correto; o instalador completo do dashboard é destinado a servidor novo.
+
+Comece por uma máquina do cliente, confirme a versão 2.1.24 e faça nova coleta antes de prosseguir com o lote. A estimativa de cobertura acima não substitui essa medição.

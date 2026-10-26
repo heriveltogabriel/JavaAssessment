@@ -1,16 +1,22 @@
 # Java Assessment
 
-Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versão **2.1.22**, preparada para teste pela console, reúne dashboard, agente Linux e banco SQLite local, com organização por ambiente e máquina.
+Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versão **2.1.24**, preparada para atualização pela console, reúne dashboard, agente Linux e banco SQLite local, com organização por ambiente e máquina.
 
 ![Overview do Java Assessment com indicadores de agentes, instalações Java, servidores e datasources JDBC](imagens/overview.png)
 
 Esta entrega reúne [configurações Spring/JDBC](docs/SPRING_DISCOVERY.md), [driver WebLogic por processo](docs/JDBC_DRIVER_RESOLUTION.md) e [Tomcat/JBoss](docs/TOMCAT_JBOSS_DISCOVERY.md). Excel, Mapa de bancos e o ajuste do driver provável estão nas [notas da 2.1.18](docs/RELEASE_2.1.18.md).
 
-## Nova entrega — 2.1.22
+## Nova entrega — 2.1.24
 
-Cadastro sem teto fixo de 1.000 máquinas, códigos com até 100.000 usos, limpeza dos códigos inelegíveis e lista paginada por ambiente. Use o web-update na console 2.1.20. [Notas](docs/RELEASE_2.1.22.md) · [Pacotes](install/v2.1.22/README.md) · [Validação](docs/validation/console-release-2.1.22.md).
+Melhor identificação de drivers JDBC no WebLogic, associação das configurações ao domínio correto, reconhecimento de `ojdbc14` e diagnóstico detalhado de inspeção incompleta. [Notas](docs/RELEASE_2.1.24.md) · [Pacotes](install/v2.1.24/README.md) · [Validação](docs/validation/console-release-2.1.24.md).
 
-**Agentes 2.1.20 continuam compatíveis. Atualizar o dashboard não atualiza agentes automaticamente.** Esta entrega não exige atualizar o agente para remover os limites de cadastro. Os limites de lote e recursos do servidor continuam; não há promessa de escala ilimitada.
+**Atualize também os agentes e execute uma nova coleta.** Atualizar somente o dashboard não altera os inventários anteriores. As correções estão no coletor; confira a elegibilidade em **Revisar agentes**. A ponte interna 2.1.23 não exige instalação manual.
+
+## Entrega anterior preservada — 2.1.22
+
+Cadastro sem teto fixo de 1.000 máquinas, códigos com até 100.000 usos, limpeza dos códigos inelegíveis e lista paginada por ambiente. [Notas](docs/RELEASE_2.1.22.md) · [Pacotes](install/v2.1.22/README.md).
+
+A remoção dos limites de cadastro ocorreu no dashboard e não exigiu agente novo. Os limites de lote e recursos do servidor permanecem; não há promessa de escala ilimitada.
 
 ## Entrega anterior preservada — 2.1.20
 
