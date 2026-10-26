@@ -1,0 +1,15 @@
+# Reutilize o inventário existente com --limit ou comece por este exemplo.
+# Não há SSH; cada entrada deve identificar exatamente um cadastro no dashboard.
+all:
+  children:
+    assessment_agents:
+      children:
+        piloto:
+          hosts:
+            app-prod-01:
+              assessment_update_hostname: app-prod-01.exemplo.com
+              # Em nomes repetidos, use o ID do cadastro do dashboard:
+              # assessment_update_host_id: ID-EXATO-DO-CADASTRO
+        producao:
+          hosts:
+            app-prod-02.exemplo.com:

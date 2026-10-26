@@ -1,4 +1,6 @@
-# Instalar agentes por ambiente com Ansible
+# Agentes com Ansible
+
+**Atualização de agentes existentes:** use o [guia de atualização em lotes](UPDATE.md) e `update-agents.yml`. Ele usa a API oficial, preserva o cadastro e não exige SSH. O restante desta página trata de instalação e recuperação.
 
 Um playbook atende vários grupos e pode ser executado novamente após uma falha. O modo padrão `auto` preserva agentes íntegros e recupera instalações reconhecidas sem trocar o cadastro. Cada grupo define o ID do ambiente e a credencial de **Instalar via terminal**; o wget baixa o pacote configurado daquele ambiente. Não modifica o dashboard nem a versão do produto.
 

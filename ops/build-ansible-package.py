@@ -7,7 +7,9 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'install/ansible'
 FILES = ('README.md', 'ansible.cfg', 'install-agents.yml', 'inventory.example.yml',
-         'vault.example.yml', 'templates/download-agent.sh.j2', 'files/manage-agent.sh')
+         'vault.example.yml', 'templates/download-agent.sh.j2', 'files/manage-agent.sh',
+         'update-agents.yml', 'update-inventory.example.yml', 'update-vars.example.yml',
+         'update-vault.example.yml', 'UPDATE.md', 'files/update-agents.py')
 
 def main():
     target = SOURCE / 'java-assessment-ansible.zip'

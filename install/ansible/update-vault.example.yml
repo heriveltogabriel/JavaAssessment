@@ -1,0 +1,4 @@
+# Copie para private/update-vault.yml, preencha e criptografe com ansible-vault.
+# Administrador humano do dashboard, NÃO token de instalação ou token do agente.
+vault_update_email: administrador@exemplo.com
+vault_update_password: SUBSTITUA-ANTES-DE-CRIPTOGRAFAR

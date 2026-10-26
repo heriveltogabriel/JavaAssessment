@@ -1,5 +1,15 @@
 # Melhorias planejadas
 
+## Ansible — atualização em lotes (sem alterar a versão 2.1.24)
+
+- [x] Playbook independente via API administrativa, seleção exata pelo inventário/ID, paginação e prévia padrão.
+- [x] Lotes de até 5 pedidos, um por vez no dashboard; aguardar conclusão e confirmar versão antes do próximo lote.
+- [x] Journal idempotente, retomada, bloqueio de campanha concorrente e cancelamento restrito aos WAITING do próprio lote.
+- [x] Relatório por máquina, Vault/stdin e HTTPS/CA, sem credenciais nos relatórios.
+- [x] 31 testes aprovados, incluindo execução Ansible sobre HTTPS simulado. [Evidências](validation/ansible-update-batches-2026-10-26.md).
+- [ ] Validar piloto real com `--limit` de um host após encerrar a fila anterior; testes locais não substituem validação no cliente.
+- [ ] Melhorar a interface do dashboard: seleção paginada/sem seleção global automática, cancelamento de lote e validade de filas grandes. Este playbook não altera a interface nem os prazos do servidor.
+
 ## Ansible — recuperação de instalações (sem alterar a versão 2.1.24)
 
 - [x] Modo auto: preservar agentes íntegros; retomar instalação clássica com identidade e reativar serviços V3 verificados.

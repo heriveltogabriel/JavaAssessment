@@ -2,9 +2,10 @@
 
 Arquivos para instalar o dashboard e os agentes na infraestrutura do cliente. Os manuais ficam nesta pasta; cada versão tem sua própria pasta de instalador.
 
-## Instalação de agentes em lote com Ansible
+## Instalação e atualização de agentes com Ansible
 
-- [Guia, playbook e exemplos por ambiente](ansible/README.md)
+- [Guia de instalação, recuperação e exemplos por ambiente](ansible/README.md)
+- [Atualizar agentes existentes em lotes, preservando cadastro e sem SSH](ansible/UPDATE.md)
 - [Baixar pacote Ansible](ansible/java-assessment-ansible.zip)
 - [SHA-256 do pacote](ansible/java-assessment-ansible.zip.sha256)
 

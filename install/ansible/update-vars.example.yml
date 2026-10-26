@@ -1,0 +1,15 @@
+# Copie para private/update-vars.yml. Caminhos de CA/relatório são no controlador.
+assessment_dashboard_url: https://dashboard.exemplo.com
+assessment_ca_file: "{{ playbook_dir }}/private/dashboard-ca.pem"
+assessment_update_version: "2.1.24"
+assessment_update_email: "{{ vault_update_email }}"
+assessment_update_password: "{{ vault_update_password }}"
+assessment_update_apply: false
+assessment_update_batch_size: 5
+assessment_update_poll_seconds: 15
+assessment_update_timeout_seconds: 1800
+assessment_update_contact_seconds: 300
+assessment_update_pause_seconds: 15
+# Mantenha para retomar a MESMA seleção/versão/dashboard. Outro --limit requer
+# outro diretório depois de conferir que a campanha anterior foi encerrada.
+assessment_update_report_dir: "{{ playbook_dir }}/private/update-piloto-2.1.24"

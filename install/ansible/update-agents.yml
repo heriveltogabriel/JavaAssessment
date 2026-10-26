@@ -1,0 +1,91 @@
+---
+- name: Atualizar agentes existentes em lotes pela API oficial
+  hosts: assessment_agents
+  gather_facts: false
+  become: false
+  strategy: linear
+  any_errors_fatal: true
+  tasks:
+    - name: Executar uma campanha no controlador para os hosts selecionados
+      run_once: true
+      delegate_to: localhost
+      vars:
+        ansible_connection: local
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+      block:
+        - name: Validar parâmetros administrativos e modo de execução
+          ansible.builtin.assert:
+            that:
+              - not ansible_check_mode
+              - assessment_update_version is defined
+              - assessment_update_email is defined
+              - assessment_update_password is defined
+              - assessment_dashboard_url is defined
+              - assessment_ca_file is defined
+              - (assessment_update_apply | default(false)) is boolean
+              - (assessment_update_batch_size | default(5) | int) >= 1
+              - (assessment_update_batch_size | default(5) | int) <= 5
+            fail_msg: Configure update-vars e Vault. Use --syntax-check; prévia usa assessment_update_apply=false.
+          no_log: true
+
+        - name: Montar seleção explícita respeitando inventário e --limit
+          ansible.builtin.set_fact:
+            ja_update_targets_json: >-
+              {% set selected = [] %}
+              {% for item in ansible_play_hosts_all %}
+              {% set ignored = selected.append({'name': hostvars[item].assessment_update_hostname | default(item), 'id': hostvars[item].assessment_update_host_id | default(''), 'url': hostvars[item].assessment_dashboard_url | default(assessment_dashboard_url)}) %}
+              {% endfor %}
+              {{ selected | to_json }}
+          no_log: true
+
+        - name: Definir diretório privado da campanha
+          ansible.builtin.set_fact:
+            ja_update_report_dir: "{{ assessment_update_report_dir | default(playbook_dir ~ '/private/update-' ~ assessment_update_version) }}"
+
+        - name: Informar acompanhamento e limites
+          ansible.builtin.debug:
+            msg:
+              - "Modo: {{ 'APLICAR' if assessment_update_apply | default(false) else 'PRÉVIA SEM PEDIDOS' }}; seleção: {{ ansible_play_hosts_all | length }} máquinas."
+              - "Lotes de até {{ assessment_update_batch_size | default(5) }}; o dashboard executa uma máquina por vez dentro de cada lote."
+              - "Acompanhe os arquivos em {{ ja_update_report_dir }} no controlador. Não execute outra campanha simultaneamente."
+
+        - name: Controlar os lotes e aguardar confirmação da versão
+          ansible.builtin.command:
+            argv:
+              - "{{ ansible_playbook_python }}"
+              - "{{ playbook_dir }}/files/update-agents.py"
+            stdin: >-
+              {{ {'url': assessment_dashboard_url,
+                  'ca_file': assessment_ca_file,
+                  'email': assessment_update_email,
+                  'password': assessment_update_password,
+                  'version': assessment_update_version,
+                  'targets': ja_update_targets_json | from_json,
+                  'apply': assessment_update_apply | default(false),
+                  'batch_size': assessment_update_batch_size | default(5) | int,
+                  'poll_seconds': assessment_update_poll_seconds | default(15) | int,
+                  'batch_timeout': assessment_update_timeout_seconds | default(1800) | int,
+                  'contact_seconds': assessment_update_contact_seconds | default(300) | int,
+                  'pause_seconds': assessment_update_pause_seconds | default(15) | int,
+                  'report_dir': ja_update_report_dir} | to_json }}
+          register: ja_update_run
+          no_log: true
+          changed_when: false
+          failed_when: false
+
+        - name: Interpretar somente o resultado sanitizado desta execução
+          ansible.builtin.set_fact:
+            ja_update_outcome: "{{ (ja_update_run.stdout | from_json) if ja_update_run.stdout | default('') | trim | length > 0 else {'ok': false, 'error': 'O controlador não retornou resultado; confira Python, caminhos e permissões.'} }}"
+          no_log: true
+
+        - name: Mostrar resultado sem credenciais
+          ansible.builtin.debug:
+            msg: "{{ ja_update_outcome }}"
+          changed_when: "ja_update_outcome.changed | default(false)"
+
+        - name: Interromper o playbook quando a campanha exigir atenção
+          ansible.builtin.assert:
+            that:
+              - ja_update_run.rc == 0
+              - ja_update_outcome.ok | bool
+            fail_msg: "Execução interrompida. Confira o resultado acima e {{ ja_update_report_dir }}/report.json. Não remova journal.json para forçar uma nova tentativa."

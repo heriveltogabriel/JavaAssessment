@@ -2,3 +2,7 @@
 /inventory.yml
 /vault.yml
 *.retry
+
+/update-inventory.yml
+/update-vars.yml
+/update-vault.yml
