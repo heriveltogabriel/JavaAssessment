@@ -144,10 +144,38 @@ public final class InventoryStoreTest {
         } finally {pool.shutdownNow();}
     }
 
+    /** readOrWrite serves pure reads without the writer lock and commits exactly once when a write is reached. */
+    private static void readOrWrite(Path path)throws Exception {
+        try(InventoryStore store=open(path)) {
+            store.transaction(()->{store.metadata("rw","0");return null;});
+            var pool=Executors.newFixedThreadPool(2);var locked=new CountDownLatch(1);var release=new CountDownLatch(1);
+            Future<?> writer=pool.submit(()->store.transaction(()->{store.metadata("held","open");locked.countDown();release.await();return null;}));
+            try {
+                check(locked.await(5,TimeUnit.SECONDS),"writer held for readOrWrite test");
+                check("0".equals(pool.submit(()->store.readOrWrite(()->store.metadata("rw"))).get(5,TimeUnit.SECONDS)),"pure read does not wait for the writer");
+                Future<String> pending=pool.submit(()->store.readOrWrite(()->{String seen=String.valueOf(store.metadata("rw"));store.metadata("rw","1");return seen;}));
+                try {pending.get(300,TimeUnit.MILLISECONDS);check(false,"writing operation queues behind the writer");}catch(TimeoutException expected) {}
+                release.countDown();writer.get(5,TimeUnit.SECONDS);
+                check("0".equals(pending.get(5,TimeUnit.SECONDS)),"operation reran in the writer transaction after its first write attempt");
+            } finally {release.countDown();pool.shutdownNow();}
+            check("1".equals(store.metadata("rw")),"fallback write committed once");
+            int[] runs={0};
+            check(store.readOrWrite(()->{runs[0]++;return "ok";}).equals("ok")&&runs[0]==1,"pure read runs exactly once");
+        }
+    }
+
+    /** WAL durability mode is configurable; NORMAL is the default and anything unknown fails safe to FULL. */
+    private static void synchronousMode(Path path)throws Exception {
+        check("NORMAL".equals(InventoryStore.synchronousMode(null))&&"FULL".equals(InventoryStore.synchronousMode("full"))&&"FULL".equals(InventoryStore.synchronousMode("OFF")),"synchronous mode parsing fails safe");
+        try(InventoryStore store=open(path.resolve("default"))) {check(store.transaction(()->store.scalar("PRAGMA synchronous"))==1,"default writer uses synchronous NORMAL");}
+        try(InventoryStore store=new InventoryStore(path.resolve("full").toFile(),map(),"","","FULL")) {check(store.transaction(()->store.scalar("PRAGMA synchronous"))==2,"configured writer uses synchronous FULL");}
+        try(InventoryStore store=new InventoryStore(path.resolve("bad").toFile(),map(),"","","OFF")) {check(store.transaction(()->store.scalar("PRAGMA synchronous"))==2,"unsupported value falls back to FULL");}
+    }
+
     public static void main(String[] args)throws Exception {
         Path root=Files.createTempDirectory("inventory-store-test-");
         try {
-            documentsAndRollback(root.resolve("documents"));migration(root.resolve("migration"));migrationFailure(root.resolve("failure"));concurrentSnapshot(root.resolve("concurrent"));
+            documentsAndRollback(root.resolve("documents"));migration(root.resolve("migration"));migrationFailure(root.resolve("failure"));concurrentSnapshot(root.resolve("concurrent"));readOrWrite(root.resolve("read-or-write"));synchronousMode(root.resolve("synchronous"));
             System.out.println("INVENTORY_STORE_TESTS=PASS persistence index-columns rollback nested-savepoints migration backups limits observed-JRE unused-JRE-filter restart-late-retry WAL-readers read-snapshots permissions");
         } finally {deleteTree(root);}
     }

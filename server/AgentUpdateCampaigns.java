@@ -19,7 +19,15 @@ final class AgentUpdateCampaigns {
     static boolean campaign(Map<String,Object> r){return Boolean.TRUE.equals(r.get("campaign"));}
     static Map<String,Object> batch(InventoryStore db,String id){var rows=db.documents("SELECT payload FROM agent_update_batches WHERE id=?",id);require(!rows.isEmpty(),404,"Campanha não encontrada.");return rows.get(0);}
     void saveBatch(String id,Map<String,Object> b){b.put("controlUpdatedAt",AssessmentServer.now());db.exec("UPDATE agent_update_batches SET payload=? WHERE id=?",Json.stringify(b),id);}
-    static int limit(InventoryStore db){Object value=obj(db.metadata("agent-update-scheduler")).get("concurrency");return value instanceof Number?(int)n(value):2;}
+    /** Machines updating at once, across all campaigns. Waves (batchSize) still gate which machines may start. */
+    static final int DEFAULT_LIMIT=10,MAX_LIMIT=25;
+    static int limit(InventoryStore db){
+        var stored=obj(db.metadata("agent-update-scheduler"));Object value=stored.get("concurrency");
+        if(!(value instanceof Number))return DEFAULT_LIMIT;
+        int limit=(int)n(value);
+        // Earlier releases persisted an implicit 2 when the first campaign was created; only an administrator's save carries "explicit".
+        return limit==2&&!Boolean.TRUE.equals(stored.get("explicit"))?DEFAULT_LIMIT:limit;
+    }
     static long occupied(InventoryStore db){return db.scalar("SELECT count(*) FROM agent_update_requests r WHERE "+ROOT+" AND (r.status IN ("+ACTIVE+") OR (r.status='WAITING' AND coalesce(json_extract(r.payload,'$.startDeadlineMillis'),0)>0 AND coalesce(json_extract(r.payload,'$.cancelRequested'),0)=0))");}
     static boolean allowed(InventoryStore db,Map<String,Object> r){
         if(AgentUpdateCoordinator.child(r)){var parent=db.get("agent_update_requests",s(r.get("parentOperationId")));return parent!=null&&!AgentUpdateRegistry.TERMINAL.contains(s(parent.get("status")))&&allowed(db,parent);}
@@ -39,8 +47,8 @@ final class AgentUpdateCampaigns {
     }
     Map<String,Object> settings(){return map("concurrency",limit(db),"occupied",occupied(db));}
     Map<String,Object> settings(Map<String,Object> input,UserAuth.User actor){
-        require(input.keySet().equals(Set.of("concurrency")),400,"Parâmetros inválidos.");long value=n(input.get("concurrency"));require(value>=1&&value<=10&&((Number)input.get("concurrency")).doubleValue()==value,400,"Concorrência deve ser de 1 a 10.");
-        db.metadata("agent-update-scheduler",map("concurrency",value));audit("AGENT_CAMPAIGN_LIMIT","global",actor);return settings();
+        require(input.keySet().equals(Set.of("concurrency")),400,"Parâmetros inválidos.");long value=n(input.get("concurrency"));require(value>=1&&value<=MAX_LIMIT&&((Number)input.get("concurrency")).doubleValue()==value,400,"Concorrência deve ser de 1 a "+MAX_LIMIT+".");
+        db.metadata("agent-update-scheduler",map("concurrency",value,"explicit",true));audit("AGENT_CAMPAIGN_LIMIT","global",actor);return settings();
     }
     static String candidates(){return "EXISTS (SELECT 1 FROM identities idn WHERE idn.id=h.id AND idn.status='active') AND coalesce(json_extract(h.payload,'$.agentLifecycle'),'')<>'uninstalled' AND assessment_update_older(json_extract(h.payload,'$.collectorVersion'),'"+DashboardVersion.VERSION+"')=1 AND coalesce(json_extract(h.payload,'$.updateCapability'),'') IN ('update-v1','update-v2','update-v3') AND NOT EXISTS (SELECT 1 FROM agent_update_requests r WHERE r.host_id=h.id AND r.status IN ("+AgentUpdateRegistry.BUSY_SQL+")) AND NOT EXISTS (SELECT 1 FROM uninstall_requests u WHERE u.host_id=h.id AND u.status IN ('WAITING','UNINSTALLING','UNCONFIRMED')) AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.host_id=h.id AND j.status='RUNNING')";}
     static String recent(long now){return "julianday(h.last_seen)>julianday('"+Instant.ofEpochMilli(now-300000)+"') AND julianday(h.last_seen)<=julianday('"+Instant.ofEpochMilli(now+60000)+"')";}
@@ -95,7 +103,7 @@ final class AgentUpdateCampaigns {
         String uuid="lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-4'||substr(hex(randomblob(2)),2)||'-8'||substr(hex(randomblob(2)),2)||'-'||hex(randomblob(6)))";
         db.exec("INSERT INTO agent_update_requests(id,host_id,batch_id,ordinal,status,payload) SELECT rid,host_id,?,row_number() OVER(ORDER BY sel.ordinal)-1,'WAITING',json_object('id',rid,'hostId',host_id,'batchId',?,'ordinal',row_number() OVER(ORDER BY sel.ordinal)-1,'status','WAITING','campaign',json('true'),'targetVersion',?,'fromVersion',coalesce(json_extract(h.payload,'$.collectorVersion'),''),'hostname',h.hostname,'environmentId',h.environment_id,'environmentName',coalesce(e.name,'Sem ambiente'),'createdAt',?,'updatedAt',?,'updatedMillis',?,'expiresMillis',0,'diagnostic','','actorId',?,'actorName',?,'runAssessmentAfterUpdate',json(?),'events',json('[]')) FROM (SELECT "+uuid+" AS rid,host_id,ordinal FROM agent_update_selection_hosts WHERE selection_id=? LIMIT -1 OFFSET 0) sel JOIN hosts h ON h.id=sel.host_id LEFT JOIN environments e ON e.id=h.environment_id WHERE ("+candidates()+")",id,id,version,at,at,System.currentTimeMillis(),actor.id(),actor.name(),assessment?"true":"false",selection);
         require(db.scalar("SELECT count(*) FROM agent_update_requests WHERE batch_id=?",id)>0,409,"A seleção não contém mais máquinas disponíveis. Revise novamente.");
-        if(db.metadata("agent-update-scheduler")==null)db.metadata("agent-update-scheduler",map("concurrency",2));audit("AGENT_CAMPAIGN_CREATED",id,actor);
+        if(db.metadata("agent-update-scheduler")==null)db.metadata("agent-update-scheduler",map("concurrency",DEFAULT_LIMIT));audit("AGENT_CAMPAIGN_CREATED",id,actor);
         return map("batchId",id,"campaign",control(id));
     }
     Map<String,Object> control(String id){var b=batch(db,id);var counts=new LinkedHashMap<String,Object>();for(var row:db.rows("SELECT status,count(*) AS n FROM agent_update_requests r WHERE batch_id=? AND "+ROOT+" GROUP BY status",id))counts.put(s(row.get("status")),row.get("n"));return map("id",id,"campaign",b.getOrDefault("campaign",false),"state",b.getOrDefault("controlState","LEGACY"),"reason",b.getOrDefault("pauseReason",""),"batchSize",b.getOrDefault("batchSize",1),"counts",counts,"pendingCancellation",db.scalar("SELECT count(*) FROM agent_update_requests WHERE batch_id=? AND status='WAITING' AND json_extract(payload,'$.cancelRequested')=1",id),"settings",settings());}

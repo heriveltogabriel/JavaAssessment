@@ -69,6 +69,17 @@ public final class WorkRequestsHttpTest {
         if(!legacy){request.putAll(WorkRequests.snapshot(app.store,app.store.get("hosts",host),host));request.put("historyPartial",false);request.put("events",List.of(map("at",at,"status","WAITING","diagnostic",""),map("at",later,"status",state,"diagnostic","")));}
         app.store.put("agent_update_requests",request);
     }
+    /** Idle heartbeats, action checks and polls are served from read snapshots, so a long writer cannot stall the fleet. */
+    private static void agentRoutineDoesNotWaitForWriter(String host)throws Exception{
+        host(host,OLD,"update-v2");heartbeat(host,OLD);heartbeat(host,OLD); // second call proves unchanged presence is not a write
+        var executor=Executors.newFixedThreadPool(2);var locked=new CountDownLatch(1);var release=new CountDownLatch(1);
+        Future<?> writer=executor.submit(()->app.store.transaction(()->{app.store.metadata("agent-read-test","uncommitted");locked.countDown();release.await();return null;}));
+        try{
+            check(locked.await(5,TimeUnit.SECONDS),"writer fixture acquired transaction for agent routine");
+            var routine=executor.submit(()->{heartbeat(host,OLD);action(host,"update-v2");agent(200,"GET","/api/agent/poll?hostId="+host,null,host);return true;});
+            check(routine.get(5,TimeUnit.SECONDS),"idle agent heartbeat, actions and poll do not wait for the writer lock");
+        }finally{release.countDown();try{writer.get(10,TimeUnit.SECONDS);}finally{executor.shutdownNow();}}
+    }
     private static void monitoringDoesNotWaitForWriter(String batch,Session user)throws Exception{
         var executor=Executors.newFixedThreadPool(2);var locked=new CountDownLatch(1);var release=new CountDownLatch(1);
         Future<?> writer=executor.submit(()->app.store.transaction(()->{app.store.metadata("monitoring-read-test","uncommitted");locked.countDown();release.await();return null;}));
@@ -132,6 +143,7 @@ public final class WorkRequestsHttpTest {
             String outOfOrder=collect(admin,"historical-notes",java.time.Instant.parse(originalTime).minusSeconds(60).toString(),List.of("OLDER_RESULT_OWN_REASON"));check(array(onlyMachine(assessment(outOfOrder,readOnly)).get("observations")).equals(List.of("OLDER_RESULT_OWN_REASON"))&&array(obj(app.store.get("hosts","historical-notes").get("coverage")).get("warnings")).isEmpty(),"out-of-order collection keeps its reason without replacing newer live coverage");
             var malformedJob=app.store.get("jobs",outOfOrder);malformedJob.put("coverage",map("warnings",List.of(map("unrelatedConfig","PRIVATE_CONFIG_MUST_NOT_APPEAR"))));app.store.put("jobs",malformedJob);check(!Json.stringify(assessment(outOfOrder,readOnly)).contains("PRIVATE_CONFIG_MUST_NOT_APPEAR")&&!Json.stringify(page("?type=ASSESSMENT&q="+outOfOrder,readOnly)).contains("PRIVATE_CONFIG_MUST_NOT_APPEAR"),"only warning strings are public even for malformed historical documents");
             stop();start();readOnly=session(human(200,"POST","/api/login",map("email","reader@example.com","password",PASSWORD),null));check(array(onlyMachine(assessment(safeJob,readOnly)).get("observations")).contains(html),"request observations survive restart and subsequent clean collection");
+            agentRoutineDoesNotWaitForWriter("routine-agent");
             System.out.println("WorkRequestsHttpTest PASS: "+checks+" checks; reader permissions, real transitions, bounded SQL pagination, scope, snapshots, skips, timeout, cancellation, restart, deletion, legacy timeline, credentials and historical observations; local fixtures only.");
         }finally{stop();try(var files=Files.walk(root)){for(Path file:files.sorted(Comparator.reverseOrder()).toList())Files.deleteIfExists(file);}}
     }
