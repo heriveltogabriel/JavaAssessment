@@ -8,7 +8,7 @@
 - [x] Caminho dos agentes: heartbeat, actions e poll ociosos só leem; manutenção da frota sai das chamadas por agente; resultados de coleta validam fora do lock e entram em lote; faixas limitadas protegem as telas. [Evidências](validation/agent-path-load-2026-10-26.md).
 - [x] Gerar a release em clone limpo da main `6f910ad`: ponte 2.1.27 e final 2.1.28, com suíte completa e build `--lab-canary`. [Notas](RELEASE_2.1.28.md).
 - [x] Preparar três ZIPs/SHA-256 em `install/v2.1.28`, preservar versões anteriores e validar assinaturas, origens 2.1.20/2.1.22/2.1.24/2.1.26 (console, rollback e agentes), precheck e navegador com runtime final. [Provas](validation/console-release-2.1.28.md).
-- [ ] Enviar o commit da release 2.1.28 ao GitHub após confirmação do usuário.
+- [x] Publicar a release 2.1.28 no GitHub e integrar na `main`, após confirmação do usuário; pacotes anteriores preservados.
 - [ ] Operador testar upload/reinício pela console e piloto de campanha; nenhuma instalação remota realizada nesta entrega.
 - [x] Limite padrão de simultâneos igual ao grupo (10, teto 25), `synchronous=NORMAL` configurável e espalhamento da janela de coleta por host (sem nova versão de agente). [Evidências](validation/agent-path-load-2026-10-26.md#ajustes-finais).
 - [ ] Jitter no agente: adiado; o espalhamento no servidor cobre a rajada de coleta.

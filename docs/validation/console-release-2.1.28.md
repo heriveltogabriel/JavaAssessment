@@ -65,7 +65,7 @@ As medições de contenção com 1.150 agentes simulados em [agent-path-load-202
 
 **Atenção: atualize também os agentes. Atualizar o dashboard não atualiza os agentes automaticamente.** A melhora de desempenho já vale com agentes atuais **2.1.26**; sua atualização é **opcional** para obtê-la. Se atualizar, confira V3/rota/elegibilidade real em **Revisar agentes**. Sem capacidade compatível, use o instalador do agente configurado para seu ambiente com `--system-root`, conservando identidade e CA. O instalador completo do dashboard é para servidor novo.
 
-Commit somente local nesta entrega; nenhum envio ao GitHub sem confirmação do usuário. Testar primeiro uma onda pequena e observar carga antes de ampliar; não há promessa de concluir uma frota durante a noite.
+Release inicialmente registrada no commit local `9363b0f`; posteriormente o usuário autorizou a publicação no GitHub e a integração na `main`. Os pacotes validados permanecem inalterados. Testar primeiro uma onda pequena e observar carga antes de ampliar; não há promessa de concluir uma frota durante a noite.
 
 ## Pacotes finais
 

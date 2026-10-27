@@ -26,7 +26,7 @@ O servidor usa `sqliteSynchronous=NORMAL` por padrão. Configure `FULL` se preci
 - [Instalador completo do dashboard](assessment-dashboard-installer-2.1.28.zip) · [SHA-256](assessment-dashboard-installer-2.1.28.zip.sha256): para servidor novo, Enterprise Linux 8+ e JDK 17+. Não enviar este ZIP à console existente.
 - [Atualização por script](assessment-dashboard-update-2.1.28.zip) · [SHA-256](assessment-dashboard-update-2.1.28.zip.sha256): alternativa por terminal, conforme o README incluído. Para atualização pela tela, use **web-update**.
 
-Pacotes gerados com `--lab-canary` em clone limpo da `main` (`6f910ad`), sem deploy remoto ou acesso a hosts do cliente. Os instaladores anteriores foram preservados. A publicação no GitHub depende da confirmação do usuário.
+Pacotes gerados com `--lab-canary` em clone limpo da `main` (`6f910ad`), sem deploy remoto ou acesso a hosts do cliente. Os instaladores anteriores foram preservados. Publicação no GitHub e integração na `main` autorizadas pelo usuário após a validação local.
 
 ## Integridade
 

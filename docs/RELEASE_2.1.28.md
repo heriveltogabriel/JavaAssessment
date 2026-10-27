@@ -34,4 +34,4 @@ Esta versão reduz a contenção no servidor durante campanhas e ingestão de co
 5. Preparar em `install/v2.1.28`, criar o `README` dos pacotes, atualizar `install/README.md` e o README principal com a versão final, e copiar as evidências para `docs/validation/console-release-2.1.28.md`.
 6. Primeiro piloto: uma onda de 10 máquinas, depois 25, observando `slow request` e `maintenance took` no stderr. Detalhes das medições em [agent-path-load-2026-10-26.md](validation/agent-path-load-2026-10-26.md).
 
-Esta entrega foi gerada com `--lab-canary` para validação local e teste do operador. Não houve acesso a hosts do cliente nem deploy remoto. O envio ao GitHub depende de confirmação do usuário.
+Esta entrega foi gerada com `--lab-canary` para validação local e teste do operador. Não houve acesso a hosts do cliente nem deploy remoto. Publicação no GitHub e integração na `main` autorizadas pelo usuário após a validação local.
