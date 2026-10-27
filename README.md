@@ -9,6 +9,10 @@ Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versã
 
 Esta entrega reúne [configurações Spring/JDBC](docs/SPRING_DISCOVERY.md), [driver WebLogic por processo](docs/JDBC_DRIVER_RESOLUTION.md) e [Tomcat/JBoss](docs/TOMCAT_JBOSS_DISCOVERY.md). Excel, Mapa de bancos e o ajuste do driver provável estão nas [notas da 2.1.18](docs/RELEASE_2.1.18.md).
 
+## Em preparação — 2.1.28
+
+Atualização de agentes em frotas grandes: agentes ociosos deixam de disputar o lock de escrita, resultados de coleta entram em lote, limite padrão de 10 máquinas por vez e coleta agendada espalhada pela janela. Só o servidor muda; o protocolo do agente é o mesmo. [Notas e roteiro de build](docs/RELEASE_2.1.28.md) · [Medições](docs/validation/agent-path-load-2026-10-26.md). Pacotes ainda não gerados.
+
 ## Nova entrega para teste — 2.1.26
 
 Campanhas persistentes, revisão paginada, grupos de 10, concorrência global, pausa/retomada e cancelamento em lote. [Notas](docs/RELEASE_2.1.26.md) · [Pacotes](install/v2.1.26/README.md) · [Validação](docs/validation/console-release-2.1.26.md).

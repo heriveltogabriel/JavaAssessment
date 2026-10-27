@@ -21,6 +21,15 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
     private final EnrollmentRegistry registry;
     private final EnvironmentInstallAccess installAccess;
     private final Semaphore installDownloadSlots=new Semaphore(2);
+    /** Routine agent traffic is capped below the worker count so operators always find a free thread. */
+    private static final Set<String> AGENT_LANE=Set.of("/api/agent/heartbeat","/api/agent/actions","/api/agent/poll");
+    private final Semaphore agentLane=new Semaphore(10);
+    /**
+     * Result uploads each hold the writer lock for tens of milliseconds. Only a few may queue for it; the rest are told to
+     * retry, so heartbeats, polls and operator screens never wait behind a whole fleet's uploads. The agent keeps the
+     * result in its spool and resends it on the next cycle.
+     */
+    private final Semaphore resultLane=new Semaphore(3);
     private final Map<String,long[]> installDownloadAttempts=new HashMap<>();
     private final UninstallRegistry uninstalls;
     private final AgentUpdateCatalog updateCatalog;
@@ -69,7 +78,7 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
         acquireAuthLock();
         InventoryStore opened=null;
         try{
-            opened=new InventoryStore(data,defaults,legacy?conf.getProperty("hostId"):"",conf.getProperty("agentToken"));store=opened;
+            opened=new InventoryStore(data,defaults,legacy?conf.getProperty("hostId"):"",conf.getProperty("agentToken"),conf.getProperty("sqliteSynchronous",InventoryStore.DEFAULT_SYNCHRONOUS));store=opened;
             migrateArchiveInspectionDefault();
             auth=new UserAuth(store);
             if(!provisioning&&auth.bootstrapRequired()&&(conf.getProperty("adminSalt","").length()<4||!conf.getProperty("adminPasswordSha256","").matches("[a-fA-F0-9]{64}")))throw new IllegalArgumentException("Provision the initial administrator before starting the server");
@@ -101,7 +110,7 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
         catch(IOException e){releaseAuthLock();throw e;}
     }
     private void releaseAuthLock(){try{if(authLock!=null)authLock.release();}catch(IOException ignored){}try{if(authLockChannel!=null)authLockChannel.close();}catch(IOException ignored){}}
-    public void close(){try{store.close();}finally{sessions.clear();releaseAuthLock();}}
+    public void close(){try{try{Map<String,String> seen=new HashMap<>(pendingSeen);if(!seen.isEmpty())store.transaction(()->{flushSeen(seen);return null;});}catch(RuntimeException ignored){}store.close();}finally{sessions.clear();releaseAuthLock();}}
     public static String read(File f,int max) throws IOException{FileInputStream in=new FileInputStream(f);try{return readStream(in,max);}finally{in.close();}}
     private static String readStream(InputStream in,int max) throws IOException{ByteArrayOutputStream b=new ByteArrayOutputStream();byte[] buf=new byte[4096];int n;while((n=in.read(buf))!=-1){if(b.size()+n>max)throw new ApiError(413,"Request too large");b.write(buf,0,n);}return new String(b.toByteArray(),"UTF-8");}
     private String token(){byte[] bytes=new byte[32];random.nextBytes(bytes);return hex(bytes);}
@@ -165,7 +174,15 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
     private Map<String,Object> effectiveSettings(String id){Map<String,Object> h=host(id);return effectiveWithHost(h,h.get("settings") instanceof Map?obj(h.get("settings")):map());}
     private Map<String,Object> publicHost(Map<String,Object> h){Map<String,Object> copy=new LinkedHashMap<>(h);Map<String,Object> env=environment(str(h.get("environmentId")));copy.remove("initialAssessmentRequested");copy.put("uninstall",uninstalls.publicRecord(uninstalls.latest(str(h.get("id")))));copy.put("update",updates.publicRecord(updates.latest(str(h.get("id")))));copy.put("environmentName",env==null?"Sem ambiente":env.get("name"));copy.put("credentialStatus",registry.credentialStatus(str(h.get("id"))));copy.put("settingsOverrides",h.get("settings") instanceof Map?h.get("settings"):map());copy.put("settings",effectiveWithHost(h,obj(copy.get("settingsOverrides"))));return copy;}
     private Map<String,Object> publicEnvironment(Map<String,Object> env){Map<String,Object> copy=new LinkedHashMap<>(env);copy.put("settingsOverrides",env.get("settings"));copy.put("effectiveSettings",settings(obj(env.get("settings")),false));return copy;}
-    void maintainOperations(){store.transaction(()->{expireJobs();uninstalls.maintain();updates.maintain();return null;});}
+    /** Heartbeats that changed nothing else only record presence in memory; one commit persists them all. */
+    private final ConcurrentHashMap<String,String> pendingSeen=new ConcurrentHashMap<>();
+    private void flushSeen(Map<String,String> seen){for(var e:seen.entrySet()){Map<String,Object> h=store.get("hosts",e.getKey());if(h!=null&&str(h.get("lastSeen")).compareTo(e.getValue())<0){h.put("lastSeen",e.getValue());store.put("hosts",h);}}}
+    void maintainOperations(){
+        long started=System.nanoTime();Map<String,String> seen=new HashMap<>(pendingSeen);
+        store.transaction(()->{flushSeen(seen);expireJobs();uninstalls.maintain();updates.maintain();return null;});
+        seen.forEach(pendingSeen::remove);
+        long ms=(System.nanoTime()-started)/1000000L;if(ms>=1000)System.err.println(now()+" maintenance took "+ms+" ms (hosts flushed: "+seen.size()+")");
+    }
     private void expireJobs(){
         for(Map<String,Object> j:store.documents("SELECT payload FROM jobs WHERE status='RUNNING' AND lease_expires<? LIMIT 1000",System.currentTimeMillis())){j.put("status","FAILED");j.put("error","Collector exceeded lease or did not report a result");j.put("finishedAt",now());store.put("jobs",j);updates.assessments().jobChanged(j,System.currentTimeMillis());}
     }
@@ -181,12 +198,22 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
     private void schedule(String id){
         Map<String,Object> s=effectiveSettings(id);if(!Boolean.TRUE.equals(s.get("enabled")))return;
         Calendar c=Calendar.getInstance(TimeZone.getTimeZone(str(s.get("timeZone"))));int minute=c.get(Calendar.HOUR_OF_DAY)*60+c.get(Calendar.MINUTE),start=minutes(str(s.get("windowStart"))),end=minutes(str(s.get("windowEnd")));if(!(start==end||(start<end?minute>=start&&minute<end:minute>=start||minute<end)))return;
+        // Spread the fleet across the start of the window so thousands of agents do not upload results in the same minute.
+        if(heldForSpread(id,minute,start,spreadMinutes(conf.getProperty("scheduleSpreadMinutes"),start,end)))return;
         List<Map<String,Object>> records=store.rows("SELECT revision,slot FROM schedules WHERE host_id=?",id);Map<String,Object> record=records.isEmpty()?map():records.get(0),env=environment(str(host(id).get("environmentId")));
         String slot=store.metadata("scheduleRevision")+":"+str(record.get("revision"))+(env==null?"":":env:"+env.get("id")+":"+env.get("revision"))+":"+id+":";
         String frequency=str(s.get("frequency"));slot+=frequency.equals("once")?"once":frequency.equals("weekly")?c.get(Calendar.YEAR)+"-W"+c.get(Calendar.WEEK_OF_YEAR):c.get(Calendar.YEAR)+"-"+c.get(Calendar.DAY_OF_YEAR);
         if(slot.equals(record.get("slot")))return;
         try{queue(id,"scheduled");store.exec("INSERT INTO schedules(host_id,revision,slot) VALUES(?,?,?) ON CONFLICT(host_id) DO UPDATE SET slot=excluded.slot",id,str(record.get("revision")),slot);}catch(ApiError e){if(e.status!=409)throw e;}
     }
+    /** Minutes after the window opens over which hosts start; never more than half the window. 0 disables the spread. */
+    static int spreadMinutes(String configured,int start,int end){
+        int minutes;try{minutes=configured==null?15:Integer.parseInt(configured.trim());}catch(NumberFormatException e){minutes=15;}
+        int length=start==end?1440:Math.floorMod(end-start,1440);
+        return Math.max(0,Math.min(Math.min(minutes,240),length/2));
+    }
+    /** True while this host's fixed offset inside the first spread minutes of the window has not been reached. */
+    static boolean heldForSpread(String hostId,int minute,int start,int spread){return spread>0&&Math.floorMod(minute-start,1440)<Math.floorMod(hostId.hashCode(),spread);}
     private void resetSchedule(String id){store.exec("INSERT INTO schedules(host_id,revision,slot) VALUES(?,?,'') ON CONFLICT(host_id) DO UPDATE SET revision=excluded.revision,slot=''",id,UUID.randomUUID().toString());}
     private String serverUrl(){return conf.getProperty("publicUrl","https://"+conf.getProperty("publicHost","localhost"));}
     private static String bounded(Object value,String name,int max,boolean required){if(!(value instanceof String))throw new ApiError(400,"Invalid "+name);String s=(String)value;if(s.length()>max||(required&&s.trim().isEmpty())||s.matches("(?s).*[\\x00-\\x1f\\x7f].*"))throw new ApiError(400,"Invalid "+name);return s;}
@@ -218,18 +245,27 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
         if(!coverage.containsKey("warnings"))coverage.put("warnings",new ArrayList<>());List<Object> notes=list(coverage.get("warnings"));if(notes.size()>500)throw new ApiError(400,"Too many coverage notes");for(Object note:notes)bounded(note,"coverage note",2000,false);
         if(coverage.containsKey("stats"))obj(coverage.get("stats"));else coverage.put("stats",map());
     }
+    /** CPU-bound per-record checks. Run before the writer lock when possible; any failure is replayed inside the lock so error order is unchanged. */
+    private void checkRows(Map<String,Object> snap,String id){
+        for(String key:COLLECTIONS){List<Object> rows=list(snap.get(key));if(rows.size()>2000)throw new ApiError(400,"Too many "+key);Set<String> seen=new HashSet<>();for(Object row:rows){Map<String,Object> r=obj(row);String rid=str(r.get("id"));if(Json.stringify(r).getBytes(java.nio.charset.StandardCharsets.UTF_8).length>16384)throw new ApiError(400,"Inventory record exceeds 16 KiB");if(!id.equals(r.get("hostId"))||rid.isEmpty()||rid.length()>300||!seen.add(rid))throw new ApiError(400,"Invalid inventory ownership or duplicate ID");}}
+    }
+    private final ThreadLocal<Map<String,InventoryStore.PreparedInventory>> preparedInventory=new ThreadLocal<>();private final ThreadLocal<Boolean> rowsChecked=new ThreadLocal<>();private final ThreadLocal<Map<String,Object>> parsedResult=new ThreadLocal<>();
+    private void prevalidateResult(HttpExchange x){
+        try{Map<String,Object> snap=body(x),h=obj(snap.get("host"));String id=str(h.get("id"));store.readSnapshot(()->{ownHost(id);return null;});checkRows(snap,id);Map<String,InventoryStore.PreparedInventory> ready=new HashMap<>();for(String kind:COLLECTIONS)ready.put(kind,InventoryStore.prepareInventory(kind,id,list(snap.get(kind))));parsedResult.set(snap);preparedInventory.set(ready);rowsChecked.set(Boolean.TRUE);}
+        catch(RuntimeException|IOException ignored){parsedResult.remove();preparedInventory.remove();rowsChecked.remove();}
+    }
     private Map<String,Object> accept(HttpExchange x)throws Exception{
-        method(x,"POST");Map<String,Object> snap=body(x),h=obj(snap.get("host"));String id=str(h.get("id"));ownHost(id);String event=str(snap.get("eventId")),jobId=str(snap.get("jobId"));if(!event.matches("[A-Za-z0-9-]{8,80}")||!"1.0".equals(snap.get("schemaVersion")))throw new ApiError(400,"Invalid snapshot identity");
+        method(x,"POST");Map<String,Object> snap=parsedResult.get()!=null?parsedResult.get():body(x),h=obj(snap.get("host"));String id=str(h.get("id"));ownHost(id);String event=str(snap.get("eventId")),jobId=str(snap.get("jobId"));if(!event.matches("[A-Za-z0-9-]{8,80}")||!"1.0".equals(snap.get("schemaVersion")))throw new ApiError(400,"Invalid snapshot identity");
         if(store.scalar("SELECT count(*) FROM receipts WHERE host_id=? AND job_id=? AND event_id=?",id,jobId,event)>0)return map("accepted",true,"eventId",event,"duplicate",true);
         Map<String,Object> job=store.get("jobs",jobId);if(job==null||!id.equals(job.get("hostId")))throw new ApiError(409,"Assessment has no active lease");
         boolean late="FAILED".equals(job.get("status"))&&Arrays.asList("Server restarted before result acknowledgement","Collector exceeded lease or did not report a result").contains(job.get("error"));if(!"RUNNING".equals(job.get("status"))&&!late)throw new ApiError(409,"Assessment has no active lease");
         String captured=str(snap.get("capturedAt"));try{java.time.Instant.parse(captured);}catch(Exception e){throw new ApiError(400,"Missing capture timestamp");}
         Map<String,Object> coverage=obj(snap.get("coverage"));if(!Arrays.asList("complete","partial").contains(coverage.get("status")))throw new ApiError(400,"Invalid coverage");
-        for(String key:COLLECTIONS){List<Object> rows=list(snap.get(key));if(rows.size()>2000)throw new ApiError(400,"Too many "+key);Set<String> seen=new HashSet<>();for(Object row:rows){Map<String,Object> r=obj(row);String rid=str(r.get("id"));if(Json.stringify(r).getBytes(java.nio.charset.StandardCharsets.UTF_8).length>16384)throw new ApiError(400,"Inventory record exceeds 16 KiB");if(!id.equals(r.get("hostId"))||rid.isEmpty()||rid.length()>300||!seen.add(rid))throw new ApiError(400,"Invalid inventory ownership or duplicate ID");}}
+        if(!Boolean.TRUE.equals(rowsChecked.get()))checkRows(snap,id);
         validateHost(h,coverage);Map<String,Object> current=host(id);boolean newer=str(current.get("lastAssessmentAt")).isEmpty()||java.time.Instant.parse(captured).compareTo(java.time.Instant.parse(str(current.get("lastAssessmentAt"))))>=0;
         if(newer){for(String key:new String[]{"hostname","fqdn","osName","distribution","kernelVersion","architecture","cpuModel","logicalCpus","memoryTotalBytes","memoryAvailableBytes","memoryFreeBytes","ipAddresses","disks"})if(h.containsKey(key))current.put(key,h.get(key));
             current.put("lastAssessmentAt",captured);current.put("lastSeen",now());current.put("collectorJavaVersion",snap.get("collectorJavaVersion"));current.put("status","Collected");if(!current.containsKey("firstAssessmentAt"))current.put("firstAssessmentAt",captured);coverage.put("lastAssessmentAt",captured);current.put("coverage",coverage);if(Json.stringify(current).getBytes(java.nio.charset.StandardCharsets.UTF_8).length>65536)throw new ApiError(400,"Host details exceed 64 KiB");store.put("hosts",current);
-            for(String kind:COLLECTIONS)store.putInventory(kind,id,list(snap.get(kind)));
+            {Map<String,InventoryStore.PreparedInventory> ready=preparedInventory.get();for(String kind:COLLECTIONS){InventoryStore.PreparedInventory p=ready==null?null:ready.get(kind);if(p!=null)store.putInventory(p);else store.putInventory(kind,id,list(snap.get(kind)));}}
         }
         long javaCount=list(snap.get("runtimes")).stream().filter(row->InventoryStore.includeRuntime(obj(row))).count();
         job.put("lateResult",late);job.remove("error");job.put("status","partial".equals(coverage.get("status"))?"PARTIAL":"SUCCEEDED");job.put("finishedAt",now());job.put("summary","Assessment received — "+javaCount+" Java installation(s), "+list(snap.get("servers")).size()+" server(s)");job.put("stats",coverage.get("stats"));
@@ -300,11 +336,11 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
             if(path.equals("/api/agent/install-events"))return new Reply(200,installEvents(x));
             if(path.equals("/api/agent/settings")){method(x,"GET");String id=query(x,"hostId");ownHost(id);return new Reply(200,map("settings",effectiveSettings(id)));}
             if(path.equals("/api/agent/heartbeat")){
-                method(x,"POST");Map<String,Object> b=body(x);String id=str(b.get("hostId"));ownHost(id);Map<String,Object> h=host(id);h.put("uninstallCapability","uninstall-v1".equals(b.get("uninstallCapability"))?"uninstall-v1":"");h.put("updateCapability",AgentUpdateRegistry.updaterGeneration(b.get("updateCapability"))>0?b.get("updateCapability"):"");for(String key:new String[]{"bundleSha256","managerSha256"}){if("update-v3".equals(b.get("updateCapability"))&&b.get(key) instanceof String value&&value.matches("[a-f0-9]{64}"))h.put(key,value);else h.remove(key);}h.put("lastSeen",now());h.putIfAbsent("firstContactAt",now());for(String key:new String[]{"hostname","javaVersion","collectorVersion"})if(b.containsKey(key))h.put(key.equals("javaVersion")?"collectorJavaVersion":key,bounded(b.get(key),key,200,true));store.put("hosts",h);updates.heartbeat(id,str(b.get("collectorVersion")));return new Reply(200,map("accepted",true));
+                method(x,"POST");Map<String,Object> b=body(x);String id=str(b.get("hostId"));ownHost(id);Map<String,Object> h=host(id),before=new LinkedHashMap<>(h);h.put("uninstallCapability","uninstall-v1".equals(b.get("uninstallCapability"))?"uninstall-v1":"");h.put("updateCapability",AgentUpdateRegistry.updaterGeneration(b.get("updateCapability"))>0?b.get("updateCapability"):"");for(String key:new String[]{"bundleSha256","managerSha256"}){if("update-v3".equals(b.get("updateCapability"))&&b.get(key) instanceof String value&&value.matches("[a-f0-9]{64}"))h.put(key,value);else h.remove(key);}for(String key:new String[]{"hostname","javaVersion","collectorVersion"})if(b.containsKey(key))h.put(key.equals("javaVersion")?"collectorJavaVersion":key,bounded(b.get(key),key,200,true));String seen=now();if(h.equals(before)&&before.containsKey("firstContactAt"))pendingSeen.put(id,seen);else{h.put("lastSeen",seen);h.putIfAbsent("firstContactAt",seen);store.put("hosts",h);pendingSeen.remove(id);}updates.heartbeat(id,str(b.get("collectorVersion")));return new Reply(200,map("accepted",true));
             }
-            if(path.equals("/api/agent/actions")){method(x,"GET");String id=query(x,"hostId");ownHost(id);expireJobs();Map<String,Object> action=updates.delivery(id,query(x,"updateCapability"));if(action==null)action=uninstalls.delivery(id,query(x,"capability"));return new Reply(200,map("action",action==null||action.containsKey("blocked")?null:action));}
+            if(path.equals("/api/agent/actions")){method(x,"GET");String id=query(x,"hostId");ownHost(id);Map<String,Object> action=updates.delivery(id,query(x,"updateCapability"));if(action==null)action=uninstalls.delivery(id,query(x,"capability"));return new Reply(200,map("action",action==null||action.containsKey("blocked")?null:action));}
             if(path.equals("/api/agent/poll")){
-                method(x,"GET");String id=query(x,"hostId");ownHost(id);expireJobs();Map<String,Object> action=updates.delivery(id,query(x,"updateCapability"));if(action==null)action=uninstalls.delivery(id,query(x,"capability"));if(action!=null)return new Reply(200,map("jobId",null,"action",action.containsKey("blocked")?null:action));updates.assessments().dispatch(id,System.currentTimeMillis(),host->queue(host,"post-update"));schedule(id);Map<String,Object> effective=effectiveSettings(id);
+                method(x,"GET");String id=query(x,"hostId");ownHost(id);Map<String,Object> action=updates.delivery(id,query(x,"updateCapability"));if(action==null)action=uninstalls.delivery(id,query(x,"capability"));if(action!=null)return new Reply(200,map("jobId",null,"action",action.containsKey("blocked")?null:action));updates.assessments().dispatch(id,System.currentTimeMillis(),host->queue(host,"post-update"));schedule(id);Map<String,Object> effective=effectiveSettings(id);
                 if(store.scalar("SELECT count(*) FROM jobs WHERE host_id=? AND status='RUNNING'",id)>0)return new Reply(200,map("jobId",null,"settings",effective));
                 List<Map<String,Object>> jobs=store.documents("SELECT payload FROM jobs WHERE host_id=? AND status='QUEUED' ORDER BY created_at LIMIT 1",id);Map<String,Object> j=jobs.isEmpty()?null:jobs.get(0);
                 if(j!=null&&!updates.assessments().allowLease(id,str(j.get("id")),System.currentTimeMillis()))j=null;if(j!=null){j.put("status","RUNNING");j.put("startedAt",now());j.put("leaseExpires",System.currentTimeMillis()+(number(effective.get("maxDurationSeconds"),180)+120)*1000L);j.put("summary","Collector is examining the configured paths");store.put("jobs",j);updates.assessments().jobChanged(j,System.currentTimeMillis());}return new Reply(200,map("jobId",j==null?null:j.get("id"),"settings",effective));
@@ -551,8 +587,10 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
         }finally{if(temporary!=null)java.nio.file.Files.deleteIfExists(temporary);exportSlot.release();}
     }
     public void handle(HttpExchange x)throws IOException{
+        long started=System.nanoTime(),waitedBefore=store.writerWaitMillis();boolean[] resultPermit={false};
         headers(x);try{
             String path=x.getRequestURI().getPath(),method=x.getRequestMethod();boolean write=Set.of("POST","PUT","DELETE").contains(method);
+            if(path.equals("/api/agent/results")&&write){if(!resultLane.tryAcquire()){x.getResponseHeaders().set("Retry-After","30");throw new ApiError(503,"Servidor ocupado; o agente reenviará o resultado no próximo ciclo");}resultPermit[0]=true;}
             if(write&&!path.equals("/api/admin/dashboard-update/upload"))requestBody.set(readStream(x.getRequestBody(),path.equals("/api/agent/results")?2097152:path.equals("/api/agent-campaigns/selection")?1048576:path.equals("/api/agent-updates")?131072:32768));
             if(!(x instanceof HttpsExchange)&&!local(x)&&Boolean.parseBoolean(conf.getProperty("requireHttps","true"))){x.getResponseHeaders().set("Location",serverUrl()+"/");x.sendResponseHeaders(308,-1);return;}
             if(path.startsWith("/.well-known/acme-challenge/")){method(x,"GET");String name=path.substring(path.lastIndexOf('/')+1);if(!name.matches("[A-Za-z0-9_-]{10,200}"))throw new ApiError(404,"Not found");file(x,new File(root,"conf/acme/"+name),"text/plain");return;}
@@ -585,7 +623,9 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
                 }
                 if(path.equals("/api/account/password")||path.startsWith("/api/admin/")){Reply reply=account(x,session);json(x,reply.status,reply.body);return;}
                 if(path.equals("/api/collector.zip")){method(x,"GET");InstallerPackage installer=installerPackage();try{x.getResponseHeaders().set("Content-Type","application/zip");x.getResponseHeaders().set("Content-Disposition","attachment; filename=\""+installer.filename()+"\"");x.sendResponseHeaders(200,0);installer.writeOriginal(x.getResponseBody());}finally{installer.close();}return;}
-                Session authenticated=session;java.util.concurrent.Callable<Reply> operation=()->{if(authenticated!=null)authorize(x,authenticated);return api(x,authenticated);};Reply reply=write||(path.equals("/api/agent/poll")||path.equals("/api/agent/actions")||path.equals("/api/agent/update-v3/action")||path.equals("/api/agent-updates")||path.equals("/api/environments/install-access"))?store.transaction(operation):store.readSnapshot(operation);
+                Session authenticated=session;java.util.concurrent.Callable<Reply> operation=()->{if(authenticated!=null)authorize(x,authenticated);return api(x,authenticated);};if(path.equals("/api/agent/results"))prevalidateResult(x);
+                boolean lane=AGENT_LANE.contains(path);if(lane&&!agentLane.tryAcquire()){x.getResponseHeaders().set("Retry-After","15");throw new ApiError(503,"Servidor ocupado; o agente tentará de novo no próximo ciclo");}
+                Reply reply;try{reply=lane?store.readOrWrite(operation):write||(path.equals("/api/agent/update-v3/action")||path.equals("/api/agent-updates")||path.equals("/api/environments/install-access"))?store.transaction(operation):store.readSnapshot(operation);}finally{if(lane)agentLane.release();}
                 if(reply.body instanceof BinaryReply binary){x.getResponseHeaders().set("Content-Type",binary.contentType);x.sendResponseHeaders(reply.status,binary.data.length);x.getResponseBody().write(binary.data);}
                 else if(reply.body instanceof PackageReply p){InstallerPackage installer=installerPackage();try{x.getResponseHeaders().set("Content-Type","application/zip");x.getResponseHeaders().set("Content-Disposition","attachment; filename=\""+installer.filenameForEnvironment(p.environmentName)+"\"");x.sendResponseHeaders(200,0);installer.write(x.getResponseBody(),p.url,p.token,p.environment);}finally{installer.close();}}
                 else json(x,reply.status,readerView(reply.body));return;
@@ -599,9 +639,9 @@ public final class AssessmentServer implements HttpHandler,AutoCloseable {
         catch(EnvironmentInstallAccess.Failure e){json(x,e.status,map("error",Portuguese.error(e.getMessage())));}
         catch(IllegalArgumentException e){json(x,400,map("error",Portuguese.error("Invalid request data")));}
         catch(Exception e){System.err.println(now()+" "+x.getRequestURI().getPath()+" "+e.getClass().getName()+": "+e.getMessage());if(x.getResponseCode()==-1)json(x,500,map("error",Portuguese.error("The request could not be completed")));}
-        finally{requestBody.remove();agentHost.remove();requestUser.remove();x.close();}
+        finally{requestBody.remove();agentHost.remove();requestUser.remove();rowsChecked.remove();parsedResult.remove();preparedInventory.remove();if(resultPermit[0])resultLane.release();x.close();long ms=(System.nanoTime()-started)/1000000L;if(ms>=1500)System.err.println(now()+" slow request "+x.getRequestMethod()+" "+x.getRequestURI().getPath()+" "+ms+" ms (writer-lock wait across all requests meanwhile: "+(store.writerWaitMillis()-waitedBefore)+" ms)");}
     }
-    private static ExecutorService workers(){return new ThreadPoolExecutor(8,8,0L,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<>(32),new ThreadPoolExecutor.CallerRunsPolicy());}
+    private static ExecutorService workers(){return new ThreadPoolExecutor(16,16,0L,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<>(128),new ThreadPoolExecutor.CallerRunsPolicy());}
     public static void main(String[] args)throws Exception{
         // Apply before constructing SecureRandom/TLS; existing launchers are preserved on upgrade.
         if(System.getProperty("java.security.egd")==null)System.setProperty("java.security.egd","file:/dev/urandom");

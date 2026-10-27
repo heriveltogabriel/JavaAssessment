@@ -12,7 +12,7 @@ Isso reduz a carga de acompanhamento, mas não altera a frequência de contato d
 
 1. Em **Revisar agentes**, filtre por máquina, ambiente, versão, contato recente ou elegibilidade. A consulta retorna 50 máquinas por página. Nenhuma vem selecionada automaticamente.
 2. Selecione máquinas individualmente, as elegíveis da página ou **candidatas de todo o filtro**. A seleção do filtro é salva no servidor; não depende de carregar todas as páginas no navegador. Alterar o filtro limpa a seleção manual.
-3. Em **Configuração**, escolha o tamanho dos grupos (padrão 10, de 1 a 100). O limite simultâneo é **global** (padrão 2, ajustável de 1 a 10) e vale também para pedidos antigos quando o controle global está habilitado. Salvar o limite exige confirmação. Reduzir o limite não interrompe instalações iniciadas.
+3. Em **Configuração**, escolha o tamanho dos grupos (padrão 10, de 1 a 100). O limite simultâneo é **global** (padrão 10, ajustável de 1 a 25; instalações que ainda guardam o 2 implícito de versões anteriores passam a usar 10 até o administrador salvar um valor) e vale também para pedidos antigos quando o controle global está habilitado. Salvar o limite exige confirmação. Reduzir o limite não interrompe instalações iniciadas.
 4. Revise a quantidade, a versão e o contato das máquinas. Confirme **Iniciar campanha**. A seleção pertence ao administrador que a criou e vale por 15 minutos. Repetir uma confirmação após falha de comunicação usa a mesma chave e não cria outra campanha.
 5. Acompanhe em **Solicitações**. Pode fechar o navegador: os pedidos e controles ficam no SQLite e a manutenção continua no servidor. Depois de reiniciar a console, a fila retoma do estado persistido.
 

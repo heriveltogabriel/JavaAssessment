@@ -98,6 +98,7 @@ public final class AgentUpdateHttpTest {
             var timedBatch=created(admin,List.of("offline-first","ready-second"),"start-timeout-http-fixture");String firstTimed=requestId(timedBatch,"offline-first");
             check(action("ready-second","update-v2").get("action")==null,"next online host waits before timeout");
             app.store.transaction(()->{var r=app.store.get("agent_update_requests",firstTimed);r.put("startDeadlineMillis",System.currentTimeMillis()-1);app.store.put("agent_update_requests",r);return null;});
+            app.maintainOperations(); // expiry is owned by the 5 s scheduler, not by agent polls
             check(action("ready-second","update-v2").get("action")!=null,"next online host receives action after predecessor start timeout");
             check(Boolean.FALSE.equals(claim("offline-first",firstTimed).get("executable")),"offline agent cannot execute expired action when returning");
             check(!requestId(created(admin,List.of("offline-first"),"returned-agent-retry-fixture"),"offline-first").equals(firstTimed),"returned agent can receive a new explicit update request");

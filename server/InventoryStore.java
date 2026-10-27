@@ -13,26 +13,38 @@ import java.util.concurrent.locks.*;
 
 /** SQLite document storage with indexed query columns and atomic per-host snapshots. */
 public final class InventoryStore implements AutoCloseable {
-    private static final int STATE_LIMIT=32*1024*1024, AUTH_LIMIT=8*1024*1024, READERS=4;
+    private static final int STATE_LIMIT=32*1024*1024, AUTH_LIMIT=8*1024*1024, READERS=8;
     private static final Set<String> TABLES=Set.of("hosts","environments","jobs","identities","enrollments","uninstall_requests","agent_update_requests");
     private static final Set<String> KINDS=Set.of("runtimes","processes","servers","libraries","applications","datasources");
     private final File data;
+    private final String synchronous;
     private Connection writer;
     private final BlockingQueue<Connection> readers=new ArrayBlockingQueue<>(READERS);
     private final ReentrantLock writeLock=new ReentrantLock(true);
     private final ReentrantReadWriteLock lifecycle=new ReentrantReadWriteLock(true);
     private final ThreadLocal<Connection> current=new ThreadLocal<>();
     private final ThreadLocal<Boolean> reading=new ThreadLocal<>();
+    private final ThreadLocal<Boolean> optimistic=new ThreadLocal<>();
+    private final java.util.concurrent.atomic.AtomicLong lockWaitMillis=new java.util.concurrent.atomic.AtomicLong();
     private volatile boolean closed;
 
-    public InventoryStore(File data,Map<String,Object> initialState,String legacyHostId,String legacyToken) {
-        this.data=data;
+    /** WAL with NORMAL never corrupts the database; a power or OS failure can lose only the last commits. */
+    public static final String DEFAULT_SYNCHRONOUS="NORMAL";
+    public static String synchronousMode(String configured) {
+        String mode=configured==null?DEFAULT_SYNCHRONOUS:configured.trim().toUpperCase(Locale.ROOT);
+        return mode.equals("FULL")||mode.equals("NORMAL")?mode:"FULL";
+    }
+
+    public InventoryStore(File data,Map<String,Object> initialState,String legacyHostId,String legacyToken) {this(data,initialState,legacyHostId,legacyToken,DEFAULT_SYNCHRONOUS);}
+
+    public InventoryStore(File data,Map<String,Object> initialState,String legacyHostId,String legacyToken,String synchronous) {
+        this.data=data;this.synchronous=synchronousMode(synchronous);
         try {
             privateDirectory(data.toPath());
             Class.forName("org.sqlite.JDBC");
             Path db=new File(data,"inventory.sqlite").toPath();
             privateFile(db);
-            writer=open(db,false);
+            writer=open(db,false,this.synchronous);
             schema();
             protectDatabaseFiles();
             migrate(initialState,legacyHostId,legacyToken);
@@ -43,14 +55,14 @@ public final class InventoryStore implements AutoCloseable {
                 }
                 return null;
             });
-            for(int i=0;i<READERS;i++)readers.add(open(db,true));
+            for(int i=0;i<READERS;i++)readers.add(open(db,true,this.synchronous));
         } catch(Exception error) {
             close();
             throw failure("Cannot initialize inventory database",error);
         }
     }
 
-    private static Connection open(Path path,boolean reader)throws SQLException {
+    private static Connection open(Path path,boolean reader,String synchronous)throws SQLException {
         Connection c=DriverManager.getConnection("jdbc:sqlite:"+path.toAbsolutePath());
         try(Statement s=c.createStatement()) {
             s.execute("PRAGMA busy_timeout=5000");
@@ -63,7 +75,7 @@ public final class InventoryStore implements AutoCloseable {
                 try(ResultSet mode=s.executeQuery("PRAGMA journal_mode=WAL")) {
                     if(!mode.next()||!"wal".equalsIgnoreCase(mode.getString(1)))throw new SQLException("WAL mode is unavailable");
                 }
-                s.execute("PRAGMA synchronous=FULL");
+                s.execute("PRAGMA synchronous="+synchronous);
                 s.execute("PRAGMA wal_autocheckpoint=1000");
                 s.execute("PRAGMA journal_size_limit=16777216");
             }
@@ -173,21 +185,38 @@ public final class InventoryStore implements AutoCloseable {
     static boolean includeRuntime(Map<String,Object> document) {
         return !"JRE".equalsIgnoreCase(string(document.get("kind")).trim()) || Boolean.TRUE.equals(document.get("inUse"));
     }
-    public void putInventory(String kind,String hostId,List<Object> documents) {
+    /** Rows already validated and encoded, so the writer lock only pays for the SQL itself. */
+    public static final class PreparedInventory {
+        final String kind,hostId;final List<String[]> rows=new ArrayList<>();
+        private PreparedInventory(String kind,String hostId){this.kind=kind;this.hostId=hostId;}
+    }
+
+    /** CPU-only half of putInventory; safe to run outside any transaction. */
+    public static PreparedInventory prepareInventory(String kind,String hostId,List<Object> documents) {
         if(!KINDS.contains(kind))throw new IllegalArgumentException("Invalid inventory collection");
         if(hostId==null||hostId.isEmpty())throw new IllegalArgumentException("Missing inventory host");
+        PreparedInventory prepared=new PreparedInventory(kind,hostId);
+        for(Object value:documents) {
+            Map<String,Object> d=object(value);
+            if(!hostId.equals(d.get("hostId")))throw new IllegalArgumentException("Invalid inventory ownership");
+            String id=required(d,"id");
+            if("runtimes".equals(kind)&&!includeRuntime(d))continue;
+            String version=string(d.get("version")),major=major(version);
+            String type=string(d.getOrDefault("type",d.getOrDefault("kind",d.getOrDefault("category",""))));
+            prepared.rows.add(new String[]{kind,hostId,id,version,major,type,string(d.get("observedAt")),searchText(d),encode(d)});
+        }
+        return prepared;
+    }
+
+    public void putInventory(String kind,String hostId,List<Object> documents) {putInventory(prepareInventory(kind,hostId,documents));}
+
+    public void putInventory(PreparedInventory prepared) {
         transaction(()->{
-            exec("DELETE FROM inventory WHERE kind=? AND host_id=?",kind,hostId);
-            for(Object value:documents) {
-                Map<String,Object> d=object(value);
-                if(!hostId.equals(d.get("hostId")))throw new IllegalArgumentException("Invalid inventory ownership");
-                String id=required(d,"id");
-                if("runtimes".equals(kind)&&!includeRuntime(d))continue;
-                String version=string(d.get("version")),major=major(version);
-                String type=string(d.getOrDefault("type",d.getOrDefault("kind",d.getOrDefault("category",""))));
-                exec("INSERT INTO inventory(kind,host_id,id,version,major,type,observed_at,search_text,payload) VALUES(?,?,?,?,?,?,?,?,?)",
-                    kind,hostId,id,version,major,type,string(d.get("observedAt")),searchText(d),encode(d));
-            }
+            exec("DELETE FROM inventory WHERE kind=? AND host_id=?",prepared.kind,prepared.hostId);
+            try(PreparedStatement insert=current.get().prepareStatement("INSERT INTO inventory(kind,host_id,id,version,major,type,observed_at,search_text,payload) VALUES(?,?,?,?,?,?,?,?,?)")) {
+                for(String[] row:prepared.rows) {for(int i=0;i<row.length;i++)insert.setString(i+1,row[i]);insert.addBatch();}
+                insert.executeBatch();
+            } catch(SQLException error) {throw failure("Inventory write failed",error);}
             return null;
         });
     }
@@ -232,7 +261,7 @@ public final class InventoryStore implements AutoCloseable {
     }
 
     public void exec(String sql,Object...args) {
-        if(Boolean.TRUE.equals(reading.get()))throw new IllegalStateException("Cannot write within a read snapshot");
+        if(Boolean.TRUE.equals(reading.get())) {if(Boolean.TRUE.equals(optimistic.get()))throw new WriteRequired();throw new IllegalStateException("Cannot write within a read snapshot");}
         if(current.get()==null) {transaction(()->{exec(sql,args);return null;});return;}
         try(PreparedStatement s=prepare(current.get(),sql,args)) {s.executeUpdate();}
         catch(SQLException error) {throw failure("Inventory write failed",error);}
@@ -240,7 +269,7 @@ public final class InventoryStore implements AutoCloseable {
 
     /** Nested transactions use savepoints so caught failures cannot commit partial writes. */
     public <T>T transaction(Callable<T> operation) {
-        if(Boolean.TRUE.equals(reading.get()))throw new IllegalStateException("Cannot write within a read snapshot");
+        if(Boolean.TRUE.equals(reading.get())) {if(Boolean.TRUE.equals(optimistic.get()))throw new WriteRequired();throw new IllegalStateException("Cannot write within a read snapshot");}
         lifecycle.readLock().lock();
         try {
             ensureOpen();
@@ -252,7 +281,9 @@ public final class InventoryStore implements AutoCloseable {
                     return rethrow(error);
                 }
             }
+            long waitStarted=System.nanoTime();
             writeLock.lock();
+            long waited=(System.nanoTime()-waitStarted)/1000000L;if(waited>0)lockWaitMillis.addAndGet(waited);
             try {
                 writer.setAutoCommit(false);current.set(writer);
                 try {T result=operation.call();writer.commit();return result;}
@@ -262,6 +293,25 @@ public final class InventoryStore implements AutoCloseable {
             finally {writeLock.unlock();}
         } finally {lifecycle.readLock().unlock();}
     }
+
+    /** Raised only inside readOrWrite when the operation reaches its first write; never escapes it. */
+    private static final class WriteRequired extends Error {WriteRequired(){super("write required",null,false,false);}}
+
+    /**
+     * Runs the operation on a read snapshot and reruns it in the serialized writer transaction only if it
+     * reaches a write. Idle agent polls therefore never queue behind the global writer lock. The operation
+     * must be safe to repeat: the read attempt is discarded without having changed anything.
+     */
+    public <T>T readOrWrite(Callable<T> operation) {
+        if(current.get()!=null)return transaction(operation);
+        optimistic.set(Boolean.TRUE);
+        try {return readSnapshot(operation);}
+        catch(WriteRequired needed) {optimistic.remove();return transaction(operation);}
+        finally {optimistic.remove();}
+    }
+
+    /** Cumulative time callers spent waiting for the writer lock, for slow-request diagnostics. */
+    public long writerWaitMillis(){return lockWaitMillis.get();}
 
     /** Keep related reads on one SQLite snapshot without holding the writer lock. */
     public <T>T readSnapshot(Callable<T> operation) {

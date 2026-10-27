@@ -34,7 +34,7 @@ const {spawn}=require('node:child_process'),{chromium}=require('playwright');
   await page.locator('[data-work-campaign="cancel"]').click();await page.waitForTimeout(250);
   // Real API security: CSRF and readers cannot control or select a campaign.
   assert.equal((await context.request.post(base+'/api/agent-campaigns/command',{data:{batchId:batch,action:'resume'}})).status(),403);
-  assert.equal((await context.request.post(base+'/api/agent-campaigns/settings',{headers,data:{concurrency:11}})).status(),400);
+  assert.equal((await context.request.post(base+'/api/agent-campaigns/settings',{headers,data:{concurrency:26}})).status(),400);
   assert.equal((await context.request.get(base+'/api/agent-campaigns/preview?pageSize=5000')).status(),400);
   const reader=await browser.newContext(),login=await reader.request.post(base+'/api/login',{data:{email:'reader@example.com',password:'Reader42!'}});assert.equal(login.status(),200);const rs=await login.json();assert.equal((await reader.request.get(base+'/api/agent-campaigns/preview')).status(),403);assert.equal((await reader.request.post(base+'/api/agent-campaigns/command',{headers:{'X-CSRF-Token':rs.csrfToken},data:{batchId:batch,action:'cancel'}})).status(),403);await reader.close();
   // Close the page: cancellation is driven by independent fixture maintenance, never GET handlers.

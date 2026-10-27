@@ -41,7 +41,7 @@ final class UninstallRegistry {
         return publicRecord(r);
     }
     Map<String,Object> cancel(String host,String request){maintain();var r=db.get("uninstall_requests",request);require(r!=null&&host.equals(r.get("hostId")),404,"Request not found");if("CANCELLED".equals(r.get("status")))return publicRecord(r);require("WAITING".equals(r.get("status")),409,"Only a pending request can be cancelled");event(r,"CANCELLED");return publicRecord(r);}
-    Map<String,Object> delivery(String host,String capability){maintain();var r=latest(host);if(!busy(r))return null;
+    Map<String,Object> delivery(String host,String capability){var r=latest(host);if(!busy(r))return null;
         // Block assessments throughout removal, including polls from old agents.
         if(!"uninstall-v1".equals(capability)||!"WAITING".equals(r.get("status")))return map("blocked",true);
         if(db.scalar("SELECT count(*) FROM jobs WHERE host_id=? AND status='RUNNING'",host)>0)return map("blocked",true);

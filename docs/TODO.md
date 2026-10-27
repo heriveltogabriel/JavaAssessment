@@ -5,7 +5,11 @@
 - [x] Remover manutenção e escrita dos GETs de lista, resumo e detalhe; preservar manutenção independente.
 - [x] Consultar a cada 30 segundos após a resposta, recuar em erro, não sobrepor ciclos e suprimir state automático em Solicitações.
 - [x] Reproduzir contenção antes da correção; validar leituras durante escrita, expiração independente, navegador e frota de 5.000 registros. [Evidências](validation/monitoring-load-2026-10-26.md).
+- [x] Caminho dos agentes: heartbeat, actions e poll ociosos só leem; manutenção da frota sai das chamadas por agente; resultados de coleta validam fora do lock e entram em lote; faixas limitadas protegem as telas. [Evidências](validation/agent-path-load-2026-10-26.md).
+- [ ] Gerar a release 2.1.28 em outra máquina seguindo o [roteiro](RELEASE_2.1.28.md); código e notas já estão preparados.
 - [ ] Gerar nova release consolidada antes de instalar a correção; não substituir os ZIPs 2.1.26 publicados.
+- [x] Limite padrão de simultâneos igual ao grupo (10, teto 25), `synchronous=NORMAL` configurável e espalhamento da janela de coleta por host (sem nova versão de agente). [Evidências](validation/agent-path-load-2026-10-26.md#ajustes-finais).
+- [ ] Jitter no agente: adiado; o espalhamento no servidor cobre a rajada de coleta.
 - [ ] Medir carga real após aplicar: estes testes não medem o tráfego dos agentes nem excluem outros gargalos de CPU, rede ou consultas.
 
 ## Campanhas de agentes — entrega 2.1.26 para teste
