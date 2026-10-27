@@ -1,0 +1,197 @@
+Java Assessment 2.1.28 — evidência local
+Base: main 6f910ad; ponte 2.1.27; final 2.1.28; macOS/JDK17
+Não houve deploy remoto. Não enviado ao GitHub.
+
+### ja-release-228-source.log
+VISITED_PATHS_TESTS=PASS keys=1000000 tableBytes=16777216
+Lifecycle catalog and classification checks passed
+PRODUCT_HOMES_TESTS=PASS oracle-home-registry patches manifest-fallback hostile-xml pruned-internals domains bundled-jdbc process-registry process-roots EAP WildFly Tomcat
+JDBC_DRIVER_RESOLVER_TESTS=PASS checks=23
+WEBLOGIC_PRECEDENCE=PASS checks=25 DFS modules pre-classpath boot ext fd maps deleted per-PID limits provenance privacy
+TomcatDiscoveryTest: 35 checks passed
+JBOSS_DISCOVERY_TESTS=PASS checks=32
+NATIVE_TOMCAT=PASS jsvc flags libjvm negative excluded-process privacy
+JDBC_ENDPOINT_TESTS=PASS checks=126
+ARCHIVE_METADATA_TESTS=PASS Boot nestedJDBC storedNested deflatedNested largeArchives driverCatalog pools embeddedTomcat productVersions cache bounds privacy
+WEBLOGIC_VERSION_TESTS=PASS legacy23553 home classpath modern isolation cache bounds CRC privacy
+SPRING_DATASOURCE_TESTS=PASS configuration privacy properties YAML profiles shared-artifact-associations bounds driver-evidence existing-WebLogic
+APPLICATION_CONFIG_FILES=PASS unique ambiguous explicit named defaults privacy symlink
+AGENT_CONFIG_ACCEPTANCE=PASS real-command named-config Oracle JNDI dialect observation privacy
+APPLICATION_JDBC=PASS persistence Hibernate Spring-XML generic dedup scopes archives limits privacy XXE
+JNDI_LINKS=PASS JBoss-order WebLogic prefixes missing ambiguous drivers
+SPRING_EXTENDED=PASS auto-prefix relaxed JPA imports profiles privacy cycles depth count size symlink
+Spring configuration checks passed
+SPRING_INTEGRATION_TESTS=PASS assertions=36 disabled-default identity freshness bounds privacy association
+RUNTIME_INVENTORY_TESTS=PASS OpenJDK21 EL9 aarch64 no-javac two-JVMs one-installation metadata application-links dedup unused-runtime-omission owned-agent-tools-excluded
+PROCESS_LAUNCH_TESTS=PASS parser secrets proc-fallback Boot JDBC associations Tomcat WAR exclusions JDK-budget archive-file-evidence
+HSPERFDATA_TESTS=PASS v1 v2 byte-order fuzz cap maps argfile classpath replaced removed owner symlink no-command-retention fifo-timeout live-skipped
+JDK_INVENTORY_TESTS=PASS unused-JRE-skip observed-JRE Java6-normalization JDK17 JDK21 process-links snapshot-evidence collector-private-runtime shared-JDK-preservation
+BoundedDirectoryTest PASS 28 checks
+COLLECTOR_SWEEP_TESTS=PASS own-package-zero-budget nearby-apps process-linked-Boot-JDBC shared-JDK exact-limits default-50000 separate-budgets ignored-dirs
+COLLECTOR_TESTS=PASS limits ELF32 manifest timestamp retry idempotency
+ASSESSMENT_DIAGNOSTIC=PASS
+AGENT_TOOL_TESTS=PASS retry identity persistence reinstall permission report no-job diagnostic event bounds credential redaction
+LEGACY_DISCOVERY_TESTS=PASS checks=39
+AgentBundleManifestTest PASS 75 checks
+AgentBootstrapHandoffTest PASS 282 checks; durable original state, stop/confirm/queue, safe restore, replay, bounded typed status, SysV; native Linux proof remains pending.
+Recovery startup ownership, idempotence, customization refusal and SysV checks passed
+SERVER_DATASOURCE_TESTS=PASS checks=199 Tomcat JBoss selected-config namespaces XA disabled privacy XXE limits excludes associations pools links WAR appBase expressions modules domain legacy
+JdbcEndpointReportsTest PASS 84 checks
+DatabaseGroupsHttpTest PASS: 36 checks (normalized destinations, scope, READER, pagination, drill-down, report cell)
+EnrollmentCapacityTest PASS: 10020 checks; capacity, retry, retention, scoped paging, redaction and 2,000 registrations.
+EnvironmentPresenceTest PASS: full counts, thresholds, credential states, paging, search, scopes and heartbeat recovery.
+ARCHIVE_DEFAULTS_HTTP=PASS fresh migration inheritance exceptions restart reset no-extra-jobs
+SETTINGS_PATHS_HTTP=PASS fresh legacy-read no-migration duplicate conflict host-effective
+PORTUGUESE_ERRORS=PASS localized HTTP errors preserve technical codes and existing translations
+ScheduleSpreadTest PASS: 48310 checks; 1150 hosts over 15 minutes, bucket sizes 66-86.
+INVENTORY_STORE_TESTS=PASS persistence index-columns rollback nested-savepoints migration backups limits observed-JRE unused-JRE-filter restart-late-retry WAL-readers read-snapshots permissions
+UserAuthTest PASS: 60 checks; Argon2id mean initial hash=90ms; isolated SQLite/concurrency/restart/recovery.
+USER_ACCESS_HTTP_TESTS=PASS bootstrap-race migration inventory-retained role-matrix first-access csrf origin password-rotation immediate-revocation last-admin email-normalization reauth generic-errors agent-separation secret-redaction restart audit logout role-revocation temporary-expiry idle-expiry absolute-expiry background-no-renewal throttling
+DashboardMaintenanceHttpTest passed: authorization, CSRF, origin, reauthentication, queue, maintenance
+EnvironmentInstallAccessTest PASS: 43 checks; lifecycle/batch/restart/revocation/key/race/traditional ZIP
+EnvironmentInstallHttpTest PASS 53 checks: admin/CSRF isolation, ZIP, batch, permanent command, rotation, live agents, traditional download, secret exclusion, restart.
+InstallCommandTest PASS 59 checks: shell execution, TLS, private config, no secret argv, failure cleanup, no automatic sudo.
+MachineActionsHttpTest PASS: 73 checks; auth/CSRF/name/active/busy/rollback/isolation/move/detach/tombstone/restart/capacity/audit; loopback disposable fixtures only.
+MachineCleanupHttpTest PASS: 91 checks; real HTTP/SQLite, authorization, periods, races, identity isolation, full purge, shared batches, rollback and retry.
+AgentUpdateWorkerTest PASS 165 checks
+AgentUpdateStartTimeoutTest PASS: 27 checks
+AgentUpdateCampaignsTest PASS: 47 checks, 5000 hosts, 4312 ms
+AgentUpdateHttpTest PASS: 158 checks; signatures/catalog/version/assets/auth/CSRF/ownership/replay/conflicts/gradual-batches/heartbeat-confirmation/rollback-stop/timeouts/restart/revocation; local fixtures only.
+WorkRequestsHttpTest PASS: 193 checks; reader permissions, real transitions, bounded SQL pagination, scope, snapshots, skips, timeout, cancellation, restart, deletion, legacy timeline, credentials and historical observations; local fixtures only.
+RUNTIME_INVENTORY_HTTP_TESTS=PASS real-collector-fixture OpenJDK21 no-javac two-JVMs one-installation HTTP SQLite summary groups CSV JSON restart idempotency ownership credentials
+CSV_EXPORT_TESTS=PASS pagination full-scope eight-categories environments unassigned host empty Unicode CRLF quotes formula-defense numeric-types allowlist secret-exclusion
+InventoryArchiveTest passed
+InventoryArchiveHttpTest passed
+VersionedCsvHttpTest PASS: package versions and headers, bootstrap, authentication, full CSV scope/pagination, escaping, redaction, empty scope, JSON compatibility, metadata errors and cleanup.
+DashboardVersionHttpTest PASS: 2.1.26, HTTP/JSON/build date/no-cache/restart/global notice/filters/pagination/heartbeat/reader/no mutation.
+CompactOverviewTest PASS: 100 hosts, bounded groups, scoped totals, datasource driver versions, paging/search/IP/empty state and machine detail.
+Lifecycle HTTP checks passed
+PostUpdateAssessmentsTest PASS: 65 SQLite checks; final-only/idempotency/reuse/conflicts/throttle/expiry/restart/retention/rollback/concurrency; local fixtures only.
+PostUpdateAssessmentHttpTest PASS: 67 checks; signed update API/final-only/flag replay/real poll/current settings/reuse/receipt/lease expiry/history trimming/auth; loopback only.
+JdbcOverviewHttpTest PASS: 62 checks; actual collector rows, authenticated HTTP/SQLite, all scopes, restart, fresh/empty/stale snapshots and safe details.
+InventoryArchiveTest passed
+Single-file CSV/JSON equivalence passed: every exported field, nested evidence, Unicode, quotes/newlines, formula protection, relations and counts.
+ENROLLMENT_CAPACITY_UI=PASS limits, paging beyond 500, revoke, scope race, retry and close
+inventory-export-ui tests passed
+JDBC_DRIVER_UI=PASS statuses candidate allowlist malformed values
+JDBC_JAR_COLUMN=PASS identified files, nested archive, no candidate guessing
+WEBLOGIC_DRIVER_UI=PASS confidence candidate-table PID escaping legacy
+JDBC_PROBABLE_DISPLAY=PASS four-PID agreement conflicts missing evidence replaced files escaping immutable
+JDBC_ENDPOINT_UI_TESTS=PASS multi-endpoint IPv6 legacy absent malformed deduplication destination rendering escaping
+JDBC_SERVER_RELATION_UI=PASS explicit IDs across same-name domains, legacy PID fallback, host isolation
+DATASOURCES_UI_TESTS=PASS report cell summary/lines/escaping, tab columns, database groups, drill-down
+ENVIRONMENT_PRESENCE_JS=PASS statuses, clock boundaries, scoped aggregates, empty and heartbeat recovery
+LOCALE=PASS states, legacy summaries, paths, unknown data, Brazilian numbers, evidence display, all JS syntax
+PASS: version groups, unique hosts, runtime vs installation counts, scoping, unknown versions, HTML escaping, empty state
+PASS: application/framework versions, process vs file evidence, found server counts, JDBC package association, no datasource inference, host scope and escaping
+PASS: multiple application/process associations, host guards and one evidence badge per workload type
+PASS: configured vs runtime datasources, no connection inference, shared process association, scoped counts, packaged driver/source and pool labeling
+PASS: compact server and datasource-version groups, unknown metadata, remainder totals, four panels and escaped host table.
+Machine IP presentation PASS: IPv4 priority, IPv6-only, loopback/link-local, duplicate normalization, empty and escaped details.
+PASS: application-reported JDBC evidence, separate driver/database versions and HTML escaping
+PASS: 29 refresh checks (awaited requests, loading/error feedback, scopes and drafts, admin background join, navigation/session safety; GET only).
+PASS: interface uses exact server version, new release value, no cache, unavailable on invalid/offline response.
+PASS: release notice visibility, pluralization, release changes, unknown/invalid data, admin permission, clearing and read-only global review.
+PASS: lifecycle badges, filters, risk links and Java support ring.
+PASS: 42 JDBC overview render checks on actual collector -> HTTP -> SQLite fixture data
+Source regression checks passed; heavy stress and external hosts were not exercised.
+### ja-release-228-build.log
+Prepared dashboard and complete agent v2.1.28 locally. No VM accessed.
+Run manually: python3 "/Users/heriveltosantos/Documents/projetos/JavaAssessment-release-2.1.28/output/dashboard-releases/2.1.28/deployment/publish-dashboard.py"
+
+### ja-release-228-installer-precheck.log
+PRECHECK OK: package, JDK, dashboard URL and TLS identity
+
+### ja-release-228-AgentUpdateCampaignsTest.log
+AgentUpdateCampaignsTest PASS: 47 checks, 5000 hosts, 2768 ms
+
+### ja-release-228-ScheduleSpreadTest.log
+ScheduleSpreadTest PASS: 48310 checks; 1150 hosts over 15 minutes, bucket sizes 66-86.
+
+### ja-release-228-InventoryStoreTest.log
+INVENTORY_STORE_TESTS=PASS persistence index-columns rollback nested-savepoints migration backups limits observed-JRE unused-JRE-filter restart-late-retry WAL-readers read-snapshots permissions
+
+### ja-release-228-AgentUpdateCoordinatorTest.log
+AgentUpdateCoordinatorTest PASS 12 checks: restart/replay, exhausted profiles, no early assessment, cancel/revoke/expiry publication state and invalid-catalog fail-closed.
+
+### ja-release-228-browser.log
+{"status":"PASS","fleet":5000,"checks":["50 per review page","nothing selected by default","server filters","page selection","all-filter snapshot confirmation","no implicit assessment","mobile layout","lost ACK replay","50 per monitoring page","lazy events","pause","bulk cancel selected/all","CSRF","reader denial","invalid capacity rejected"],"timings":[{"reviewMs":249}]}
+
+### ja-release-228-verifier-2.1.20.log
+ORIGINAL_2.1.20_VERIFIERS=PASS signed-web baseline payload agent-routes bundle pin anchor class-major50; routes=32 web-files=277
+
+### ja-release-228-agent-2.1.20.log
+Note: Some input files use unchecked or unsafe operations.
+Note: Recompile with -Xlint:unchecked for details.
+RELEASED_AGENT_UPGRADE=PASS 2.1.20 -> 2.1.28; original manager class=file:/Users/heriveltosantos/Documents/projetos/JavaAssessment-release-2.1.28/tmp/released-agent-2.1.20-to-2.1.28/root/collector.jar; signed final bundle, activation, manager handoff, confirmation, preserved identity/CA/Java/spool, immutable bootstrap, previous generation retained
+LIMIT=JDK17 local fixture; OS services, network and new manager confirmation use adapters; no client/VM changed
+MANIFEST_KEYS ['bytes', 'files', 'format', 'minJava', 'minUpdater', 'platform', 'schema', 'sha256', 'type', 'version']
+
+### ja-release-228-console-2.1.20.log
+FINAL_JAVA_PACKAGE=PASS 2.1.20 -> 2.1.28 -> 2.1.20; real released Java classes, signed ZIP, TLS/SNI, SQLite and installation identity; child-process service adapter
+
+### ja-release-228-verifier-2.1.22.log
+ORIGINAL_2.1.22_VERIFIERS=PASS signed-web baseline payload agent-routes bundle pin anchor class-major50; routes=32 web-files=277
+
+### ja-release-228-agent-2.1.22.log
+Note: Some input files use unchecked or unsafe operations.
+Note: Recompile with -Xlint:unchecked for details.
+RELEASED_AGENT_UPGRADE=PASS 2.1.22 -> 2.1.28; original manager class=file:/Users/heriveltosantos/Documents/projetos/JavaAssessment-release-2.1.28/tmp/released-agent-2.1.22-to-2.1.28/root/collector.jar; signed final bundle, activation, manager handoff, confirmation, preserved identity/CA/Java/spool, immutable bootstrap, previous generation retained
+LIMIT=JDK17 local fixture; OS services, network and new manager confirmation use adapters; no client/VM changed
+MANIFEST_KEYS ['bytes', 'files', 'format', 'minJava', 'minUpdater', 'platform', 'schema', 'sha256', 'type', 'version']
+
+### ja-release-228-console-2.1.22.log
+FINAL_JAVA_PACKAGE=PASS 2.1.22 -> 2.1.28 -> 2.1.22; real released Java classes, signed ZIP, TLS/SNI, SQLite and installation identity; child-process service adapter
+
+### ja-release-228-verifier-2.1.24.log
+ORIGINAL_2.1.24_VERIFIERS=PASS signed-web baseline payload agent-routes bundle pin anchor class-major50; routes=32 web-files=277
+
+### ja-release-228-agent-2.1.24.log
+Note: Some input files use unchecked or unsafe operations.
+Note: Recompile with -Xlint:unchecked for details.
+RELEASED_AGENT_UPGRADE=PASS 2.1.24 -> 2.1.28; original manager class=file:/Users/heriveltosantos/Documents/projetos/JavaAssessment-release-2.1.28/tmp/released-agent-2.1.24-to-2.1.28/root/collector.jar; signed final bundle, activation, manager handoff, confirmation, preserved identity/CA/Java/spool, immutable bootstrap, previous generation retained
+LIMIT=JDK17 local fixture; OS services, network and new manager confirmation use adapters; no client/VM changed
+MANIFEST_KEYS ['bytes', 'files', 'format', 'minJava', 'minUpdater', 'platform', 'schema', 'sha256', 'type', 'version']
+
+### ja-release-228-console-2.1.24.log
+FINAL_JAVA_PACKAGE=PASS 2.1.24 -> 2.1.28 -> 2.1.24; real released Java classes, signed ZIP, TLS/SNI, SQLite and installation identity; child-process service adapter
+
+### ja-release-228-verifier-2.1.26.log
+ORIGINAL_2.1.26_VERIFIERS=PASS signed-web baseline payload agent-routes bundle pin anchor class-major50; routes=32 web-files=277
+
+### ja-release-228-agent-2.1.26.log
+Note: Some input files use unchecked or unsafe operations.
+Note: Recompile with -Xlint:unchecked for details.
+RELEASED_AGENT_UPGRADE=PASS 2.1.26 -> 2.1.28; original manager class=file:/Users/heriveltosantos/Documents/projetos/JavaAssessment-release-2.1.28/tmp/released-agent-2.1.26-to-2.1.28/root/collector.jar; signed final bundle, activation, manager handoff, confirmation, preserved identity/CA/Java/spool, immutable bootstrap, previous generation retained
+LIMIT=JDK17 local fixture; OS services, network and new manager confirmation use adapters; no client/VM changed
+MANIFEST_KEYS ['bytes', 'files', 'format', 'minJava', 'minUpdater', 'platform', 'schema', 'sha256', 'type', 'version']
+
+### ja-release-228-console-2.1.26.log
+FINAL_JAVA_PACKAGE=PASS 2.1.26 -> 2.1.28 -> 2.1.26; real released Java classes, signed ZIP, TLS/SNI, SQLite and installation identity; child-process service adapter
+
+### Pacotes
+PACKAGES_CRC_PATHS_INVENTORIES_EXTERNAL_SHA=PASS
+[
+  {
+    "file": "assessment-dashboard-installer-2.1.28.zip",
+    "bytes": 93002581,
+    "sha256": "30ae53675762380beb15b0982dd7a6671e43513ae66034d499e18d25837a3b15"
+  },
+  {
+    "file": "assessment-dashboard-update-2.1.28.zip",
+    "bytes": 93342284,
+    "sha256": "f32deb59115b74e0207c267cc0d59cf8ddd1a71b906a87a762c9eafdd3fa8aff"
+  },
+  {
+    "file": "assessment-dashboard-web-update-2.1.28.zip",
+    "bytes": 93296804,
+    "sha256": "912aaf53912d1e7d2e46cc46c107ca7c2b796ce98c87d5e8897be6c38a273e1f"
+  }
+]
+
+### Conferência final
+SIGNED_WEB_MANIFEST_EXACT_CLOSURE_SOURCE_WEB_MATCH=PASS 277
+INSTALLER_SOURCE_WEB_MATCH=PASS
+NO_FUNCTIONAL_CODE_EDITS_PREVIOUS_ARTIFACTS_UNCHANGED=PASS
+RELEASE_DOCUMENTATION_LINKS=PASS
+GIT_DIFF_CHECK=PASS

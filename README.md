@@ -1,19 +1,23 @@
 # Java Assessment
 
-Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versão **2.1.26**, preparada para atualização pela console, reúne dashboard, agente Linux e banco SQLite local, com organização por ambiente e máquina.
+Descoberta e inventário do ambiente Java na infraestrutura do cliente. A versão **2.1.28**, preparada para atualização pela console, reúne dashboard, agente Linux e banco SQLite local, com organização por ambiente e máquina.
 
 
-**Novo na 2.1.26:** [campanhas de atualização de agentes](docs/AGENT_UPDATE_CAMPAIGNS.md), com revisão paginada, grupos de 10, concorrência global, pausa/retomada e cancelamento em lote. Validação local com 5.000 máquinas, sem impor esse número como limite da frota.
+**Incluído desde a 2.1.26:** [campanhas de atualização de agentes](docs/AGENT_UPDATE_CAMPAIGNS.md), com revisão paginada, grupos de 10, concorrência global, pausa/retomada e cancelamento em lote. Validação local com 5.000 máquinas, sem impor esse número como limite da frota.
 
 ![Overview do Java Assessment com indicadores de agentes, instalações Java, servidores e datasources JDBC](imagens/overview.png)
 
 Esta entrega reúne [configurações Spring/JDBC](docs/SPRING_DISCOVERY.md), [driver WebLogic por processo](docs/JDBC_DRIVER_RESOLUTION.md) e [Tomcat/JBoss](docs/TOMCAT_JBOSS_DISCOVERY.md). Excel, Mapa de bancos e o ajuste do driver provável estão nas [notas da 2.1.18](docs/RELEASE_2.1.18.md).
 
-## Em preparação — 2.1.28
+## Entrega consolidada — 2.1.28
 
-Atualização de agentes em frotas grandes: agentes ociosos deixam de disputar o lock de escrita, resultados de coleta entram em lote, limite padrão de 10 máquinas por vez e coleta agendada espalhada pela janela. Só o servidor muda; o protocolo do agente é o mesmo. [Notas e roteiro de build](docs/RELEASE_2.1.28.md) · [Medições](docs/validation/agent-path-load-2026-10-26.md). Pacotes ainda não gerados.
+Agentes ociosos deixam de disputar o lock de escrita do SQLite; resultados entram em lote; acompanhamento da tela consulta a cada 30 segundos sem sobrepor chamadas. Concorrência padrão de 10 máquinas, teto 25, coleta agendada espalhada pela janela e `sqliteSynchronous=NORMAL` configurável. O protocolo do agente permanece igual. [Notas](docs/RELEASE_2.1.28.md) · [Pacotes](install/v2.1.28/README.md) · [Validação final](docs/validation/console-release-2.1.28.md).
 
-## Nova entrega para teste — 2.1.26
+Use o **web-update** em Administração para a console. Atualização direta e rollback local comprovados a partir de **2.1.20, 2.1.22, 2.1.24 e 2.1.26**. Ponte interna **2.1.27**, sem instalação manual nas origens V3 elegíveis. Pacotes preparados para teste do operador; sem deploy remoto.
+
+**Atenção: atualize também os agentes. Atualizar o dashboard não atualiza os agentes automaticamente.** A melhora de desempenho já vale com os agentes atuais **2.1.26**; atualizá-los é **opcional** para obter essa melhora. A atualização separada dos agentes das quatro origens foi validada em fixtures com os binários publicados; confira a elegibilidade real em **Revisar agentes**.
+
+## Entrega anterior preservada — 2.1.26
 
 Campanhas persistentes, revisão paginada, grupos de 10, concorrência global, pausa/retomada e cancelamento em lote. [Notas](docs/RELEASE_2.1.26.md) · [Pacotes](install/v2.1.26/README.md) · [Validação](docs/validation/console-release-2.1.26.md).
 
@@ -112,12 +116,12 @@ Na raiz deste repositório, com Python 3 e OpenSSL disponíveis:
 
 ```sh
 # Recupera somente os artefatos públicos assinados do instalador publicado.
-unzip -o install/v2.1.20/assessment-dashboard-installer-2.1.20.zip 'dist/*' -d .
+unzip -o install/v2.1.28/assessment-dashboard-installer-2.1.28.zip 'dist/*' -d .
 python3 -B ops/prepare-beta-dependencies.py --check
 python3 -B dashboard-installer/build.py --with-source
 ```
 
-Os resultados ficam em `dist/assessment-dashboard-installer-2.1.20.zip` e `dist/assessment-dashboard-source-2.1.20.zip`, com arquivos SHA-256. O build usa as bibliotecas fixadas, o agente genérico e o catálogo público assinado incluídos no repositório. Não exige arquivos da máquina de desenvolvimento nem a chave privada de assinatura.
+Os resultados ficam em `dist/assessment-dashboard-installer-2.1.28.zip` e `dist/assessment-dashboard-source-2.1.28.zip`, com arquivos SHA-256. O build usa as bibliotecas fixadas, o agente genérico e o catálogo público assinado incluídos no repositório. Não exige arquivos da máquina de desenvolvimento nem a chave privada de assinatura.
 
 O pacote do agente versionado em `dist/assessment-collector.zip` é genérico e não contém identidade cadastrada. O catálogo extraído em `dist/` inclui os pacotes completos e as rotas de migração. O build verifica assinaturas, chave pública e integridade antes de empacotar. Alterações nos arquivos executáveis exigem uma nova entrega assinada; o build não assina nem substitui a confiança instalada.
 
@@ -183,14 +187,14 @@ A [2.0.57 permanece preservada](install/v2.0.57/README.md), incluindo os instala
 
 ## Instalar no cliente
 
-O [diretório install](install/README.md) reúne o [manual ilustrado](install/Manual.pdf), o [guia de instalação](install/Guia-instalacao.pdf) e o instalador pronto da versão 2.1.0, com seu SHA-256. Os PDFs usam nomes estáveis e comandos com `X.Y.Z` para a versão escolhida. Para as funcionalidades mais recentes, consulte também as notas da versão e os guias específicos abaixo.
+O [diretório install](install/README.md) reúne o [manual ilustrado](install/Manual.pdf), o [guia de instalação](install/Guia-instalacao.pdf) e o instalador pronto da versão 2.1.28, com seu SHA-256. Os PDFs usam nomes estáveis e comandos com `X.Y.Z` para a versão escolhida. Para as funcionalidades mais recentes, consulte também as notas da versão e os guias específicos abaixo.
 
 **Para uma instalação nova.** O ZIP não deve ser executado sobre um dashboard existente para atualizá-lo. Na VM destinada ao dashboard, após transferir o instalador e seu SHA-256:
 
 ```sh
-sha256sum -c assessment-dashboard-installer-2.1.0.zip.sha256
-unzip assessment-dashboard-installer-2.1.0.zip -d dashboard-installer-2.1.0
-cd dashboard-installer-2.1.0
+sha256sum -c assessment-dashboard-installer-2.1.28.zip.sha256
+unzip assessment-dashboard-installer-2.1.28.zip -d dashboard-installer-2.1.28
+cd dashboard-installer-2.1.28
 ./install.sh \
   --public-url https://dashboard.exemplo.com \
   --admin-name "Administrador" \

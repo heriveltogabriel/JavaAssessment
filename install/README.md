@@ -20,7 +20,13 @@ O playbook usa wget, instala com sudo em lotes de duas máquinas preserva agente
 - [Manual ilustrado da solução](Manual.pdf): arquitetura, inventário, atualização de agentes, relatórios e filtros JDBC.
 - [Guia de instalação](Guia-instalacao.pdf): requisitos, comandos, configuração do dashboard e instalação dos agentes.
 
-## Entrega atual para teste — 2.1.26
+## Entrega atual para teste — 2.1.28
+
+[Pacotes da 2.1.28](v2.1.28/README.md): menos contenção no SQLite, acompanhamento sem consultas sobrepostas, concorrência padrão 10/teto 25 e coleta agendada distribuída. Envie o [web-update](v2.1.28/assessment-dashboard-web-update-2.1.28.zip) na Administração. Atualização direta e rollback local verificados para as consoles **2.1.20/2.1.22/2.1.24/2.1.26**. [Notas](../docs/RELEASE_2.1.28.md) · [Provas e limites](../docs/validation/console-release-2.1.28.md).
+
+**Atenção: atualize também os agentes. Atualizar o dashboard não atualiza os agentes automaticamente.** Agentes atuais **2.1.26** já aproveitam a melhora do servidor; sua atualização é **opcional** nesta entrega. Não instalar a ponte 2.1.27 manualmente para agentes V3 elegíveis. Os pacotes anteriores permanecem intactos.
+
+## Entrega anterior preservada — 2.1.26
 
 [Pacotes 2.1.26](v2.1.26/README.md): campanhas de atualização com grupos, concorrência global e cancelamento em lote; revisão e acompanhamento paginados. Envie o [web-update](v2.1.26/assessment-dashboard-web-update-2.1.26.zip) em **Administração → Atualização do dashboard**. [Notas](../docs/RELEASE_2.1.26.md) · [Evidências e rotas verificadas](../docs/validation/console-release-2.1.26.md).
 
