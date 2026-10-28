@@ -55,13 +55,19 @@ public final class AgentUpdateCampaignsTest {
             check(f.db.scalar("SELECT count(*) FROM agent_update_requests")==5000,"5000 stored");
             check(f.db.scalar("SELECT count(*) FROM agent_update_requests WHERE id<>json_extract(payload,'$.id')")==0,"SQLite UUID evaluated once");
             check(batch.equals(f.db.transaction(()->f.c.create(body,ADMIN)).get("batchId")),"lost ACK idempotency");
-            f.tick();check(AgentUpdateCampaigns.occupied(f.db)==2,"default global cap two");
-            check(f.db.scalar("SELECT count(*) FROM agent_update_requests WHERE json_extract(payload,'$.expiresMillis')=0")==4998,"waiting queue has no premature expiry");
+            f.tick();check(AgentUpdateCampaigns.occupied(f.db)==10,"default global cap equals the default group size");
+            check(f.db.scalar("SELECT count(*) FROM agent_update_requests WHERE json_extract(payload,'$.expiresMillis')=0")==4990,"waiting queue has no premature expiry");
+            check(AgentUpdateCampaigns.limit(f.db)==10,"new installations default to ten");
+            f.db.transaction(()->{f.db.metadata("agent-update-scheduler",map("concurrency",2));return null;});check(AgentUpdateCampaigns.limit(f.db)==10,"implicit 2 persisted by earlier releases becomes the new default");
+            f.db.transaction(()->f.c.settings(map("concurrency",2),ADMIN));check(AgentUpdateCampaigns.limit(f.db)==2,"an administrator's explicit 2 is respected");
+            f.db.transaction(()->f.c.settings(map("concurrency",25),ADMIN));check(AgentUpdateCampaigns.limit(f.db)==25,"limit accepts up to 25");
+            boolean rejected=false;try{f.db.transaction(()->f.c.settings(map("concurrency",26),ADMIN));}catch(RuntimeException e){rejected=true;}check(rejected,"limit above 25 is rejected");
+            f.db.transaction(()->f.c.settings(map("concurrency",10),ADMIN));
             var filter=new WorkRequests.Filter();filter.compact=true;filter.size=50;filter.page=75;
             var detail=new WorkRequests(f.db).detail(filter,batch,"AGENT_UPDATE");check(((List<?>)detail.get("machines")).size()==50,"detail page capped");check(n(obj(detail.get("machinePagination")).get("total"))==5000,"detail counts full fleet");check(Json.stringify(detail).length()<70000,"compact detail bounded");
-            f.restart();check(AgentUpdateCampaigns.occupied(f.db)==2,"restart preserves admissions");
+            f.restart();check(AgentUpdateCampaigns.occupied(f.db)==10,"restart preserves admissions");
             f.command(batch,"pause");check(AgentUpdateCampaigns.occupied(f.db)==0,"pause withdraws only unclaimed admission");f.tick();check(AgentUpdateCampaigns.occupied(f.db)==0,"paused does not admit");
-            f.command(batch,"resume");f.tick();check(AgentUpdateCampaigns.occupied(f.db)==2,"resume restores capacity");
+            f.command(batch,"resume");f.tick();check(AgentUpdateCampaigns.occupied(f.db)==10,"resume restores capacity");
             var rows=f.rows(batch);var first=rows.get(0);String firstId=(String)first.get("id");
             var claim=f.db.transaction(()->f.registry.claim((String)first.get("hostId"),firstId));check(Boolean.TRUE.equals(claim.get("executable")),"admitted claim accepted");
             f.command(batch,"cancel");check(AgentUpdateCampaigns.allowed(f.db,f.db.get("agent_update_requests",firstId)),"cancel preserves claimed transaction");
@@ -83,6 +89,7 @@ public final class AgentUpdateCampaignsTest {
             boolean denied=false;try{f.command(batch,"resume");}catch(EnrollmentRegistry.Failure e){denied=true;}check(denied,"cannot resume unresolved unknown");
         }
         try(var f=new Fixture(5)){
+            f.db.transaction(()->f.c.settings(map("concurrency",2),ADMIN));
             var snap=f.select(map("hostIds",List.of("host-00000","host-00001")));String a=(String)f.create(snap).get("batchId");
             String b=(String)f.create(f.select(map("hostIds",List.of("host-00002","host-00003")))).get("batchId");f.tick();check(AgentUpdateCampaigns.occupied(f.db)==2,"global cap across campaigns");
             f.command(a,"pause");f.tick();check(f.rows(b).stream().allMatch(r->n(r.get("startDeadlineMillis"))>0),"other campaign uses released slots");
