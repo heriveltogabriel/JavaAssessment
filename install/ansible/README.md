@@ -4,7 +4,7 @@
 
 Um playbook atende vários grupos e pode ser executado novamente após uma falha. O modo padrão `auto` preserva agentes íntegros e recupera instalações reconhecidas sem trocar o cadastro. Cada grupo define o ID do ambiente e a credencial de **Instalar via terminal**; o wget baixa o pacote configurado daquele ambiente. Não modifica o dashboard nem a versão do produto.
 
-[Baixar todos os arquivos em ZIP](java-assessment-ansible.zip) · [SHA-256](java-assessment-ansible.zip.sha256)
+[Baixar todos os arquivos em ZIP](java-assessment-ansible-20261028.zip) · [SHA-256](java-assessment-ansible-20261028.zip.sha256)
 
 Ao atualizar um playbook antigo, extraia **todos os arquivos do novo ZIP**, inclusive `files/manage-agent.sh` e `templates/`. Preserve seu `inventory.yml` e a pasta `private/`; eles não fazem parte do pacote público.
 
@@ -34,7 +34,28 @@ No dashboard, em **Ambientes → Baixar agente → Instalar via terminal**, ativ
 | `assessment_install_token` | Credencial `eia1_...` da linha `Authorization: Bearer`, guardada no Vault |
 | `assessment_ca_file` | Arquivo PEM no controlador contendo a CA presente no bloco `BEGIN CERTIFICATE` / `END CERTIFICATE` do comando |
 | `assessment_install_mode` | Opcional: `auto` (padrão) ou `reinstall` para reinstalação limpa explicitamente selecionada |
-| `assessment_java_path` | Opcional, caminho absoluto do executável Java no destino; se omitido, o instalador procura uma JVM existente |
+| `assessment_java_path` | Opcional, executável específico no destino. Se informado e rejeitado, a instalação para; não troca silenciosamente de JVM. Para descoberta automática, omita. |
+| `assessment_java_min_major` | Opcional, versão principal mínima entre 6 e 99; padrão `6`. Use `8` para aceitar Java 8, 11, 17, 21 etc., independentemente do update instalado. |
+| `assessment_java_exclude_ibm` | Opcional, `true` para excluir JVMs cujo `java.vendor` ou `java.vm.vendor` identifique IBM; padrão `false`. |
+
+### Seleção automática de Java por grupo
+
+Para novas instalações ou reparos clássicos do grupo afetado, sem fixar diretório ou update:
+
+```yaml
+assessment_java_min_major: 8
+assessment_java_exclude_ibm: true
+```
+
+Omita `assessment_java_path`. A seleção inspeciona os executáveis disponíveis em cada host; o nome de um diretório não é prova da versão ou fornecedor. Java 8 de outro fornecedor pode ser escolhido em um host e Java 17 em outro. Não há exclusão universal de IBM: esses filtros são uma política administrativa opcional para o grupo e não uma declaração de incompatibilidade de todas as JVMs IBM.
+
+O helper valida a propriedade e a proteção dos arquivos antes de executar cada candidato como root. Com filtros ativos, usa `-XshowSettings:properties -version` para obter a versão principal, `java.vendor` e `java.vm.vendor`, e depois executa o teste de compatibilidade do coletor. Candidatos sem metadados completos, que travem ou não executem o teste são descartados. A política exige o comando GNU `timeout`; se indisponível, falha antes de alterar o agente, com `JAVA_POLICY_TIMEOUT_REQUIRED`.
+
+São examinados caminhos usuais (`/usr/java`, `/usr/lib/jvm`, `/opt/java`), executáveis de processos Java e uma busca limitada nos diretórios de aplicações. Limites: até 24 candidatos distintos, 5 segundos por execução Java, profundidade 8, 10 mil entradas e até 10 segundos para a busca adicional. Não é uma varredura irrestrita do servidor. Se nenhum candidato verificado atender, retorna `JAVA_POLICY_NO_MATCH`; não relaxa o mínimo nem retorna ao IBM. O log privado da operação registra caminhos, versão e motivos de descarte disponíveis.
+
+A escolha é feita antes de parar serviços ou alterar o cadastro. Agentes saudáveis em modo `auto` permanecem preservados, inclusive os legados. A recuperação de serviços V3 valida a JVM já persistida; não valida uma JVM nova para depois iniciar outra. Caso essa JVM viole a política, a operação para para revisão. A instalação continua fazendo a validação HTTPS de costume; escolher Java 8+ não comprova que o problema TLS foi resolvido.
+
+Este ajuste é apenas do Ansible: não muda JARs, Java global, `alternatives`, aplicações ou agentes saudáveis. `RESIDUE_REQUIRES_DIAGNOSIS` continua bloqueando uma instalação incompleta com identidade existente. Corrigir a escolha de Java não autoriza apagar `installation-id` nem força um novo cadastro.
 
 Salve **somente o bloco PEM**, incluindo as linhas BEGIN/END, em `private/dashboard-ca.pem`. Não copie o delimitador do heredoc. Se os grupos usarem dashboards distintos, defina URL e arquivo de CA por grupo.
 
@@ -154,11 +175,11 @@ Para falhas, a mensagem mostra a etapa. Confira pré-requisitos, acesso HTTPS e 
 
 ## Validação realizada
 
-**41 cenários locais aprovados** (27 do helper e 14 de integração do playbook), com Ansible Core 2.19.14. Sintaxe, seleção por grupo e ZIP/SHA-256 também verificados.
+**Validação desta revisão (2026-10-28): 43 testes locais aprovados.** A suíte do helper passou nos 39 cenários (27 existentes e 12 da seleção Java). A integração passou nos quatro cenários do playbook: seleção sem caminho fixo, ausência de candidato elegível, preservação de agente saudável e instalação padrão. Sintaxe e integridade ZIP/SHA-256 são verificadas na preparação do pacote. A execução em JVM IBM do cliente ainda depende de validação remota.
 
 Os testes locais executam o playbook e o helper de recuperação com as fronteiras Linux (systemd, proprietário dos arquivos, wget, JVM e instalador) simuladas. Cobrem instalação, preservação, recuperação clássica/V3, reinstalação explícita, backups, validação de identidade, checksum, falha de rede/Java/instalador, links, montagens, serviços alterados, operações pendentes, proteção de segredos e limpeza dos temporários.
 
-Esses testes não substituem a validação dos serviços em uma VM Linux real. Nenhuma máquina do cliente é alterada durante os testes; comece com `--limit` em uma máquina de cada distribuição. O pacote Ansible é independente da release do dashboard: esta alteração mantém a versão 2.1.24 e baixa a versão do agente que estiver disponível no dashboard usado no inventário.
+Esses testes não substituem a validação dos serviços em uma VM Linux real. Nenhuma máquina do cliente é alterada durante os testes; comece com `--limit` em uma máquina de cada distribuição. O pacote Ansible é independente da release do dashboard: esta revisão não altera a versão do dashboard nem dos agentes e baixa o agente disponibilizado pelo dashboard usado no inventário. O ZIP datado identifica apenas a revisão da automação; os pacotes anteriores permanecem preservados.
 
 ## Documentação Ansible
 

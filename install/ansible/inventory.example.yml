@@ -7,8 +7,11 @@ all:
         assessment_install_mode: auto
         assessment_dashboard_url: "https://dashboard.exemplo.com"
         assessment_ca_file: "{{ playbook_dir }}/private/dashboard-ca.pem"
-        # Opcional: caminho absoluto do executável Java, definido por grupo/host.
-        # assessment_java_path: /usr/lib/jvm/java-17/bin/java
+        # Opcional no grupo afetado: descobrir Java 8+ de outro fornecedor.
+        # Não fixe caminho nem update; os defaults mantêm Java 6+ e qualquer vendor.
+        # assessment_java_min_major: 8
+        # assessment_java_exclude_ibm: true
+        # assessment_java_path é apenas uma escolha explícita por host, se necessária.
       children:
         producao:
           vars:

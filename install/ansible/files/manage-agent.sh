@@ -3,7 +3,7 @@
 set -eu
 PATH=/usr/sbin:/usr/bin:/sbin:/bin; export PATH
 LC_ALL=C; export LC_ALL
-unset LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT JAVA_TOOL_OPTIONS _JAVA_OPTIONS JDK_JAVA_OPTIONS ENV BASH_ENV CLASSPATH
+unset LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT JAVA_TOOL_OPTIONS _JAVA_OPTIONS JDK_JAVA_OPTIONS IBM_JAVA_OPTIONS OPENJ9_JAVA_OPTIONS ENV BASH_ENV CLASSPATH
 umask 077
 ROOT=/opt/java-assessment-collector
 UPDATE=/opt/java-assessment-update
@@ -241,6 +241,87 @@ start_services() {
     done
   fi
 }
+# Ansible-only selection policy. Shipped collector code/configuration is unchanged.
+# Probe real VM properties after the package's root-trust checks, never directory names.
+policy_try_java() {
+  policy_candidate=$1
+  test -f "$policy_candidate" && test -x "$policy_candidate" || return 1
+  case "$policy_candidate" in "$ROOT"/*|"$UPDATE"/*|"$HELPER"/*|"$WORK"/*) return 1;; esac
+  case "$policy_seen" in *"|$policy_candidate|"*) return 1;; esac
+  policy_seen="$policy_seen$policy_candidate|"
+  test "$policy_count" -lt 24 || return 1
+  policy_count=$((policy_count + 1))
+  policy_resolved=$(/bin/sh "$PKG/root-trust.sh" java "$policy_candidate") || return 1
+  test -n "$policy_resolved" || return 1
+  case "$policy_resolved" in "$ROOT"/*|"$UPDATE"/*|"$HELPER"/*|"$WORK"/*) return 1;; esac
+  case "$policy_probed" in *"|$policy_resolved|"*) return 1;; esac
+  policy_probed="$policy_probed$policy_resolved|"
+  # timeout and a file-size ceiling bound each invocation and its private output.
+  (ulimit -f 128; timeout -k 1 5 "$policy_resolved" -Xmx64m \
+    -Djava.security.egd=file:/dev/./urandom -XshowSettings:properties -version) \
+    > "$WORK/java-policy-probe.log" 2>&1 || return 1
+  policy_meta=$(awk '
+    /^[ \t]*java.specification.version[ \t]*=/ {v++; sub(/^[^=]*=[ \t]*/, ""); sub(/[ \t\r]+$/, ""); major=$0}
+    /^[ \t]*java.vendor[ \t]*=/ {n++; sub(/^[^=]*=[ \t]*/, ""); sub(/[ \t\r]+$/, ""); vendor=$0}
+    /^[ \t]*java.vm.vendor[ \t]*=/ {m++; sub(/^[^=]*=[ \t]*/, ""); sub(/[ \t\r]+$/, ""); vmvendor=$0}
+    END {
+      sub(/^1\./,"",major)
+      if(v!=1 || n!=1 || m!=1 || major !~ /^[0-9]+$/ || length(major)>3 ||
+         vendor=="" || vmvendor=="" || length(vendor)>200 || length(vmvendor)>200 ||
+         vendor ~ /[[:cntrl:]]/ || vmvendor ~ /[[:cntrl:]]/) exit 1
+      print major; print vendor; print vmvendor
+    }' "$WORK/java-policy-probe.log") || return 1
+  policy_major=$(printf '%s\n' "$policy_meta" | sed -n '1p')
+  policy_vendor=$(printf '%s\n' "$policy_meta" | sed -n '2p')
+  policy_vm_vendor=$(printf '%s\n' "$policy_meta" | sed -n '3p')
+  if test "$policy_major" -lt "$MIN_JAVA"; then
+    printf 'Java policy: skipped Java %s at %s (minimum %s).\n' "$policy_major" "$policy_resolved" "$MIN_JAVA"
+    return 1
+  fi
+  if test "$EXCLUDE_IBM" = true; then
+    policy_vendor_lower=$(printf '%s %s' "$policy_vendor" "$policy_vm_vendor" | tr '[:upper:]' '[:lower:]')
+    case "$policy_vendor_lower" in *ibm*|*'international business machines'*)
+      printf 'Java policy: skipped IBM vendor at %s.\n' "$policy_resolved"; return 1;; esac
+  fi
+  (ulimit -f 128; timeout -k 1 5 "$policy_resolved" -Xmx64m \
+    -Djava.security.egd=file:/dev/./urandom -cp "$PKG/collector.jar:$PKG/lib/*" assessment.JavaProbe) \
+    > "$WORK/java-policy-probe.log" 2>&1 || return 1
+  JAVA=$policy_resolved
+  printf 'Java policy: selected Java %s; vendor=%s; path=%s.\n' "$policy_major" "$policy_vendor" "$JAVA"
+}
+policy_select_java() {
+  policy_seen='|'; policy_probed='|'; policy_count=0
+  if test -n "$JAVA"; then policy_try_java "$JAVA"; return $?; fi
+  for policy_known in /usr/bin/java /usr/lib/jvm/*/bin/java /usr/lib/jvm/*/jre/bin/java \
+      /usr/java/bin/java /usr/java/*/bin/java /usr/java/*/jre/bin/java \
+      /opt/java/*/bin/java /opt/java-lab/*/bin/java; do
+    if policy_try_java "$policy_known"; then return 0; fi
+    test "$policy_count" -lt 24 || return 1
+  done
+  # Process executable links reveal nonstandard application JVM locations.
+  timeout -k 1 5 readlink -f /proc/[0-9]*/exe > "$WORK/java-process-candidates" 2>/dev/null || true
+  while IFS= read -r policy_process; do
+    case "$policy_process" in */bin/java) ;; *) continue;; esac
+    if policy_try_java "$policy_process"; then return 0; fi
+    test "$policy_count" -lt 24 || return 1
+  done < "$WORK/java-process-candidates"
+  set --
+  for policy_root in /usr/java /usr/lib/jvm /opt /usr/local /u01 /u02 /app /apps /oracle /data; do
+    test ! -d "$policy_root" || test -L "$policy_root" || set -- "$@" "$policy_root"
+  done
+  test "$#" -gt 0 || return 1
+  printf 'Java policy: bounded directory discovery (depth 8, 10000 entries, 10 seconds).\n'
+  timeout -k 1 10 find "$@" -xdev -maxdepth 8 -printf '%y %p\n' \
+    \( -type d \( ! -uid 0 -o -perm -020 -o -perm -002 \) -prune \) 2>/dev/null |
+    awk 'NR>10000 {exit} ($1=="f" || $1=="l") && /\/bin\/java$/ {print substr($0,3)}' \
+    > "$WORK/java-directory-candidates"
+  while IFS= read -r policy_found; do
+    if policy_try_java "$policy_found"; then return 0; fi
+    test "$policy_count" -lt 24 || return 1
+  done < "$WORK/java-directory-candidates"
+  return 1
+}
+
 test "$(id -u)" = 0 && test "$(uname -s)" = Linux || fail ROOT_LINUX_REQUIRED
 case "$INIT" in /etc/init.d|/etc/rc.d/init.d) ;; *) fail INIT_DIRECTORY;; esac
 case "${1:-}" in
@@ -249,8 +330,13 @@ case "${1:-}" in
     result=$(state) || exit 1
     echo "JA_STATE=$result";;
   apply)
-    test "$#" = 4 || fail ARGUMENTS
-    MODE=$2; SOURCE=$3; JAVA=$4
+    { test "$#" = 4 || test "$#" = 6; } || fail ARGUMENTS
+    MODE=$2; SOURCE=$3; JAVA=$4; MIN_JAVA=${5:-6}; EXCLUDE_IBM=${6:-false}
+    case "$MIN_JAVA" in ''|*[!0-9]*) fail JAVA_POLICY_ARGUMENTS;; esac
+    test "${#MIN_JAVA}" -le 2 && test "$MIN_JAVA" -ge 6 || fail JAVA_POLICY_ARGUMENTS
+    case "$EXCLUDE_IBM" in true|false) ;; *) fail JAVA_POLICY_ARGUMENTS;; esac
+    POLICY=false
+    if test "$MIN_JAVA" -gt 6 || test "$EXCLUDE_IBM" = true; then POLICY=true; fi
     case "$MODE" in auto|reinstall) ;; *) fail MODE;; esac
     case "$SOURCE" in /tmp/java-assessment-ansible.*/package) ;; *) fail PACKAGE_PATH;; esac
     case "$SOURCE" in *..*|*[!a-zA-Z0-9_./-]*) fail PACKAGE_PATH;; esac
@@ -282,10 +368,26 @@ case "${1:-}" in
       for tool in flock crontab getent stat mktemp cp mv awk sed tar; do command -v "$tool" >/dev/null || exit 1; done
       if ! systemd; then command -v chkconfig >/dev/null || exit 1; fi
     ) > "$WORK/operation.log" 2>&1 || fail PREFLIGHT_PACKAGE
-    if test -n "$JAVA"; then
-      JAVA=$(/bin/sh "$PKG/root-trust.sh" java "$JAVA" 2>> "$WORK/operation.log") || fail PREFLIGHT_JAVA
+    if $POLICY; then
+      command -v timeout >/dev/null 2>&1 || fail JAVA_POLICY_TIMEOUT_REQUIRED
+      # V3 service recovery keeps its persisted JVM; do not validate one VM
+      # and then reactivate a service configured to run a different one.
+      if test "$MODE" = auto && test "$BEFORE" = REPAIR && present "$ROOT/current.json"; then
+        private_file "$ROOT/conf/java.path" || fail EXISTING_JAVA_REQUIRES_REVIEW
+        saved_policy_java=$(cat "$ROOT/conf/java.path")
+        test -z "$JAVA" || test "$JAVA" = "$saved_policy_java" || fail EXISTING_JAVA_REQUIRES_REVIEW
+        JAVA=$saved_policy_java
+      fi
+      policy_select_java >> "$WORK/operation.log" 2>&1 || fail JAVA_POLICY_NO_MATCH
+    else
+      if test -n "$JAVA"; then
+        JAVA=$(/bin/sh "$PKG/root-trust.sh" java "$JAVA" 2>> "$WORK/operation.log") || fail PREFLIGHT_JAVA
+        test -n "$JAVA" || fail PREFLIGHT_JAVA
+      fi
+      requested_java=$JAVA
+      JAVA=$(/bin/sh "$PKG/root-java-discovery.sh" "$PKG" "$JAVA" 2>> "$WORK/operation.log") || fail PREFLIGHT_JAVA
+      test -z "$requested_java" || test "$JAVA" = "$requested_java" || fail EXPLICIT_JAVA_REJECTED
     fi
-    JAVA=$(/bin/sh "$PKG/root-java-discovery.sh" "$PKG" "$JAVA" 2>> "$WORK/operation.log") || fail PREFLIGHT_JAVA
     case "$JAVA" in "$ROOT"/*|"$UPDATE"/*|"$HELPER"/*|"$WORK"/*) fail JAVA_INSIDE_AGENT;; esac
     if test "$MODE" = auto && test "$BEFORE" = REPAIR; then
       /bin/sh "$PKG/root-migrate-input.sh" config "$ROOT" > "$WORK/identity-before" || fail IDENTITY_INVALID

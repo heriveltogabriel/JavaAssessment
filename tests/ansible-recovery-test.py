@@ -11,13 +11,86 @@ class RecoveryTest(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.f=RecoveryFixture(Path(self.temp.name))
 
-    def run_helper(self, action='apply', mode='auto', success=True):
+    def run_helper(self, action='apply', mode='auto', success=True, java='', minimum=6, exclude_ibm=False):
         args=['/bin/sh',str(self.f.script),action]
-        if action=='apply':args += [mode,str(self.f.source),'']
+        if action=='apply':args += [mode,str(self.f.source),str(java),str(minimum),str(exclude_ibm).lower()]
         p=subprocess.run(args,env=self.f.env,text=True,capture_output=True,timeout=120)
         self.assertEqual(p.returncode==0,success,p.stdout+p.stderr)
         self.assertNotIn('existing-private-token',p.stdout+p.stderr)
         return p.stdout+p.stderr
+
+    def test_policy_skips_ibm_and_uses_existing_java8_without_fixed_patch(self):
+        ibm=self.f.java_candidate('usr/lib/jvm/default/bin/java', '1.7', 'IBM Corporation')
+        oracle=self.f.java_candidate('usr/java/customer-jdk/bin/java', '1.8')
+        self.assertIn('INSTALLED',self.run_helper(minimum=8,exclude_ibm=True))
+        self.assertIn(str(oracle),(self.f.base/'install-args').read_text())
+        self.assertNotIn(str(ibm),(self.f.base/'install-args').read_text())
+
+    def test_policy_accepts_nonstandard_location_and_java17(self):
+        jdk=self.f.java_candidate('opt/customer/product/runtime/bin/java','17','Eclipse Adoptium')
+        self.assertIn('INSTALLED',self.run_helper(minimum=8,exclude_ibm=True))
+        self.assertIn(str(jdk),(self.f.base/'install-args').read_text())
+
+    def test_policy_rejects_ibm8_and_does_not_create_identity(self):
+        self.f.java_candidate('usr/java/java8/bin/java','1.8','IBM Corporation')
+        self.assertIn('JAVA_POLICY_NO_MATCH',self.run_helper(minimum=8,exclude_ibm=True,success=False))
+        self.assertFalse(self.f.root.exists())
+        self.assertFalse((self.f.base/'actions').exists())
+
+    def test_policy_rejects_ibm_vm_vendor_even_when_distribution_vendor_differs(self):
+        self.f.java_candidate('usr/java/java8/bin/java','1.8','Example','IBM Corporation')
+        self.assertIn('JAVA_POLICY_NO_MATCH',self.run_helper(minimum=8,exclude_ibm=True,success=False))
+
+    def test_policy_rejects_java7_from_another_vendor(self):
+        self.f.java_candidate('usr/java/java7/bin/java','1.7')
+        self.assertIn('JAVA_POLICY_NO_MATCH',self.run_helper(minimum=8,success=False))
+        self.assertFalse(self.f.root.exists())
+
+    def test_policy_rejects_unknown_vendor(self):
+        self.f.java_candidate('usr/java/java8/bin/java','1.8','')
+        self.assertIn('JAVA_POLICY_NO_MATCH',self.run_helper(minimum=8,exclude_ibm=True,success=False))
+
+    def test_policy_untrusted_candidate_is_never_executed(self):
+        bad=self.f.java_candidate('usr/lib/jvm/first/bin/java','17')
+        good=self.f.java_candidate('usr/java/second/bin/java','11')
+        (self.f.base/'untrusted-java').write_text(str(bad))
+        self.assertIn('INSTALLED',self.run_helper(minimum=8,exclude_ibm=True))
+        executed=(self.f.base/'java-executions').read_text()
+        self.assertNotIn(str(bad),executed)
+        self.assertIn(str(good),executed)
+
+    def test_policy_explicit_rejected_path_never_falls_back(self):
+        explicit=self.f.java_candidate('usr/java/chosen/bin/java','1.7')
+        self.f.java_candidate('usr/java/other/bin/java','17')
+        self.assertIn('JAVA_POLICY_NO_MATCH',self.run_helper(java=explicit,minimum=8,exclude_ibm=True,success=False))
+        self.assertFalse((self.f.base/'installed').exists())
+
+    def test_explicit_path_is_strict_without_policy_too(self):
+        explicit=self.f.java_candidate('usr/java/chosen/bin/java')
+        (self.f.base/'java-fallback').touch()
+        self.assertIn('EXPLICIT_JAVA_REJECTED',self.run_helper(java=explicit,success=False))
+        self.assertFalse((self.f.base/'actions').exists())
+
+    def test_policy_healthy_agent_is_not_reselected(self):
+        self.f.installation()
+        self.assertIn('PRESERVED',self.run_helper(minimum=8,exclude_ibm=True))
+        self.assertFalse((self.f.base/'java-executions').exists())
+
+    def test_policy_preserves_incomplete_identity_guard(self):
+        self.f.java_candidate('usr/java/java8/bin/java')
+        (self.f.root/'conf').mkdir(parents=True)
+        identity=self.f.root/'conf/installation-id'
+        identity.write_text('11111111-1111-1111-1111-111111111111\n')
+        self.assertIn('RESIDUE_REQUIRES_DIAGNOSIS',self.run_helper(minimum=8,exclude_ibm=True,success=False))
+        self.assertEqual(identity.read_text(),'11111111-1111-1111-1111-111111111111\n')
+
+    def test_policy_v3_recovery_must_validate_actual_persisted_jvm(self):
+        self.f.installation(v3=True,active=False)
+        ibm=self.f.java_candidate('usr/java/old/bin/java','1.7','IBM Corporation')
+        self.f.java_candidate('usr/java/new/bin/java','17')
+        (self.f.root/'conf/java.path').write_text(str(ibm)+'\n')
+        self.assertIn('JAVA_POLICY_NO_MATCH',self.run_helper(minimum=8,exclude_ibm=True,success=False))
+        self.assertFalse((self.f.base/'actions').exists())
 
     def test_sysv_healthy_preserved(self):
         self.f.installation(v3=True)

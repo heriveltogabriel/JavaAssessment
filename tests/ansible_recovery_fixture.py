@@ -32,7 +32,7 @@ class RecoveryFixture:
         self.write_tools()
         source = (REPO / 'install/ansible/files/manage-agent.sh').read_text()
         # Replace only OS paths/privilege boundaries, not decision branches.
-        source = re.sub(r'/run/systemd/system|/opt|/etc|/proc|/tmp', lambda m: str(self.base / m[0].lstrip('/')), source)
+        source = re.sub(r'/run/systemd/system|/usr/bin/java|/usr/lib/jvm|/usr/java|/usr/local|/u01|/u02|/apps|/app|/oracle|/data|/opt|/etc|/proc|/tmp', lambda m: str(self.base / m[0].lstrip('/')), source)
         source = source.replace('PATH=/usr/sbin:/usr/bin:/sbin:/bin;', 'PATH=' + shlex.quote(str(self.bin)) + ':/usr/bin:/bin;')
         self.script = self.base / 'manage-agent.sh'
         source = source.replace("set -eu\n", "set -eu\nSUDO_UID=1000; export SUDO_UID\n", 1)
@@ -50,6 +50,12 @@ class RecoveryFixture:
         self.executable('uname' , '#!/bin/sh\necho Linux\n')
         self.executable('id', '#!/bin/sh\necho 0\n')
         preamble = f'#!{sys.executable}\nimport os,sys,json,stat,hashlib,fcntl\nfrom pathlib import Path\nb=Path(os.environ["JA_TEST_ROOT"])\na=sys.argv[1:]\n'
+        self.executable('timeout', preamble + '''
+import subprocess
+if a[:2]!=['-k','1']:sys.exit(2)
+try:sys.exit(subprocess.run(a[3:],timeout=float(a[2])).returncode)
+except subprocess.TimeoutExpired:sys.exit(124)
+''')
         self.executable('stat', preamble + '''
 p=Path(a[-1]);s=p.lstat();mode=stat.S_IMODE(s.st_mode)
 if not str(p).startswith(str(b)): mode=0o755
@@ -63,6 +69,16 @@ try: fcntl.flock(int(a[-1]),fcntl.LOCK_EX|fcntl.LOCK_NB)
 except BlockingIOError: sys.exit(1)
 ''')
         self.executable('find', preamble + '''
+if '-printf' in a:
+ roots=[Path(v) for v in a[:a.index('-xdev')]]
+ for root in roots:
+  for parent,dirs,files in os.walk(root,followlinks=False):
+   depth=len(Path(parent).relative_to(root).parts)
+   if depth>=8:dirs[:]=[]
+   print('d '+parent)
+   for name in files:
+    p=Path(parent)/name;print(('l ' if p.is_symlink() else 'f ')+str(p))
+ sys.exit(0)
 root=Path(a[0]); members=[root]
 for parent,dirs,files in os.walk(root,followlinks=False):
  members += [Path(parent)/n for n in dirs+files]
@@ -115,18 +131,41 @@ else: sys.exit(7)
         (self.source / 'conf').mkdir(exist_ok=True)
         (self.source / 'conf/bootstrap.properties').write_text('private-new-registration')
         (self.source / 'collector.jar').write_text('jar')
-        (self.source / 'root-trust.sh').write_text('#!/bin/sh\nexit 0\n')
+        (self.source / 'root-trust.sh').write_text('''#!/bin/sh
+if test "$1" = java; then
+  test ! -f "$JA_TEST_ROOT/untrusted-java" || test "$2" != "$(cat "$JA_TEST_ROOT/untrusted-java")" || exit 1
+  readlink -f "$2"
+fi
+''')
         (self.source / 'lifecycle-lock.sh').write_text('exec 9>> "'+str(self.opt / 'java-assessment-lifecycle.lock')+'"\nflock -n 9 || exit 1\n')
-        (self.source / 'root-java-discovery.sh').write_text('#!/bin/sh\ntest ! -f "$JA_TEST_ROOT/java-bad" || exit 1\nprintf \'%s\\n\' \"$JA_TEST_ROOT/bin/java\"\n')
+        (self.source / 'root-java-discovery.sh').write_text('''#!/bin/sh
+ test ! -f "$JA_TEST_ROOT/java-bad" || exit 1
+ if test -n "${2:-}" && test ! -f "$JA_TEST_ROOT/java-fallback"; then printf '%s\\n' "$2"
+ else printf '%s\\n' "$JA_TEST_ROOT/bin/java"; fi
+''')
         migration = (REPO / 'collector/root-migrate-input.sh').read_text().replace('PATH=/usr/sbin:/usr/bin:/sbin:/bin;', 'PATH='+shlex.quote(str(self.bin))+':/usr/bin:/bin;')
         (self.source / 'root-migrate-input.sh').write_text(migration)
         (self.source / 'install.sh').write_text('''#!/bin/sh
 set -eu
 test -z "${SUDO_UID:-}"
 printf installed > "$JA_TEST_ROOT/installed"
+printf '%s\\n' "$@" > "$JA_TEST_ROOT/install-args"
 test ! -f "$JA_TEST_ROOT/install-bad" || exit 7
 ''' + shlex.quote(sys.executable) + ' ' + shlex.quote(str(REPO / 'tests/ansible_recovery_fixture.py')) + ' install "$JA_TEST_ROOT"\n')
         self.seal()
+
+    def java_candidate(self, relative, major='1.8', vendor='Oracle Corporation', vm_vendor=None, compatible=True):
+        p=self.base/relative
+        p.parent.mkdir(parents=True,exist_ok=True)
+        vm_vendor=vm_vendor or vendor
+        p.write_text('#!/bin/sh\nprintf \'%s\\n\' '+shlex.quote(str(p))+' >> "$JA_TEST_ROOT/java-executions"\n'+
+            'case "$*" in *-XshowSettings:properties*)\n'+
+            "  printf '%s\\n' "+' '.join(shlex.quote(x) for x in [
+                '    java.specification.version = '+major, '    java.vendor = '+vendor,
+                '    java.vm.vendor = '+vm_vendor])+" >&2; exit 0;;\n"+
+            'esac\nexit '+('0' if compatible else '1')+'\n')
+        p.chmod(0o700)
+        return p
 
     def installation(self, v3=False, active=True):
         (self.root / 'conf').mkdir(parents=True, exist_ok=True)

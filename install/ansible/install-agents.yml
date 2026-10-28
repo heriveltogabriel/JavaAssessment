@@ -14,7 +14,10 @@
           - (assessment_install_mode | default('auto')) in ['auto', 'reinstall']
           - (assessment_batch_size | default(2) | int) >= 1
           - (assessment_batch_size | default(2) | int) <= 2
-        fail_msg: Use --syntax-check para validar. Use assessment_install_mode auto ou reinstall. Este playbook instala em lotes de 1 ou 2 hosts.
+          - (assessment_java_min_major | default(6) | string) is match('^[0-9]{1,2}$')
+          - (assessment_java_min_major | default(6) | int) >= 6
+          - (assessment_java_exclude_ibm | default(false) | string | lower) in ['true', 'false']
+        fail_msg: Use --syntax-check para validar. Use assessment_install_mode auto ou reinstall. Este playbook instala em lotes de 1 ou 2 hosts. A versão Java mínima deve ser inteira entre 6 e 99; a exclusão de IBM deve ser true ou false.
 
     - name: Consultar instalação, identidade e serviços sem exibir credenciais
       ansible.builtin.script:
@@ -109,6 +112,8 @@
             cmd: >-
               files/manage-agent.sh apply {{ (assessment_install_mode | default('auto')) | quote }}
               {{ (ja_stage ~ '/package') | quote }} {{ (assessment_java_path | default('')) | quote }}
+              {{ (assessment_java_min_major | default(6) | string) | quote }}
+              {{ (assessment_java_exclude_ibm | default(false) | string | lower) | quote }}
             executable: /bin/sh
           become: true
           become_user: root

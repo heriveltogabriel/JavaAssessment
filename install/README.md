@@ -6,10 +6,10 @@ Arquivos para instalar o dashboard e os agentes na infraestrutura do cliente. Os
 
 - [Guia de instalação, recuperação e exemplos por ambiente](ansible/README.md)
 - [Atualizar agentes existentes em lotes, preservando cadastro e sem SSH](ansible/UPDATE.md)
-- [Baixar pacote Ansible](ansible/java-assessment-ansible.zip)
-- [SHA-256 do pacote](ansible/java-assessment-ansible.zip.sha256)
+- [Baixar pacote Ansible](ansible/java-assessment-ansible-20261028.zip)
+- [SHA-256 do pacote](ansible/java-assessment-ansible-20261028.zip.sha256)
 
-O playbook usa wget, instala com sudo em lotes de duas máquinas preserva agentes íntegros e recupera instalações incompletas reconhecidas. Uma opção por host permite reinstalação limpa com backup e remoção oficial. Preencha o inventário e guarde as credenciais no Ansible Vault. Os exemplos publicados não contêm credenciais reais.
+O playbook usa wget, instala com sudo em lotes de duas máquinas preserva agentes íntegros e recupera instalações incompletas reconhecidas. Uma opção por host permite reinstalação limpa com backup e remoção oficial. A política opcional `assessment_java_min_major: 8` com `assessment_java_exclude_ibm: true` descobre uma JVM elegível em cada host, sem fixar diretório ou update; agentes saudáveis em modo `auto` continuam preservados. Preencha o inventário e guarde as credenciais no Ansible Vault. Os exemplos publicados não contêm credenciais reais.
 
 ## Java para instalação sem download na VM
 

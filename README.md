@@ -237,7 +237,7 @@ Os testes de navegador usam Playwright e Chrome. Configure `NODE`, `NODE_PATH`, 
 - [Instalação e configuração](dashboard-installer/GUIA_INSTALACAO.md)
 - [Opções do instalador](dashboard-installer/README.md)
 - [Instalação do coletor](collector/INSTALL.md)
-- [Instalação e recuperação de agentes com Ansible e wget, por ambiente](install/ansible/README.md)
+- [Instalação e recuperação de agentes com Ansible e wget, por ambiente](install/ansible/README.md) — inclui seleção automática opcional por versão principal mínima e exclusão de fornecedor IBM, sem caminho fixo.
 - [Atualização de agentes em lotes com Ansible, pela API e sem SSH](install/ansible/UPDATE.md)
 - [Arquitetura e contrato HTTP](CONTRACT.md)
 - [Reconstrução do pacote de fontes](dashboard-installer/README-SOURCE.md)

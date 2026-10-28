@@ -22,9 +22,12 @@ def tasks(items):
         for kind in ('block','rescue','always'):yield from tasks(task.get(kind,[]))
 
 class InstallAutomationTest(unittest.TestCase):
-    def run_fixture(self,mode='ok',environment='env-producao',existing=False,partial=False,reinstall=False,v3=False):
+    def run_fixture(self,mode='ok',environment='env-producao',existing=False,partial=False,reinstall=False,v3=False,java_policy=False):
         with tempfile.TemporaryDirectory(prefix='ja-ansible-fixture-',dir='/private/tmp') as temporary:
             directory=Path(temporary);f=RecoveryFixture(directory)
+            if java_policy:
+                f.java_candidate('usr/lib/jvm/ibm-runtime/bin/java','1.8','IBM Corporation')
+                if mode!='java-policy':f.java_candidate('usr/java/customer-specific-update/bin/java','17','Eclipse Adoptium')
             # Download staging really uses /tmp; all product paths remain isolated.
             f.script.write_text(f.script.read_text().replace(str(directory/'tmp/java-assessment-ansible.'),'/tmp/java-assessment-ansible.'))
             f.executable('sleep','#!/bin/sh\nexit 0\n')
@@ -65,6 +68,9 @@ output=next(line.split(' = ',1)[1] for line in text.splitlines() if line.startsw
                 'assessment_ca_file':str(directory/'ca.pem'),
                 'assessment_install_mode':'reinstall' if reinstall else 'auto',
             }}}}}}
+            if java_policy:
+                inventory['all']['children']['assessment_agents']['hosts']['fixture'].update(
+                    assessment_java_min_major=8,assessment_java_exclude_ibm=True)
             play=yaml.safe_load((SOURCE/'install-agents.yml').read_text())
             task_list=list(tasks(play[0]['tasks']))
             download=next(t for t in task_list if t.get('name')=='Baixar e verificar pacote como usuário SSH')
@@ -98,14 +104,21 @@ output=next(line.split(' = ',1)[1] for line in text.splitlines() if line.startsw
             elif successful:
                 self.assertTrue((f.root/'conf/installation-id').is_file())
                 self.assertEqual((directory/'request').read_text(),'https://dashboard.example.invalid/api/install/package?environmentId='+environment)
+            if java_policy and successful and not existing:
+                self.assertIn('customer-specific-update/bin/java',(directory/'install-args').read_text())
+            if mode=='java-policy':self.assertIn('JAVA_POLICY_NO_MATCH',output)
             if mode=='retry':self.assertEqual((directory/'counter').read_text(),'2')
             if mode=='network':self.assertEqual((directory/'counter').read_text(),'6')
-            if mode in ('checksum','traversal','network','java','check'):
+            if mode in ('checksum','traversal','network','java','check','java-policy'):
                 self.assertFalse((directory/'installed').exists())
-            if mode in ('checksum','traversal','network','install','java'):
+            if mode in ('checksum','traversal','network','install','java','java-policy'):
                 self.assertIn('rescued=1',output)
             if existing and not reinstall:
                 self.assertIn('existing-private-token',(f.root/'conf/collector.properties').read_text())
+
+    def test_java_policy_finds_non_ibm_without_fixed_path(self):self.run_fixture(java_policy=True)
+    def test_java_policy_no_match_has_actionable_error(self):self.run_fixture(mode='java-policy',java_policy=True)
+    def test_java_policy_keeps_healthy_agent(self):self.run_fixture(existing=True,java_policy=True)
 
     def test_new_production(self):self.run_fixture()
     def test_new_homologation(self):self.run_fixture(environment='env-homologacao')

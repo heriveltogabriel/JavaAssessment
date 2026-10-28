@@ -12,10 +12,10 @@ FILES = ('README.md', 'ansible.cfg', 'install-agents.yml', 'inventory.example.ym
          'update-vault.example.yml', 'UPDATE.md', 'files/update-agents.py')
 
 def main():
-    target = SOURCE / 'java-assessment-ansible.zip'
+    target = SOURCE / 'java-assessment-ansible-20261028.zip'
     with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as archive:
         for name in FILES:
-            entry = zipfile.ZipInfo('java-assessment-ansible/' + name, (2026, 10, 26, 0, 0, 0))
+            entry = zipfile.ZipInfo('java-assessment-ansible/' + name, (2026, 10, 28, 0, 0, 0))
             entry.external_attr = 0o100644 << 16
             entry.compress_type = zipfile.ZIP_DEFLATED
             archive.writestr(entry, (SOURCE / name).read_bytes())
